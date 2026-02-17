@@ -1,5 +1,6 @@
 import React from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
@@ -9,6 +10,7 @@ import { ThemeLanguageSwitcher } from './ThemeLanguageSwitcher'
 
 export function Layout() {
   const location = useLocation()
+  const { t } = useTranslation()
   const { user, logout } = useAuth()
   const isAuthPage = ['/login', '/register'].includes(location.pathname)
 
@@ -28,40 +30,31 @@ export function Layout() {
                 siteConfig.organizerName
               )}
             </Link>
-            <nav className="hidden items-center gap-4 text-sm md:flex">
-              <Link
-                to="/"
-                className={cn(
-                  "rounded-full px-3 py-1 transition-colors font-medium",
-                  location.pathname === '/'
-                    ? 'bg-foreground/5 text-foreground'
-                    : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
-                )}
-              >
-                Home
-              </Link>
-              <Link
-                to="/projects"
-                className={cn(
-                  "rounded-full px-3 py-1 transition-colors font-medium",
-                  location.pathname.startsWith('/projects')
-                    ? 'bg-foreground/5 text-foreground'
-                    : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
-                )}
-              >
-                Projects
-              </Link>
-              <Link
-                to="/leaderboard"
-                className={cn(
-                  "rounded-full px-3 py-1 transition-colors font-medium",
-                  location.pathname.startsWith('/leaderboard')
-                    ? 'bg-foreground/5 text-foreground'
-                    : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
-                )}
-              >
-                Leaderboard
-              </Link>
+            <nav className="hidden items-center gap-1 text-sm md:flex">
+              {[
+                { to: '/', label: t('nav.home', 'Home'), exact: true },
+                { to: '/docs', label: t('nav.docs', 'Docs') },
+                { to: '/projects', label: t('nav.projects', 'Projects') },
+                { to: '/leaderboard', label: t('nav.leaderboard', 'Leaderboard') },
+              ].map((link) => {
+                const active = link.exact
+                  ? location.pathname === link.to
+                  : location.pathname.startsWith(link.to)
+                return (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    className={cn(
+                      'rounded-full px-3 py-1 transition-colors font-medium',
+                      active
+                        ? 'bg-foreground/5 text-foreground'
+                        : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
+                    )}
+                  >
+                    {link.label}
+                  </Link>
+                )
+              })}
             </nav>
           </div>
           <div className="flex items-center gap-3">

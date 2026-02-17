@@ -17,6 +17,7 @@ import { HackathonSettings } from './pages/HackathonSettings'
 import { Leaderboard } from './pages/Leaderboard'
 import { SubmitProject } from './pages/SubmitProject'
 import { Landing } from './pages/Landing'
+import { Docs } from './pages/Docs'
 import { Settings } from './pages/Settings';
 
 function App() {
@@ -31,6 +32,7 @@ function App() {
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/docs" element={<Docs />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/leaderboard" element={<Leaderboard />} />
             </Route>

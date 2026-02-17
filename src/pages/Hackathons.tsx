@@ -1,25 +1,21 @@
-import React, { useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import React from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { hackathons, formatDateRange } from '@/lib/mock-data'
-import { ArrowRight, Calendar, MapPin } from 'lucide-react'
-import { EventLandingSections } from '@/components/EventLandingSections'
+import { ArrowRight, Calendar, MapPin, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useAuth } from '@/lib/auth'
 
 export function Hackathons() {
   const { t } = useTranslation()
-  const featured = useMemo(
-    () => hackathons.find((h) => h.status === 'active') ?? hackathons[0],
-    [],
-  )
+  const { user } = useAuth()
+  const navigate = useNavigate()
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)]">
       <section className="container py-10 md:py-14">
-        {featured ? <EventLandingSections hackathon={featured} /> : null}
-
-        <div className="mt-14 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
             <h2 className="text-xl font-semibold tracking-tight md:text-2xl">{t('hackathons.more_events')}</h2>
             <p className="text-sm text-muted-foreground md:text-base">
@@ -52,11 +48,23 @@ export function Hackathons() {
                         {h.tagline}
                       </p>
                     </div>
+                    <div className="flex gap-2">
+                    {user?.role === 'admin' && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="rounded-full bg-white/40 backdrop-blur hover:bg-white/60"
+                        onClick={() => navigate(`/dashboard/hackathons/${h.id}/settings`)}
+                      >
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    )}
                     <Link to="/dashboard/projects">
                       <Button variant="outline" className="rounded-full bg-white/40 backdrop-blur hover:bg-white/60">
                         {t('hackathons.view_projects')}
                       </Button>
                     </Link>
+                    </div>
                   </div>
 
                   <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-foreground/70">

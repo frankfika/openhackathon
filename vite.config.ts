@@ -1,3 +1,4 @@
+import { readFileSync, existsSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tsconfigPaths from "vite-tsconfig-paths";
@@ -26,6 +27,9 @@ export default defineConfig({
   ],
   server: {
     host: true,
+    https: existsSync('./localhost+1.pem')
+      ? { cert: readFileSync('./localhost+1.pem'), key: readFileSync('./localhost+1-key.pem') }
+      : undefined,
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

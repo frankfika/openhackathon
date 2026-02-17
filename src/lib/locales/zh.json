@@ -1,7 +1,10 @@
 {
   "nav": {
+    "home": "首页",
+    "docs": "赛事详情",
     "hackathons": "活动列表",
     "projects": "项目展示",
+    "leaderboard": "排行榜",
     "judging": "评审",
     "dashboard": "控制台",
     "login": "登录",
@@ -43,7 +46,9 @@
     "model": "模型名称",
     "save": "保存配置",
     "saved": "配置已保存",
-    "saved_desc": "设置将应用于当前浏览器的所有 AI 功能。"
+    "saved_desc": "设置将应用于当前浏览器的所有 AI 功能。",
+    "gitbook_url": "GitBook 链接",
+    "gitbook_url_desc": "在赛事详情页内嵌 GitBook 页面。"
   },
   "hackathons": {
     "title": "活动列表",
@@ -59,11 +64,10 @@
   },
   "projects": {
     "title": "项目展示",
-    "subtitle": "搜索、评审并为提交的作品投票。",
+    "subtitle": "搜索和查看已提交的项目。",
     "search_placeholder": "搜索项目",
     "filters": "筛选",
-    "score": "分",
-    "votes": "票"
+    "score": "分"
   },
   "judging": {
     "title": "评审",
@@ -75,6 +79,39 @@
       "pending": "待评审",
       "in_progress": "进行中",
       "completed": "已完成"
+    }
+  },
+  "landing": {
+    "status": {
+      "active": "进行中",
+      "upcoming": "即将开始",
+      "completed": "已结束",
+      "draft": "草稿",
+      "judging": "评审中"
+    },
+    "hero": {
+      "register": "立即报名",
+      "view_docs": "赛事详情",
+      "countdown_days": "天",
+      "countdown_hours": "时",
+      "countdown_minutes": "分",
+      "countdown_to_submission": "距提交截止",
+      "countdown_to_start": "距开赛",
+      "event_ended": "赛事已结束"
+    },
+    "stats": {
+      "projects": "参赛项目",
+      "prizes": "奖金与礼品"
+    },
+    "gitbook": {
+      "title": "赛事详情",
+      "open_external": "在新标签页中打开",
+      "no_docs": "暂未配置赛事文档。"
+    },
+    "footer": {
+      "projects": "项目展示",
+      "leaderboard": "排行榜",
+      "rules": "规则说明"
     }
   }
 }

@@ -1,7 +1,10 @@
 {
   "nav": {
+    "home": "Home",
+    "docs": "Docs",
     "hackathons": "Hackathons",
     "projects": "Projects",
+    "leaderboard": "Leaderboard",
     "judging": "Judging",
     "dashboard": "Dashboard",
     "login": "Log in",
@@ -43,7 +46,9 @@
     "model": "Model Name",
     "save": "Save Configuration",
     "saved": "AI configuration saved",
-    "saved_desc": "Settings will be used for all AI features in this browser."
+    "saved_desc": "Settings will be used for all AI features in this browser.",
+    "gitbook_url": "GitBook URL",
+    "gitbook_url_desc": "Embed a GitBook page on the Docs tab for event details."
   },
   "hackathons": {
     "title": "Hackathons",
@@ -59,11 +64,10 @@
   },
   "projects": {
     "title": "Projects",
-    "subtitle": "Search, review, and vote on submissions.",
+    "subtitle": "Search and review submitted projects.",
     "search_placeholder": "Search projects",
     "filters": "Filters",
-    "score": "score",
-    "votes": "votes"
+    "score": "score"
   },
   "judging": {
     "title": "Judging",
@@ -75,6 +79,39 @@
       "pending": "Pending",
       "in_progress": "In Progress",
       "completed": "Completed"
+    }
+  },
+  "landing": {
+    "status": {
+      "active": "ACTIVE",
+      "upcoming": "UPCOMING",
+      "completed": "COMPLETED",
+      "draft": "DRAFT",
+      "judging": "JUDGING"
+    },
+    "hero": {
+      "register": "Register Now",
+      "view_docs": "Event Details",
+      "countdown_days": "Days",
+      "countdown_hours": "Hours",
+      "countdown_minutes": "Minutes",
+      "countdown_to_submission": "Until submission deadline",
+      "countdown_to_start": "Until event starts",
+      "event_ended": "Event has ended"
+    },
+    "stats": {
+      "projects": "Projects",
+      "prizes": "Prizes & Gifts"
+    },
+    "gitbook": {
+      "title": "Event Details",
+      "open_external": "Open in new tab",
+      "no_docs": "No documentation configured yet."
+    },
+    "footer": {
+      "projects": "Projects",
+      "leaderboard": "Leaderboard",
+      "rules": "Rules"
     }
   }
 }
