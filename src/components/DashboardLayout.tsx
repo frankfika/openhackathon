@@ -182,8 +182,8 @@ export function DashboardLayout() {
           </div>
         </div>
 
-      <div className="flex-1 overflow-y-auto bg-gray-50/50 p-6 dark:bg-gray-900/50">
-            <div className="mx-auto max-w-6xl space-y-8">
+      <div className="flex-1 overflow-y-auto bg-gray-50/50 p-4 md:p-6 dark:bg-gray-900/50">
+            <div className="mx-auto max-w-6xl space-y-4 md:space-y-8">
               <Outlet />
             </div>
           </div>

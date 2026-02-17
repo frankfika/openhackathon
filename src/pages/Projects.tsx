@@ -29,12 +29,12 @@ export function Projects() {
   }, [query, activeHackathon.id])
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)]">
-      <section className="container py-10 md:py-14">
-        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+    <div className="flex-1">
+      <section className="container py-6 md:py-14">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">{t('projects.title')}</h1>
-            <p className="text-muted-foreground">{t('projects.subtitle')}</p>
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight md:text-4xl">{t('projects.title')}</h1>
+            <p className="text-sm md:text-base text-muted-foreground">{t('projects.subtitle')}</p>
           </div>
           <div className="flex w-full gap-2 md:w-auto">
             <div className="relative w-full md:w-80">
@@ -59,7 +59,7 @@ export function Projects() {
           </div>
         </div>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-4 md:mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {projects.map((p) => {
             const hackathon = hackathons.find((h) => h.id === p.hackathonId)
 

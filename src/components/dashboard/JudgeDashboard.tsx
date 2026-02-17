@@ -16,10 +16,10 @@ export function JudgeDashboard() {
   const completedAssignments = assignments.filter(a => a.status === 'completed')
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4 md:space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">{t('dashboard.judge.title', 'Judge Dashboard')}</h1>
-        <p className="text-muted-foreground">{t('dashboard.judge.subtitle', 'Review and score assigned projects.')}</p>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('dashboard.judge.title', 'Judge Dashboard')}</h1>
+        <p className="text-sm md:text-base text-muted-foreground">{t('dashboard.judge.subtitle', 'Review and score assigned projects.')}</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

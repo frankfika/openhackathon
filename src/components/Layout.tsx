@@ -20,7 +20,7 @@ export function Layout() {
   }
 
   return (
-    <div className="min-h-screen bg-background font-sans text-foreground [background:radial-gradient(1200px_circle_at_20%_0%,rgba(0,113,227,0.14),transparent_35%),radial-gradient(900px_circle_at_80%_10%,rgba(217,70,239,0.10),transparent_45%),radial-gradient(700px_circle_at_50%_100%,rgba(16,185,129,0.10),transparent_40%)]">
+    <div className="min-h-screen flex flex-col bg-background font-sans text-foreground [background:radial-gradient(1200px_circle_at_20%_0%,rgba(0,113,227,0.14),transparent_35%),radial-gradient(900px_circle_at_80%_10%,rgba(217,70,239,0.10),transparent_45%),radial-gradient(700px_circle_at_50%_100%,rgba(16,185,129,0.10),transparent_40%)]">
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur">
         <div className="container flex h-14 items-center justify-between">
           <div className="flex items-center gap-6">
@@ -81,7 +81,7 @@ export function Layout() {
           </div>
         </div>
       </header>
-      <main className="flex-1">
+      <main className="flex-1 flex flex-col">
         <Outlet />
       </main>
       <FooterSection />
@@ -95,7 +95,7 @@ function FooterSection() {
   const { activeHackathon: h } = useActiveHackathon()
 
   return (
-    <footer className="border-t border-border/40 py-8">
+    <footer className="border-t border-border/40 py-4">
       <div className="container mx-auto px-4 md:px-6">
         <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
           <div className="flex items-center gap-3">

@@ -36,7 +36,7 @@ export function Docs() {
   }
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 3.5rem)' }}>
+    <div className="flex flex-col flex-1 h-full">
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-border/40 px-4 py-2 md:px-6">
         <h1 className="text-sm font-semibold">

@@ -91,8 +91,8 @@ export function SubmitProject() {
   }
 
   return (
-    <div className="container max-w-2xl py-10">
-      <div className="mb-6">
+    <div className="container max-w-2xl py-6 md:py-10">
+      <div className="mb-4 md:mb-6">
         <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/projects')} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           {t('common.back', 'Back')}

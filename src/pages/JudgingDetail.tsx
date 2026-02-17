@@ -56,18 +56,18 @@ export function JudgingDetail() {
   const totalScore = Object.values(scores).reduce((a, b) => a + b, 0) / 4
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/judging')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{project.title}</h1>
-          <p className="text-muted-foreground">{t('judging.judging_project', 'Judging Project')}</p>
+          <h1 className="text-xl md:text-2xl font-semibold tracking-tight">{project.title}</h1>
+          <p className="text-sm text-muted-foreground">{t('judging.judging_project', 'Judging Project')}</p>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-4 md:gap-6 lg:grid-cols-3">
         {/* Project Details */}
         <div className="lg:col-span-2 space-y-6">
           <Card className="border-0 shadow-sm">
@@ -128,7 +128,7 @@ export function JudgingDetail() {
         </div>
 
         {/* Scoring Form - Only visible to judges/admins with an assignment */}
-        {!isReadOnly && (
+        {!isReadOnly ? (
           <div className="space-y-6">
             <Card className="border-0 shadow-sm sticky top-6">
               <CardHeader>
@@ -209,6 +209,23 @@ export function JudgingDetail() {
                   <Save className="mr-2 h-4 w-4" />
                   {t('judging.submit_score', 'Submit Score')}
                 </Button>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <Card className="border-0 shadow-sm sticky top-6">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  {t('projects.score', 'Score')}
+                  <span className="text-2xl font-bold text-primary">{project.score.toFixed(1)}</span>
+                </CardTitle>
+                <CardDescription>{t('projects.score_desc', 'Final score awarded by judges')}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                 <div className="rounded-lg bg-muted p-4 text-center text-sm text-muted-foreground">
+                   {t('projects.read_only_score', 'Scoring is closed or you do not have permission to judge this project.')}
+                 </div>
               </CardContent>
             </Card>
           </div>

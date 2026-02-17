@@ -13,11 +13,11 @@ export function Hackathons() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)]">
-      <section className="container py-10 md:py-14">
-        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+    <div className="flex-1">
+      <section className="container py-6 md:py-14">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
-            <h2 className="text-xl font-semibold tracking-tight md:text-2xl">{t('hackathons.more_events')}</h2>
+            <h2 className="text-lg md:text-xl font-semibold tracking-tight md:text-2xl">{t('hackathons.more_events')}</h2>
             <p className="text-sm text-muted-foreground md:text-base">
               {t('hackathons.more_desc')}
             </p>

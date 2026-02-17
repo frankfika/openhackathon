@@ -23,14 +23,14 @@ export function AdminDashboard() {
   ]
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4 md:space-y-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{t('dashboard.admin.title', 'Admin Dashboard')}</h1>
-          <p className="text-muted-foreground">{activeHackathon.title}</p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('dashboard.admin.title', 'Admin Dashboard')}</h1>
+          <p className="text-sm md:text-base text-muted-foreground">{activeHackathon.title}</p>
         </div>
-        <div className="flex gap-2">
-           <Button onClick={() => navigate('/dashboard/hackathons/new')}>
+        <div className="flex gap-2 w-full md:w-auto">
+           <Button onClick={() => navigate('/dashboard/hackathons/new')} className="flex-1 md:flex-none">
             <Plus className="mr-2 h-4 w-4" />
             {t('dashboard.create_hackathon', 'Create Hackathon')}
           </Button>

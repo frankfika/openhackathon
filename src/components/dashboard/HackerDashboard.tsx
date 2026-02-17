@@ -16,19 +16,19 @@ export function HackerDashboard() {
   const myProjects = projects.slice(0, 2)
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4 md:space-y-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{t('dashboard.hacker.title', 'Welcome back, Hacker!')}</h1>
-          <p className="text-muted-foreground">{t('dashboard.hacker.subtitle', 'Ready to build something amazing?')}</p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('dashboard.hacker.title', 'Welcome back, Hacker!')}</h1>
+          <p className="text-sm md:text-base text-muted-foreground">{t('dashboard.hacker.subtitle', 'Ready to build something amazing?')}</p>
         </div>
-        <Button onClick={() => navigate('/dashboard/projects/submit')}>
+        <Button onClick={() => navigate('/dashboard/projects/submit')} className="w-full md:w-auto">
           <Plus className="mr-2 h-4 w-4" />
           {t('dashboard.hacker.submit_project', 'Submit New Project')}
         </Button>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
+      <div className="grid gap-4 md:gap-6 md:grid-cols-2 lg:grid-cols-7">
         <div className="col-span-4 space-y-6">
           <section>
             <div className="flex items-center justify-between mb-4">

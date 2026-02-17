@@ -67,7 +67,7 @@ function HeroSection() {
   )
 
   return (
-    <section className="relative flex min-h-[calc(100vh-3.5rem)] items-center overflow-hidden">
+    <section className="relative flex flex-1 items-center justify-center overflow-hidden py-8 md:py-0">
       {/* Animated gradient blobs */}
       <motion.div
         aria-hidden="true"
@@ -88,7 +88,7 @@ function HeroSection() {
         transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
       />
 
-      <div className="container relative mx-auto px-4 py-20 md:px-6 md:py-32">
+      <div className="container relative mx-auto px-4 md:px-6">
         <motion.div
           className="mx-auto max-w-4xl text-center"
           initial="initial"
@@ -237,7 +237,7 @@ function HeroSection() {
 // ─── Main Landing Page ───────────────────────────────────────────────
 export function Landing() {
   return (
-    <div className="flex flex-col min-h-[calc(100vh-3.5rem)]">
+    <div className="flex flex-col flex-1">
       <HeroSection />
     </div>
   )

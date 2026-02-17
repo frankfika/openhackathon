@@ -33,11 +33,11 @@ export function Judging() {
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)]">
-      <section className="container py-10 md:py-14">
-        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+      <section className="container py-6 md:py-14">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">{t('judging.title')}</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight md:text-4xl">{t('judging.title')}</h1>
+            <p className="text-sm md:text-base text-muted-foreground">
               {t('judging.subtitle')}
             </p>
           </div>

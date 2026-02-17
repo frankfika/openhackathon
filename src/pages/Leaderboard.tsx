@@ -43,15 +43,15 @@ export function Leaderboard() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)]">
-      <section className="container py-10 md:py-14">
+    <div className="flex-1">
+      <section className="container py-6 md:py-14">
         <div className="space-y-6">
           <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight">{t('leaderboard.title', 'Leaderboard')}</h1>
-            <p className="text-muted-foreground">{t('leaderboard.subtitle', 'Live rankings based on judge scores.')}</p>
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">{t('leaderboard.title', 'Leaderboard')}</h1>
+            <p className="text-sm md:text-base text-muted-foreground">{t('leaderboard.subtitle', 'Live rankings based on judge scores.')}</p>
           </div>
 
-          <div className="grid gap-4">
+          <div className="grid gap-3 md:gap-4">
             {rankedProjects.map((project, index) => (
               <Card
                 key={project.id}
@@ -60,32 +60,32 @@ export function Leaderboard() {
                   getRankColor(index)
                 )}
               >
-                <CardContent className="flex items-center gap-4 p-6">
-                  <div className="flex h-12 w-12 items-center justify-center shrink-0">
+                <CardContent className="flex items-center gap-3 md:gap-4 p-4 md:p-6">
+                  <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center shrink-0">
                     {getRankIcon(index)}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-lg font-semibold truncate">{project.title}</h3>
-                      <div className="flex gap-1">
+                    <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 mb-1">
+                      <h3 className="text-base md:text-lg font-semibold truncate">{project.title}</h3>
+                      <div className="flex flex-wrap gap-1">
                         {project.tags.slice(0, 3).map(tag => (
-                          <span key={tag} className="px-2 py-0.5 rounded-full bg-background/50 text-xs font-medium text-muted-foreground">
+                          <span key={tag} className="px-2 py-0.5 rounded-full bg-background/50 text-[10px] md:text-xs font-medium text-muted-foreground">
                             {tag}
                           </span>
                         ))}
                       </div>
                     </div>
-                    <p className="text-sm text-muted-foreground truncate">{project.oneLiner}</p>
+                    <p className="text-xs md:text-sm text-muted-foreground truncate">{project.oneLiner}</p>
                   </div>
 
-                  <div className="flex items-center gap-6 shrink-0">
+                  <div className="flex items-center gap-3 md:gap-6 shrink-0">
                     <div className="flex flex-col items-end">
-                      <div className="flex items-center gap-1 text-lg font-bold text-primary">
-                        <Star className="h-4 w-4 fill-primary text-primary" />
+                      <div className="flex items-center gap-1 text-base md:text-lg font-bold text-primary">
+                        <Star className="h-3 w-3 md:h-4 md:w-4 fill-primary text-primary" />
                         {project.score.toFixed(1)}
                       </div>
-                      <span className="text-xs text-muted-foreground">{t('projects.score')}</span>
+                      <span className="text-[10px] md:text-xs text-muted-foreground">{t('projects.score')}</span>
                     </div>
                   </div>
                 </CardContent>
