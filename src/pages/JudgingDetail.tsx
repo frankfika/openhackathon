@@ -6,15 +6,17 @@ import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { assignments, projects, judges } from '@/lib/mock-data'
+import { assignments, projects } from '@/lib/mock-data'
 import { ArrowLeft, ExternalLink, Github, Save } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { useAuth } from '@/lib/auth'
 
 export function JudgingDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const { user } = useAuth()
   const [scores, setScores] = useState({
     innovation: 0,
     technology: 0,
@@ -23,12 +25,22 @@ export function JudgingDetail() {
   })
   const [comment, setComment] = useState('')
 
+  // Try to find by assignment ID first (for judges)
   const assignment = useMemo(() => assignments.find((a) => a.id === id), [id])
-  const project = useMemo(() => projects.find((p) => p.id === assignment?.projectId), [assignment])
+  // If not found, try to find by project ID (for public view)
+  const project = useMemo(() => {
+    if (assignment) {
+      return projects.find((p) => p.id === assignment.projectId)
+    }
+    return projects.find((p) => p.id === id)
+  }, [assignment, id])
 
-  if (!assignment || !project) {
+  if (!project) {
     return <div>Project not found</div>
   }
+
+  // If user is not a judge/admin or if we're viewing directly by project ID (no assignment), show read-only view
+  const isReadOnly = user?.role === 'user' || !assignment
 
   const handleScoreChange = (key: keyof typeof scores, value: number[]) => {
     setScores((prev) => ({ ...prev, [key]: value[0] }))
@@ -65,7 +77,16 @@ export function JudgingDetail() {
             <CardContent className="space-y-4">
               <p className="text-foreground/80 leading-relaxed">{project.oneLiner}</p>
               
-              <div className="flex flex-wrap gap-2">
+              {project.description && (
+                <div className="mt-4 prose dark:prose-invert max-w-none">
+                  <h3 className="text-lg font-semibold mb-2">{t('projects.description', 'Description')}</h3>
+                  <div className="whitespace-pre-wrap text-sm text-muted-foreground">
+                    {project.description}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 mt-4">
                 {project.tags.map((tag) => (
                   <span key={tag} className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
                     {tag}
@@ -106,90 +127,92 @@ export function JudgingDetail() {
           </Card>
         </div>
 
-        {/* Scoring Form */}
-        <div className="space-y-6">
-          <Card className="border-0 shadow-sm sticky top-6">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                {t('judging.score_card', 'Score Card')}
-                <span className="text-2xl font-bold text-primary">{totalScore.toFixed(1)}</span>
-              </CardTitle>
-              <CardDescription>Rate the project on a scale of 1-10</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Label>{t('judging.criteria.innovation', 'Innovation')}</Label>
-                    <span className="text-sm font-medium">{scores.innovation}</span>
+        {/* Scoring Form - Only visible to judges/admins with an assignment */}
+        {!isReadOnly && (
+          <div className="space-y-6">
+            <Card className="border-0 shadow-sm sticky top-6">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  {t('judging.score_card', 'Score Card')}
+                  <span className="text-2xl font-bold text-primary">{totalScore.toFixed(1)}</span>
+                </CardTitle>
+                <CardDescription>Rate the project on a scale of 1-10</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label>{t('judging.criteria.innovation', 'Innovation')}</Label>
+                      <span className="text-sm font-medium">{scores.innovation}</span>
+                    </div>
+                    <Slider
+                      value={[scores.innovation]}
+                      max={10}
+                      step={0.5}
+                      onValueChange={(val) => handleScoreChange('innovation', val)}
+                    />
                   </div>
-                  <Slider
-                    value={[scores.innovation]}
-                    max={10}
-                    step={0.5}
-                    onValueChange={(val) => handleScoreChange('innovation', val)}
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label>{t('judging.criteria.technology', 'Technology')}</Label>
+                      <span className="text-sm font-medium">{scores.technology}</span>
+                    </div>
+                    <Slider
+                      value={[scores.technology]}
+                      max={10}
+                      step={0.5}
+                      onValueChange={(val) => handleScoreChange('technology', val)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label>{t('judging.criteria.design', 'Design')}</Label>
+                      <span className="text-sm font-medium">{scores.design}</span>
+                    </div>
+                    <Slider
+                      value={[scores.design]}
+                      max={10}
+                      step={0.5}
+                      onValueChange={(val) => handleScoreChange('design', val)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <Label>{t('judging.criteria.completion', 'Completion')}</Label>
+                      <span className="text-sm font-medium">{scores.completion}</span>
+                    </div>
+                    <Slider
+                      value={[scores.completion]}
+                      max={10}
+                      step={0.5}
+                      onValueChange={(val) => handleScoreChange('completion', val)}
+                    />
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <Label>{t('judging.comments', 'Comments')}</Label>
+                  <Textarea
+                    placeholder={t('judging.comments_placeholder', 'Optional feedback for the team...')}
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    className="min-h-[100px]"
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Label>{t('judging.criteria.technology', 'Technology')}</Label>
-                    <span className="text-sm font-medium">{scores.technology}</span>
-                  </div>
-                  <Slider
-                    value={[scores.technology]}
-                    max={10}
-                    step={0.5}
-                    onValueChange={(val) => handleScoreChange('technology', val)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Label>{t('judging.criteria.design', 'Design')}</Label>
-                    <span className="text-sm font-medium">{scores.design}</span>
-                  </div>
-                  <Slider
-                    value={[scores.design]}
-                    max={10}
-                    step={0.5}
-                    onValueChange={(val) => handleScoreChange('design', val)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Label>{t('judging.criteria.completion', 'Completion')}</Label>
-                    <span className="text-sm font-medium">{scores.completion}</span>
-                  </div>
-                  <Slider
-                    value={[scores.completion]}
-                    max={10}
-                    step={0.5}
-                    onValueChange={(val) => handleScoreChange('completion', val)}
-                  />
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <Label>{t('judging.comments', 'Comments')}</Label>
-                <Textarea
-                  placeholder={t('judging.comments_placeholder', 'Optional feedback for the team...')}
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  className="min-h-[100px]"
-                />
-              </div>
-
-              <Button onClick={handleSubmit} className="w-full">
-                <Save className="mr-2 h-4 w-4" />
-                {t('judging.submit_score', 'Submit Score')}
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+                <Button onClick={handleSubmit} className="w-full">
+                  <Save className="mr-2 h-4 w-4" />
+                  {t('judging.submit_score', 'Submit Score')}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   )

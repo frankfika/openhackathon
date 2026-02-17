@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
+import { useActiveHackathon } from '@/lib/active-hackathon'
 import { siteConfig } from '@/lib/site-config'
 
 import { ThemeLanguageSwitcher } from './ThemeLanguageSwitcher'
@@ -83,6 +84,55 @@ export function Layout() {
       <main className="flex-1">
         <Outlet />
       </main>
+      <FooterSection />
     </div>
+  )
+}
+
+// ─── Footer ──────────────────────────────────────────────────────────
+function FooterSection() {
+  const { t } = useTranslation()
+  const { activeHackathon: h } = useActiveHackathon()
+
+  return (
+    <footer className="border-t border-border/40 py-8">
+      <div className="container mx-auto px-4 md:px-6">
+        <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
+          <div className="flex items-center gap-3">
+            {siteConfig.organizerLogo ? (
+              <img src={siteConfig.organizerLogo} alt={siteConfig.organizerName} className="h-8" />
+            ) : (
+              <>
+                <div className="h-8 w-8 rounded-lg bg-primary" />
+                <span className="text-sm font-bold">{siteConfig.organizerName}</span>
+              </>
+            )}
+          </div>
+          <nav className="flex items-center gap-6 text-sm text-muted-foreground">
+            <Link to="/docs" className="hover:text-foreground transition-colors">
+              {t('nav.docs', 'Docs')}
+            </Link>
+            <Link to="/projects" className="hover:text-foreground transition-colors">
+              {t('landing.footer.projects')}
+            </Link>
+            {h.rulesUrl && (
+              <a href={h.rulesUrl} target="_blank" rel="noreferrer" className="hover:text-foreground transition-colors">
+                {t('landing.footer.rules')}
+              </a>
+            )}
+          </nav>
+          {siteConfig.poweredBy.show && (
+            <a
+              href={siteConfig.poweredBy.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            >
+              {siteConfig.poweredBy.text}
+            </a>
+          )}
+        </div>
+      </div>
+    </footer>
   )
 }

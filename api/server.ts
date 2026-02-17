@@ -1,34 +1,62 @@
-/**
- * local server entry file, for local development
- */
-import app from './app.js';
+import express from 'express';
+import cors from 'cors';
+import { PrismaClient } from '@prisma/client';
 
-/**
- * start server with port
- */
-const PORT = process.env.PORT || 3001;
+const prisma = new PrismaClient();
+const app = express();
+const port = process.env.PORT || 3001;
 
-const server = app.listen(PORT, () => {
-  console.log(`Server ready on port ${PORT}`);
-});
+app.use(cors());
+app.use(express.json());
 
-/**
- * close server
- */
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received');
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
+// Hackathons
+app.get('/api/hackathons', async (req, res) => {
+  const hackathons = await prisma.hackathon.findMany({
+    include: { sessions: true }
   });
+  res.json(hackathons);
 });
 
-process.on('SIGINT', () => {
-  console.log('SIGINT signal received');
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
+app.post('/api/hackathons', async (req, res) => {
+  const hackathon = await prisma.hackathon.create({
+    data: req.body
   });
+  res.json(hackathon);
 });
 
-export default app;
+app.put('/api/hackathons/:id', async (req, res) => {
+  const hackathon = await prisma.hackathon.update({
+    where: { id: req.params.id },
+    data: req.body
+  });
+  res.json(hackathon);
+});
+
+// Projects
+app.get('/api/projects', async (req, res) => {
+  const { hackathonId } = req.query;
+  const projects = await prisma.project.findMany({
+    where: hackathonId ? { hackathonId: String(hackathonId) } : undefined,
+    include: { user: true }
+  });
+  res.json(projects);
+});
+
+app.post('/api/projects', async (req, res) => {
+  const project = await prisma.project.create({
+    data: req.body
+  });
+  res.json(project);
+});
+
+// Judging
+app.get('/api/assignments', async (req, res) => {
+  const assignments = await prisma.assignment.findMany({
+    include: { project: true, judge: true }
+  });
+  res.json(assignments);
+});
+
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
+});

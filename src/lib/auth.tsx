@@ -20,7 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (savedUser) {
       try {
         setUser(JSON.parse(savedUser))
-      } catch (e) {
+      } catch {
         console.error('Failed to parse user from local storage')
       }
     }

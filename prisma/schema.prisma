@@ -1,0 +1,100 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  role      String   // admin, judge, user
+  password  String   // hashed
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments Assignment[]
+  projects    Project[]
+}
+
+model Hackathon {
+  id            String   @id @default(uuid())
+  title         String
+  tagline       String
+  city          String?
+  startAt       DateTime
+  endAt         DateTime
+  status        String   // draft, upcoming, active, judging, completed
+  coverGradient String
+  submissionSchema Json?  // Stores the form configuration
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions Session[]
+  projects Project[]
+}
+
+model Session {
+  id          String   @id @default(uuid())
+  hackathonId String
+  hackathon   Hackathon @relation(fields: [hackathonId], references: [id])
+  name        String
+  type        String   // preliminary, semi_final, final
+  status      String   // draft, active, judging, completed
+  startAt     DateTime
+  endAt       DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  projects    Project[]
+  assignments Assignment[]
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  hackathonId String
+  hackathon   Hackathon @relation(fields: [hackathonId], references: [id])
+  sessionId   String?
+  session     Session?  @relation(fields: [sessionId], references: [id])
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  
+  title       String
+  oneLiner    String
+  description String?   // Detailed description (markdown)
+  tags        String[]
+  demoUrl     String?
+  repoUrl     String?
+  submissionData Json?  // Stores the actual form submission data
+  
+  votes       Int      @default(0)
+  score       Float    @default(0.0)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignments Assignment[]
+}
+
+model Assignment {
+  id        String   @id @default(uuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id])
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  judgeId   String
+  judge     User     @relation(fields: [judgeId], references: [id])
+  
+  status    String   // pending, in_progress, completed
+  scores    Json?    // { innovation: 8, technology: 9, ... }
+  comment   String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
