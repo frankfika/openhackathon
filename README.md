@@ -1,57 +1,164 @@
-# React + TypeScript + Vite
+# OpenHackathon
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A white-label hackathon website platform. Deploy it and it becomes **your own hackathon official site**. Admins manage multiple hackathons in the backend and choose which one to display on the public-facing frontend. Visitors always see only the currently active hackathon.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **White-label branding** — Organizer name, logo, and primary color are fully configurable via environment variables. No "OpenHackathon" branding on the public site (only a small "Powered by" badge).
+- **Single-hackathon public frontend** — The landing page renders the active hackathon directly (event info, schedule, FAQ, registration). No multi-event marketplace.
+- **Multi-hackathon admin backend** — Admins can create, manage, and switch between multiple hackathons in the dashboard.
+- **Role-based access** — Three roles: `admin`, `judge`, `user` (hacker). Each sees a tailored dashboard.
+- **Project submission** — Dynamic form builder driven by per-hackathon `submissionSchema`. Duplicate project name detection.
+- **Judging flow** — Assign projects to judges, score, AI-assisted code analysis panel.
+- **Leaderboard** — Public and dashboard leaderboards scoped to the active hackathon.
+- **i18n** — Internationalization via `react-i18next`.
+- **Dark mode** — Theme toggle included.
 
-## Expanding the ESLint configuration
+## Quick Start
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+```bash
+# Install dependencies
+pnpm install
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+# Copy environment config
+cp .env.example .env
+
+# Start dev server
+pnpm dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Open http://localhost:5173.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## White-Label Configuration
 
-export default tseslint.config({
-  extends: [
-    // other configs...
-    // Enable lint rules for React
-    reactX.configs['recommended-typescript'],
-    // Enable lint rules for React DOM
-    reactDom.configs.recommended,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+All branding is controlled via environment variables (see `.env.example`):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VITE_ORGANIZER_NAME` | `Acme Corp` | Organizer name shown in header and sidebar |
+| `VITE_ORGANIZER_LOGO` | _(empty)_ | URL to logo image. If set, replaces the text name |
+| `VITE_PRIMARY_COLOR` | `#4F46E5` | Primary brand color |
+| `VITE_SHOW_POWERED_BY` | `true` | Show "Powered by OpenHackathon" badge. Set to `false` to hide |
+
+After changing `.env`, restart the dev server for changes to take effect.
+
+## Architecture
+
 ```
+src/
+├── lib/
+│   ├── site-config.ts          # White-label config (reads VITE_* env vars)
+│   ├── active-hackathon.tsx    # ActiveHackathon context & useActiveHackathon hook
+│   ├── auth.tsx                # Auth context (role-based login)
+│   └── mock-data.ts            # Mock data (hackathons, projects, users, etc.)
+├── pages/
+│   ├── Landing.tsx             # Public homepage (renders active hackathon)
+│   ├── Projects.tsx            # Project gallery (scoped to active hackathon)
+│   ├── Leaderboard.tsx         # Public leaderboard (scoped to active hackathon)
+│   ├── SubmitProject.tsx       # Project submission form
+│   ├── Dashboard.tsx           # Role-based dashboard router
+│   ├── Hackathons.tsx          # Admin hackathon management list
+│   ├── HackathonSettings.tsx   # Admin hackathon settings
+│   └── JudgingDetail.tsx       # Judge scoring view
+├── components/
+│   ├── Layout.tsx              # Public nav (white-label logo, Home/Projects/Leaderboard)
+│   ├── DashboardLayout.tsx     # Dashboard sidebar (white-label, admin-only switcher)
+│   ├── EventLandingSections.tsx # Hackathon landing card (About/Schedule/FAQ tabs)
+│   ├── HackathonSwitcher.tsx   # Admin hackathon picker (updates active hackathon)
+│   ├── PoweredByBadge.tsx      # "Powered by OpenHackathon" floating badge
+│   └── dashboard/
+│       ├── AdminDashboard.tsx  # Admin stats & management (scoped to active hackathon)
+│       ├── HackerDashboard.tsx # Hacker view (single active hackathon + my projects)
+│       └── JudgeDashboard.tsx  # Judge queue & AI copilot
+└── App.tsx                     # Routes & providers
+```
+
+### How "Active Hackathon" Works
+
+1. `ActiveHackathonProvider` wraps the entire app (in `App.tsx`).
+2. On first load, defaults to the first hackathon with `status === 'active'`.
+3. The selected hackathon ID is persisted in `localStorage`.
+4. **Admins** switch the active hackathon via `HackathonSwitcher` in the dashboard sidebar.
+5. **Public pages** (`/`, `/projects`, `/leaderboard`) always display data for the active hackathon.
+6. **Dashboard pages** also scope their data to the active hackathon.
+
+### Public Routes
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/` | Landing | Active hackathon homepage |
+| `/projects` | Projects | Project gallery for active hackathon |
+| `/leaderboard` | Leaderboard | Rankings for active hackathon |
+| `/login` | Login | Role-based login |
+| `/register` | Register | Registration |
+
+### Dashboard Routes (authenticated)
+
+| Route | Page | Roles |
+|-------|------|-------|
+| `/dashboard` | Dashboard | all |
+| `/dashboard/hackathons` | Hackathon list | admin |
+| `/dashboard/hackathons/:id/settings` | Hackathon settings | admin |
+| `/dashboard/projects` | Projects | all |
+| `/dashboard/projects/submit` | Submit project | all |
+| `/dashboard/judging` | Judging queue | admin, judge |
+| `/dashboard/judging/:id` | Score a project | admin, judge |
+| `/dashboard/leaderboard` | Leaderboard | all |
+| `/dashboard/settings` | User settings | all |
+
+## Demo Accounts
+
+The app uses mock authentication. On the login page, select a role to log in:
+
+| Role | Name | What you see |
+|------|------|-------------|
+| Admin | Sarah Admin | Full dashboard with hackathon switcher, all management tools |
+| Judge | Alice Chen | Judging queue, AI copilot, scoring interface |
+| Hacker | Dave Builder | Current hackathon info, my projects, submit form |
+
+## Deployment (Docker)
+
+The project is fully containerized.
+
+### Prerequisites
+- Docker & Docker Compose
+- Git
+
+### Start
+
+```bash
+git clone https://github.com/frankfika/openhackathon.git
+cd openhackathon
+docker-compose up -d --build
+```
+
+Services:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| Web | 5173 | React frontend |
+| API | 3000 | Node.js/Express API |
+| DB | 5432 | PostgreSQL |
+| Adminer | 8080 | Database UI |
+
+### Database Migration
+
+```bash
+docker-compose exec api sh
+npx prisma migrate dev --name init
+```
+
+## Tech Stack
+
+- React 18 + TypeScript
+- Vite
+- Tailwind CSS + shadcn/ui
+- React Router
+- react-i18next
+- react-hook-form + Zod
+- Prisma (database schema)
+- Docker Compose
+
+## License
+
+MIT

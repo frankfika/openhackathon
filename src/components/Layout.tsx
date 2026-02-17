@@ -2,9 +2,14 @@ import React from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/lib/auth'
+import { siteConfig } from '@/lib/site-config'
+
+import { ThemeLanguageSwitcher } from './ThemeLanguageSwitcher'
 
 export function Layout() {
   const location = useLocation()
+  const { user, logout } = useAuth()
   const isAuthPage = ['/login', '/register'].includes(location.pathname)
 
   if (isAuthPage) {
@@ -16,25 +21,29 @@ export function Layout() {
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur">
         <div className="container flex h-14 items-center justify-between">
           <div className="flex items-center gap-6">
-            <Link to="/" className="text-sm font-semibold tracking-tight">
-              OpenHackathon
+            <Link to="/" className="text-lg font-bold tracking-tight">
+              {siteConfig.organizerLogo ? (
+                <img src={siteConfig.organizerLogo} alt={siteConfig.organizerName} className="h-8" />
+              ) : (
+                siteConfig.organizerName
+              )}
             </Link>
             <nav className="hidden items-center gap-4 text-sm md:flex">
               <Link
-                to="/hackathons"
+                to="/"
                 className={cn(
-                  "rounded-full px-3 py-1 transition-colors",
-                  location.pathname.startsWith('/hackathons') || location.pathname === '/'
+                  "rounded-full px-3 py-1 transition-colors font-medium",
+                  location.pathname === '/'
                     ? 'bg-foreground/5 text-foreground'
                     : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
                 )}
               >
-                Hackathons
+                Home
               </Link>
               <Link
                 to="/projects"
                 className={cn(
-                  "rounded-full px-3 py-1 transition-colors",
+                  "rounded-full px-3 py-1 transition-colors font-medium",
                   location.pathname.startsWith('/projects')
                     ? 'bg-foreground/5 text-foreground'
                     : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
@@ -43,29 +52,38 @@ export function Layout() {
                 Projects
               </Link>
               <Link
-                to="/dashboard/judging"
+                to="/leaderboard"
                 className={cn(
-                  "rounded-full px-3 py-1 transition-colors",
-                  location.pathname.includes('/judging')
+                  "rounded-full px-3 py-1 transition-colors font-medium",
+                  location.pathname.startsWith('/leaderboard')
                     ? 'bg-foreground/5 text-foreground'
                     : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
                 )}
               >
-                Judging
+                Leaderboard
               </Link>
             </nav>
           </div>
-          <div className="flex items-center gap-2">
-            <Link to="/dashboard">
-              <Button variant="outline" size="sm" className="rounded-full">
-                Dashboard
-              </Button>
-            </Link>
-            <Link to="/login">
-              <Button variant="ghost" size="sm" className="rounded-full">
-                Log in
-              </Button>
-            </Link>
+          <div className="flex items-center gap-3">
+            <ThemeLanguageSwitcher />
+            {user ? (
+              <>
+                <Link to="/dashboard">
+                  <Button variant="default" size="sm" className="rounded-full">
+                    Dashboard
+                  </Button>
+                </Link>
+                <Button variant="ghost" size="sm" className="rounded-full" onClick={logout}>
+                  Log out
+                </Button>
+              </>
+            ) : (
+              <Link to="/login">
+                <Button variant="ghost" size="sm" className="rounded-full font-medium">
+                  Log in
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </header>

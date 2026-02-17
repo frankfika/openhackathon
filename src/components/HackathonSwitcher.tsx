@@ -17,12 +17,13 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { hackathons } from '@/lib/mock-data'
+import { useActiveHackathon } from '@/lib/active-hackathon'
 import { useTranslation } from 'react-i18next'
 
 export function HackathonSwitcher() {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
-  const [selectedHackathon, setSelectedHackathon] = React.useState(hackathons[0])
+  const { activeHackathon, setActiveHackathonId } = useActiveHackathon()
 
   const formattedHackathons = useMemo(() => {
     return hackathons.map((h) => ({
@@ -43,9 +44,9 @@ export function HackathonSwitcher() {
         >
           <div className="flex items-center gap-2 truncate">
             <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-              {selectedHackathon.title.charAt(0)}
+              {activeHackathon.title.charAt(0)}
             </div>
-            <span className="truncate">{selectedHackathon.title}</span>
+            <span className="truncate">{activeHackathon.title}</span>
           </div>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -62,8 +63,7 @@ export function HackathonSwitcher() {
                   <CommandItem
                     key={hackathon.value}
                     onSelect={() => {
-                      const selected = hackathons.find((h) => h.id === hackathon.value)
-                      if (selected) setSelectedHackathon(selected)
+                      setActiveHackathonId(hackathon.value)
                       setOpen(false)
                     }}
                     className="text-sm"
@@ -71,7 +71,7 @@ export function HackathonSwitcher() {
                     <Check
                       className={cn(
                         "mr-2 h-4 w-4",
-                        selectedHackathon.id === hackathon.value
+                        activeHackathon.id === hackathon.value
                           ? "opacity-100"
                           : "opacity-0"
                       )}
@@ -87,8 +87,7 @@ export function HackathonSwitcher() {
                   <CommandItem
                     key={hackathon.value}
                     onSelect={() => {
-                      const selected = hackathons.find((h) => h.id === hackathon.value)
-                      if (selected) setSelectedHackathon(selected)
+                      setActiveHackathonId(hackathon.value)
                       setOpen(false)
                     }}
                     className="text-sm text-muted-foreground"
@@ -96,7 +95,7 @@ export function HackathonSwitcher() {
                     <Check
                       className={cn(
                         "mr-2 h-4 w-4",
-                        selectedHackathon.id === hackathon.value
+                        activeHackathon.id === hackathon.value
                           ? "opacity-100"
                           : "opacity-0"
                       )}

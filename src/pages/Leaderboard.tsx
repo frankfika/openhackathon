@@ -1,17 +1,21 @@
 import React, { useMemo } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { projects } from '@/lib/mock-data'
+import { useActiveHackathon } from '@/lib/active-hackathon'
 import { Trophy, Medal, Award, Star, ThumbsUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
 export function Leaderboard() {
   const { t } = useTranslation()
-  
-  // Sort projects by score descending
+  const { activeHackathon } = useActiveHackathon()
+
+  // Filter by active hackathon, then sort by score descending
   const rankedProjects = useMemo(() => {
-    return [...projects].sort((a, b) => b.score - a.score)
-  }, [])
+    return projects
+      .filter(p => p.hackathonId === activeHackathon.id)
+      .sort((a, b) => b.score - a.score)
+  }, [activeHackathon.id])
 
   const getRankIcon = (index: number) => {
     switch (index) {
