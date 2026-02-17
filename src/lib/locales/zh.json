@@ -1,0 +1,80 @@
+{
+  "nav": {
+    "hackathons": "活动列表",
+    "projects": "项目展示",
+    "judging": "评审",
+    "dashboard": "控制台",
+    "login": "登录",
+    "logout": "退出登录"
+  },
+  "auth": {
+    "welcome": "欢迎回来",
+    "welcome_desc": "输入邮箱以登录您的账户",
+    "create_account": "创建账户",
+    "create_desc": "加入社区开始构建",
+    "email": "邮箱",
+    "password": "密码",
+    "confirm_password": "确认密码",
+    "full_name": "全名",
+    "sign_in": "登录",
+    "sign_up": "注册",
+    "or_continue": "或继续使用",
+    "demo_mode": "演示模式（未配置 Supabase）"
+  },
+  "dashboard": {
+    "title": "控制台",
+    "subtitle": "快速访问赛程、评审任务与管理操作。",
+    "active_events": "进行中的活动",
+    "judging_queue": "评审队列",
+    "browse_events": "浏览所有活动",
+    "create": "创建活动",
+    "operate": "管理",
+    "open": "查看",
+    "no_events": "暂无活动。",
+    "no_assignments": "暂无评审任务。"
+  },
+  "settings": {
+    "title": "设置",
+    "subtitle": "管理偏好与集成。",
+    "ai_config": "AI 配置",
+    "ai_desc": "配置 OpenAI 兼容接口，用于自动评审与内容生成。",
+    "base_url": "接口地址 (Base URL)",
+    "api_key": "API 密钥 (Key)",
+    "model": "模型名称",
+    "save": "保存配置",
+    "saved": "配置已保存",
+    "saved_desc": "设置将应用于当前浏览器的所有 AI 功能。"
+  },
+  "hackathons": {
+    "title": "活动列表",
+    "more_events": "更多活动",
+    "more_desc": "浏览历史与即将开始的赛事，进入作品列表、评审与运营后台。",
+    "enter_workbench": "进入工作台",
+    "view_projects": "查看项目",
+    "status": {
+      "active": "进行中",
+      "upcoming": "即将开始",
+      "completed": "已结束"
+    }
+  },
+  "projects": {
+    "title": "项目展示",
+    "subtitle": "搜索、评审并为提交的作品投票。",
+    "search_placeholder": "搜索项目",
+    "filters": "筛选",
+    "score": "分",
+    "votes": "票"
+  },
+  "judging": {
+    "title": "评审",
+    "subtitle": "评审任务已按场次和评委进行分配，确保保密性。",
+    "open_review": "开始评审",
+    "done": "已完成",
+    "ai_judge": "AI评委",
+    "status": {
+      "pending": "待评审",
+      "in_progress": "进行中",
+      "completed": "已完成"
+    }
+  }
+}

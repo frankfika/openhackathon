@@ -1,0 +1,80 @@
+{
+  "nav": {
+    "hackathons": "Hackathons",
+    "projects": "Projects",
+    "judging": "Judging",
+    "dashboard": "Dashboard",
+    "login": "Log in",
+    "logout": "Log out"
+  },
+  "auth": {
+    "welcome": "Welcome back",
+    "welcome_desc": "Enter your email to sign in to your account",
+    "create_account": "Create an account",
+    "create_desc": "Join the community to start building",
+    "email": "Email",
+    "password": "Password",
+    "confirm_password": "Confirm Password",
+    "full_name": "Full Name",
+    "sign_in": "Sign In",
+    "sign_up": "Create Account",
+    "or_continue": "Or continue with",
+    "demo_mode": "Demo mode enabled (no Supabase configured)"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Fast access to sessions, assignments, and operations.",
+    "active_events": "Active events",
+    "judging_queue": "Your judging queue",
+    "browse_events": "Browse events",
+    "create": "Create",
+    "operate": "Operate",
+    "open": "Open",
+    "no_events": "No active events yet.",
+    "no_assignments": "No assignments."
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Manage your preferences and integrations.",
+    "ai_config": "AI Configuration",
+    "ai_desc": "Configure the OpenAI-compatible provider for judging and content generation.",
+    "base_url": "Base URL",
+    "api_key": "API Key",
+    "model": "Model Name",
+    "save": "Save Configuration",
+    "saved": "AI configuration saved",
+    "saved_desc": "Settings will be used for all AI features in this browser."
+  },
+  "hackathons": {
+    "title": "Hackathons",
+    "more_events": "More Events",
+    "more_desc": "Browse past and upcoming events, access project lists, judging, and operations.",
+    "enter_workbench": "Enter Workbench",
+    "view_projects": "View Projects",
+    "status": {
+      "active": "Active",
+      "upcoming": "Upcoming",
+      "completed": "Completed"
+    }
+  },
+  "projects": {
+    "title": "Projects",
+    "subtitle": "Search, review, and vote on submissions.",
+    "search_placeholder": "Search projects",
+    "filters": "Filters",
+    "score": "score",
+    "votes": "votes"
+  },
+  "judging": {
+    "title": "Judging",
+    "subtitle": "Assignments are session-scoped and judge-scoped for confidentiality.",
+    "open_review": "Open review",
+    "done": "Done",
+    "ai_judge": "AI Judge",
+    "status": {
+      "pending": "Pending",
+      "in_progress": "In Progress",
+      "completed": "Completed"
+    }
+  }
+}
