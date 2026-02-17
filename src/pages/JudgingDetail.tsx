@@ -6,7 +6,8 @@ import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { assignments, projects } from '@/lib/mock-data'
+import { assignments, projects, hackathons } from '@/lib/mock-data'
+import { calculateProjectScore } from '@/lib/scoring'
 import { ArrowLeft, ExternalLink, Github, Save } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -17,13 +18,6 @@ export function JudgingDetail() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { user } = useAuth()
-  const [scores, setScores] = useState({
-    innovation: 0,
-    technology: 0,
-    design: 0,
-    completion: 0
-  })
-  const [comment, setComment] = useState('')
 
   // Try to find by assignment ID first (for judges)
   const assignment = useMemo(() => assignments.find((a) => a.id === id), [id])
@@ -35,25 +29,48 @@ export function JudgingDetail() {
     return projects.find((p) => p.id === id)
   }, [assignment, id])
 
+  const hackathon = useMemo(() => {
+    if (project) {
+      return hackathons.find(h => h.id === project.hackathonId)
+    }
+    return null
+  }, [project])
+
+  const scoringCriteria = hackathon?.scoringCriteria || []
+
+  const [scores, setScores] = useState<Record<string, number>>(() => {
+    const initialScores: Record<string, number> = {}
+    scoringCriteria.forEach(criterion => {
+      initialScores[criterion.id] = 0
+    })
+    return initialScores
+  })
+  const [comment, setComment] = useState('')
+
   if (!project) {
     return <div>Project not found</div>
   }
 
-  // If user is not a judge/admin or if we're viewing directly by project ID (no assignment), show read-only view
-  const isReadOnly = user?.role === 'user' || !assignment
+  // If we're viewing directly by project ID (no assignment), show read-only view
+  const isReadOnly = !assignment
 
-  const handleScoreChange = (key: keyof typeof scores, value: number[]) => {
-    setScores((prev) => ({ ...prev, [key]: value[0] }))
+  const handleScoreChange = (criterionId: string, value: number[]) => {
+    setScores((prev) => ({ ...prev, [criterionId]: value[0] }))
   }
 
   const handleSubmit = () => {
     // In a real app, this would submit to the backend
-    console.log('Submitting scores:', { scores, comment })
+    const totalScore = Object.values(scores).reduce((a, b) => a + b, 0)
+    console.log('Submitting scores:', { scores, comment, totalScore })
     toast.success(t('judging.score_submitted', 'Score submitted successfully'))
-    navigate('/dashboard/judging')
+    if (user?.role === 'judge') {
+      navigate('/judge')
+    } else {
+      navigate('/dashboard/judging')
+    }
   }
 
-  const totalScore = Object.values(scores).reduce((a, b) => a + b, 0) / 4
+  const totalScore = Object.values(scores).reduce((a, b) => a + b, 0)
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -134,63 +151,28 @@ export function JudgingDetail() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   {t('judging.score_card', 'Score Card')}
-                  <span className="text-2xl font-bold text-primary">{totalScore.toFixed(1)}</span>
+                  <span className="text-2xl font-bold text-primary">{totalScore} / 100</span>
                 </CardTitle>
-                <CardDescription>Rate the project on a scale of 1-10</CardDescription>
+                <CardDescription>Rate the project based on the criteria below</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label>{t('judging.criteria.innovation', 'Innovation')}</Label>
-                      <span className="text-sm font-medium">{scores.innovation}</span>
+                  {scoringCriteria.map((criterion) => (
+                    <div key={criterion.id} className="space-y-2">
+                      <div className="flex justify-between">
+                        <Label>{criterion.name}</Label>
+                        <span className="text-sm font-medium">
+                          {scores[criterion.id] || 0} / {criterion.maxScore}
+                        </span>
+                      </div>
+                      <Slider
+                        value={[scores[criterion.id] || 0]}
+                        max={criterion.maxScore}
+                        step={1}
+                        onValueChange={(val) => handleScoreChange(criterion.id, val)}
+                      />
                     </div>
-                    <Slider
-                      value={[scores.innovation]}
-                      max={10}
-                      step={0.5}
-                      onValueChange={(val) => handleScoreChange('innovation', val)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label>{t('judging.criteria.technology', 'Technology')}</Label>
-                      <span className="text-sm font-medium">{scores.technology}</span>
-                    </div>
-                    <Slider
-                      value={[scores.technology]}
-                      max={10}
-                      step={0.5}
-                      onValueChange={(val) => handleScoreChange('technology', val)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label>{t('judging.criteria.design', 'Design')}</Label>
-                      <span className="text-sm font-medium">{scores.design}</span>
-                    </div>
-                    <Slider
-                      value={[scores.design]}
-                      max={10}
-                      step={0.5}
-                      onValueChange={(val) => handleScoreChange('design', val)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label>{t('judging.criteria.completion', 'Completion')}</Label>
-                      <span className="text-sm font-medium">{scores.completion}</span>
-                    </div>
-                    <Slider
-                      value={[scores.completion]}
-                      max={10}
-                      step={0.5}
-                      onValueChange={(val) => handleScoreChange('completion', val)}
-                    />
-                  </div>
+                  ))}
                 </div>
 
                 <Separator />
@@ -218,7 +200,9 @@ export function JudgingDetail() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   {t('projects.score', 'Score')}
-                  <span className="text-2xl font-bold text-primary">{project.score.toFixed(1)}</span>
+                  <span className="text-2xl font-bold text-primary">
+                    {calculateProjectScore(project.id, assignments).toFixed(1)} / 100
+                  </span>
                 </CardTitle>
                 <CardDescription>{t('projects.score_desc', 'Final score awarded by judges')}</CardDescription>
               </CardHeader>

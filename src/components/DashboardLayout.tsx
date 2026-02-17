@@ -12,7 +12,9 @@ import {
   Menu,
   X,
   User,
-  BarChart3
+  BarChart3,
+  Users,
+  FileText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -41,19 +43,20 @@ export function DashboardLayout() {
   }
 
   const navigation = React.useMemo(() => {
-    const role = user?.role || 'user'
-
+    // Dashboard is admin-only now
     const allNav = [
-      { name: t('nav.dashboard'), href: '/dashboard', icon: LayoutDashboard, roles: ['admin', 'judge', 'user'] },
-      { name: t('nav.hackathons'), href: '/dashboard/hackathons', icon: Trophy, roles: ['admin'] },
-      { name: t('nav.projects'), href: '/dashboard/projects', icon: FolderGit2, roles: ['admin', 'judge', 'user'] },
-      { name: t('nav.judging'), href: '/dashboard/judging', icon: CheckSquare, roles: ['admin', 'judge'] },
-      { name: t('nav.leaderboard', 'Leaderboard'), href: '/dashboard/leaderboard', icon: BarChart3, roles: ['admin', 'judge', 'user'] },
-      { name: t('settings.title'), href: '/dashboard/settings', icon: Settings, roles: ['admin', 'judge', 'user'] },
+      { name: t('nav.dashboard'), href: '/dashboard', icon: LayoutDashboard },
+      { name: t('nav.hackathons'), href: '/dashboard/hackathons', icon: Trophy },
+      { name: t('nav.projects'), href: '/dashboard/projects', icon: FolderGit2 },
+      { name: t('nav.judging'), href: '/dashboard/judging', icon: CheckSquare },
+      { name: t('nav.assignments', 'Assignments'), href: '/dashboard/assignments', icon: Users },
+      { name: t('nav.reports', 'Reports'), href: '/dashboard/reports', icon: FileText },
+      { name: t('nav.leaderboard', 'Leaderboard'), href: '/dashboard/leaderboard', icon: BarChart3 },
+      { name: t('settings.title'), href: '/dashboard/settings', icon: Settings },
     ];
 
-    return allNav.filter(item => item.roles.includes(role))
-  }, [user, t])
+    return allNav
+  }, [t])
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">

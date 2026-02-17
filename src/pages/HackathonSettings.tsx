@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SubmissionConfigBuilder } from '@/components/SubmissionConfigBuilder'
-import { hackathons, SubmissionField } from '@/lib/mock-data'
+import { ScoringCriteriaBuilder } from '@/components/ScoringCriteriaBuilder'
+import { hackathons, SubmissionField, ScoringCriterion } from '@/lib/mock-data'
 import { toast } from 'sonner'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -34,6 +35,7 @@ export function HackathonSettings() {
   // Mock data fetching
   const hackathon = hackathons.find(h => h.id === id) || hackathons[0]
   const [submissionSchema, setSubmissionSchema] = useState<SubmissionField[]>(hackathon.submissionSchema || [])
+  const [scoringCriteria, setScoringCriteria] = useState<ScoringCriterion[]>(hackathon.scoringCriteria || [])
 
   const {
     register,
@@ -65,7 +67,18 @@ export function HackathonSettings() {
     setIsLoading(true)
     setTimeout(() => {
       console.log('Updating submission schema:', { hackathonId: hackathon.id, submissionSchema: schema })
+      setSubmissionSchema(schema)
       toast.success(t('settings.saved', 'Settings saved successfully'))
+      setIsLoading(false)
+    }, 1000)
+  }
+
+  const onSaveScoringCriteria = async (criteria: ScoringCriterion[]) => {
+    setIsLoading(true)
+    setTimeout(() => {
+      console.log('Updating scoring criteria:', { hackathonId: hackathon.id, scoringCriteria: criteria })
+      setScoringCriteria(criteria)
+      toast.success(t('settings.saved', 'Scoring criteria saved successfully'))
       setIsLoading(false)
     }, 1000)
   }
@@ -84,9 +97,10 @@ export function HackathonSettings() {
       </div>
 
       <Tabs defaultValue="general">
-        <TabsList className="grid w-full grid-cols-2 mb-8">
+        <TabsList className="grid w-full grid-cols-3 mb-8">
           <TabsTrigger value="general">{t('settings.general', 'General Info')}</TabsTrigger>
           <TabsTrigger value="submission">{t('settings.submission', 'Submission Form')}</TabsTrigger>
+          <TabsTrigger value="scoring">{t('settings.scoring', 'Scoring Criteria')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -144,11 +158,21 @@ export function HackathonSettings() {
         </TabsContent>
 
         <TabsContent value="submission">
-          <SubmissionConfigBuilder 
+          <SubmissionConfigBuilder
             initialSchema={submissionSchema}
             onSave={(schema) => {
               setSubmissionSchema(schema)
               onSaveSubmissionSchema(schema)
+            }}
+          />
+        </TabsContent>
+
+        <TabsContent value="scoring">
+          <ScoringCriteriaBuilder
+            initialCriteria={scoringCriteria}
+            onSave={(criteria) => {
+              setScoringCriteria(criteria)
+              onSaveScoringCriteria(criteria)
             }}
           />
         </TabsContent>

@@ -35,6 +35,7 @@ export function Layout() {
               {[
                 { to: '/', label: t('nav.home', 'Home'), exact: true },
                 { to: '/docs', label: t('nav.docs', 'Docs') },
+                { to: '/submit', label: t('nav.submit', 'Submit Project') },
                 { to: '/projects', label: t('nav.projects', 'Projects') },
                 { to: '/leaderboard', label: t('nav.leaderboard', 'Leaderboard') },
               ].map((link) => {
@@ -62,7 +63,7 @@ export function Layout() {
             <ThemeLanguageSwitcher />
             {user ? (
               <>
-                <Link to="/dashboard">
+                <Link to={user.role === 'admin' ? '/dashboard' : '/judge'}>
                   <Button variant="default" size="sm" className="rounded-full">
                     Dashboard
                   </Button>

@@ -14,7 +14,7 @@ model User {
   id        String   @id @default(uuid())
   email     String   @unique
   name      String
-  role      String   // admin, judge, user
+  role      String   // admin, judge
   password  String   // hashed
   avatarUrl String?
   createdAt DateTime @default(now())
@@ -37,8 +37,22 @@ model Hackathon {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions Session[]
-  projects Project[]
+  sessions         Session[]
+  projects         Project[]
+  scoringCriteria  ScoringCriterion[]
+}
+
+model ScoringCriterion {
+  id          String   @id @default(uuid())
+  hackathonId String
+  hackathon   Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  name        String
+  maxScore    Int
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([hackathonId])
 }
 
 model Session {
@@ -63,9 +77,12 @@ model Project {
   hackathon   Hackathon @relation(fields: [hackathonId], references: [id])
   sessionId   String?
   session     Session?  @relation(fields: [sessionId], references: [id])
-  userId      String
-  user        User      @relation(fields: [userId], references: [id])
-  
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id])
+
+  submitterEmail String
+  submitterName  String?
+
   title       String
   oneLiner    String
   description String?   // Detailed description (markdown)
@@ -73,10 +90,9 @@ model Project {
   demoUrl     String?
   repoUrl     String?
   submissionData Json?  // Stores the actual form submission data
-  
+
   votes       Int      @default(0)
-  score       Float    @default(0.0)
-  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -91,11 +107,12 @@ model Assignment {
   project   Project  @relation(fields: [projectId], references: [id])
   judgeId   String
   judge     User     @relation(fields: [judgeId], references: [id])
-  
-  status    String   // pending, in_progress, completed
-  scores    Json?    // { innovation: 8, technology: 9, ... }
-  comment   String?
-  
+
+  status     String   // pending, in_progress, completed
+  scores     Json?    // { "sc-innovation": 25, "sc-technology": 28, ... }
+  comment    String?
+  totalScore Float?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

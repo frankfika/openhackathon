@@ -27,7 +27,7 @@ export function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<UserRole>('user');
+  const [activeTab, setActiveTab] = useState<UserRole>('admin');
 
   const {
     register,
@@ -85,11 +85,10 @@ export function Login() {
         </CardHeader>
         <CardContent className="space-y-4 pb-8 px-6">
           {!supabaseEnabled && (
-            <Tabs defaultValue="user" className="w-full mb-6" onValueChange={(v) => setActiveTab(v as UserRole)}>
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="user">Hacker</TabsTrigger>
-                <TabsTrigger value="judge">Judge</TabsTrigger>
+            <Tabs defaultValue="admin" className="w-full mb-6" onValueChange={(v) => setActiveTab(v as UserRole)}>
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="admin">Admin</TabsTrigger>
+                <TabsTrigger value="judge">Judge</TabsTrigger>
               </TabsList>
             </Tabs>
           )}

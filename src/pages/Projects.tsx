@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { projects as allProjects, hackathons } from '@/lib/mock-data'
+import { projects as allProjects, hackathons, assignments } from '@/lib/mock-data'
 import { useActiveHackathon } from '@/lib/active-hackathon'
+import { calculateProjectScore } from '@/lib/scoring'
 import { Search, SlidersHorizontal, Plus, ArrowRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/lib/auth'
@@ -50,12 +51,6 @@ export function Projects() {
               <SlidersHorizontal className="mr-2 h-4 w-4" />
               {t('projects.filters')}
             </Button>
-            {user && (
-              <Button onClick={() => navigate('/dashboard/projects/submit')} className="rounded-full">
-                <Plus className="mr-2 h-4 w-4" />
-                {t('projects.submit', 'Submit')}
-              </Button>
-            )}
           </div>
         </div>
 
@@ -69,9 +64,12 @@ export function Projects() {
                   <div className="flex justify-between items-start gap-2">
                     <CardTitle className="text-lg line-clamp-1">{p.title}</CardTitle>
                     <div className="text-xs text-muted-foreground whitespace-nowrap">
-                      {p.score > 0 && (
-                        <span className="font-medium text-foreground">{p.score.toFixed(1)} <span className="text-muted-foreground text-[10px]">/ 10</span></span>
-                      )}
+                      {(() => {
+                        const score = calculateProjectScore(p.id, assignments)
+                        return score > 0 ? (
+                          <span className="font-medium text-foreground">{score.toFixed(1)} <span className="text-muted-foreground text-[10px]">/ 100</span></span>
+                        ) : null
+                      })()}
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground truncate">

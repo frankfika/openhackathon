@@ -203,17 +203,17 @@ function HeroSection() {
             </motion.p>
           )}
 
-          {/* Two CTA buttons: Register + View Docs */}
+          {/* Two CTA buttons: Submit Project + View Docs */}
           <motion.div
             className="mt-8 flex flex-wrap items-center justify-center gap-4"
             variants={fadeUp}
           >
-            <Link to="/login">
+            <Link to="/submit">
               <Button
                 size="lg"
                 className="h-12 rounded-full bg-blue-600 px-8 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700"
               >
-                {t('landing.hero.register')}
+                {t('landing.hero.submit_project') || 'Submit Project'}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>

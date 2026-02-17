@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { projects } from '@/lib/mock-data'
+import { projects, assignments } from '@/lib/mock-data'
 import { useActiveHackathon } from '@/lib/active-hackathon'
+import { calculateProjectScore } from '@/lib/scoring'
 import { Trophy, Medal, Award, Star } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
@@ -13,6 +14,10 @@ export function Leaderboard() {
   const rankedProjects = useMemo(() => {
     return projects
       .filter(p => p.hackathonId === activeHackathon.id)
+      .map(p => ({
+        ...p,
+        score: calculateProjectScore(p.id, assignments)
+      }))
       .sort((a, b) => b.score - a.score)
   }, [activeHackathon.id])
 
@@ -83,9 +88,9 @@ export function Leaderboard() {
                     <div className="flex flex-col items-end">
                       <div className="flex items-center gap-1 text-base md:text-lg font-bold text-primary">
                         <Star className="h-3 w-3 md:h-4 md:w-4 fill-primary text-primary" />
-                        {project.score.toFixed(1)}
+                        {project.score > 0 ? project.score.toFixed(1) : '-'}
                       </div>
-                      <span className="text-[10px] md:text-xs text-muted-foreground">{t('projects.score')}</span>
+                      <span className="text-[10px] md:text-xs text-muted-foreground">/ 100</span>
                     </div>
                   </div>
                 </CardContent>

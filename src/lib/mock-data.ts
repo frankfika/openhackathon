@@ -1,7 +1,13 @@
 export type HackathonStatus = 'draft' | 'upcoming' | 'active' | 'judging' | 'completed'
 export type SessionType = 'preliminary' | 'semi_final' | 'final'
 export type SessionStatus = 'draft' | 'active' | 'judging' | 'completed'
-export type UserRole = 'admin' | 'judge' | 'user'
+export type UserRole = 'admin' | 'judge'
+
+export type ScoringCriterion = {
+  id: string
+  name: string
+  maxScore: number
+}
 
 export type User = {
   id: string
@@ -36,24 +42,6 @@ export const users: User[] = [
     name: 'Charlie Kim',
     role: 'judge',
   },
-  {
-    id: 'usr-hacker-dave',
-    email: 'dave@indiehacker.com',
-    name: 'Dave Builder',
-    role: 'user',
-  },
-  {
-    id: 'usr-hacker-eve',
-    email: 'eve@student.edu',
-    name: 'Eve Coder',
-    role: 'user',
-  },
-  {
-    id: 'usr-hacker-frank',
-    email: 'frank@startup.io',
-    name: 'Frank Founder',
-    role: 'user',
-  },
 ]
 
 export type SubmissionField = {
@@ -74,6 +62,7 @@ export type Hackathon = {
   status: HackathonStatus
   coverGradient: string
   submissionSchema?: SubmissionField[]
+  scoringCriteria?: ScoringCriterion[]
   rulesUrl?: string
   detailsUrl?: string
   gitbookUrl?: string
@@ -94,18 +83,21 @@ export type Project = {
   id: string
   hackathonId: string
   sessionId: string
+  userId?: string
+  submitterEmail: string
+  submitterName?: string
   title: string
   oneLiner: string
   description?: string
   tags: string[]
   demoUrl?: string
   repoUrl?: string
-  score: number
   status: 'draft' | 'submitted'
 }
 
 export type Judge = {
   id: string
+  userId: string
   name: string
   title: string
   expertise: string[]
@@ -118,6 +110,9 @@ export type Assignment = {
   projectId: string
   judgeId: string
   status: 'pending' | 'in_progress' | 'completed'
+  scores?: Record<string, number>
+  comment?: string
+  totalScore?: number
 }
 
 export const hackathons: Hackathon[] = [
@@ -140,6 +135,12 @@ export const hackathons: Hackathon[] = [
       { id: 'description', label: 'Description', type: 'textarea', required: true, placeholder: 'Detailed description...' },
       { id: 'model_used', label: 'AI Model Used', type: 'text', required: true, placeholder: 'e.g. GPT-4, Llama 3' },
       { id: 'repoUrl', label: 'Repository URL', type: 'url', required: true, placeholder: 'https://github.com/...' },
+    ],
+    scoringCriteria: [
+      { id: 'sc-innovation', name: 'Innovation', maxScore: 30 },
+      { id: 'sc-technology', name: 'Technology', maxScore: 30 },
+      { id: 'sc-design', name: 'Design & UX', maxScore: 20 },
+      { id: 'sc-completion', name: 'Completion', maxScore: 20 },
     ]
   },
   {
@@ -211,48 +212,48 @@ export const projects: Project[] = [
     id: 'pj-smart-doc',
     hackathonId: 'hk-global-ai-2026',
     sessionId: 'ss-ai-prelim',
+    submitterEmail: 'dave@indiehacker.com',
+    submitterName: 'Dave Builder',
     title: 'SmartDoc Assistant',
     oneLiner: 'AI-powered medical documentation for busy doctors.',
     description: 'SmartDoc listens to patient consultations and automatically generates structured medical notes, prescriptions, and follow-up recommendations. It integrates with existing EHR systems and ensures HIPAA compliance.',
     tags: ['Healthcare', 'AI', 'Productivity'],
     repoUrl: 'https://github.com/example/smart-doc',
-
-    score: 8.9,
     status: 'submitted'
   },
   {
     id: 'pj-code-genie',
     hackathonId: 'hk-global-ai-2026',
     sessionId: 'ss-ai-prelim',
+    submitterEmail: 'eve@student.edu',
+    submitterName: 'Eve Coder',
     title: 'CodeGenie',
     oneLiner: 'Turn Figma designs into production-ready React code instantly.',
     description: 'CodeGenie analyzes Figma nodes and generates clean, accessible React components using Tailwind CSS. It understands design tokens and auto-generates responsive layouts.',
     tags: ['DevTools', 'AI', 'Design'],
     repoUrl: 'https://github.com/example/code-genie',
-
-    score: 9.2,
     status: 'submitted'
   },
   {
     id: 'pj-legal-eagle',
     hackathonId: 'hk-global-ai-2026',
     sessionId: 'ss-ai-prelim',
+    submitterEmail: 'frank@startup.io',
+    submitterName: 'Frank Founder',
     title: 'LegalEagle',
     oneLiner: 'Automated contract review and risk analysis.',
     tags: ['Legal', 'AI', 'SaaS'],
-
-    score: 7.5,
     status: 'submitted'
   },
   {
     id: 'pj-voice-clone',
     hackathonId: 'hk-global-ai-2026',
     sessionId: 'ss-ai-prelim',
+    submitterEmail: 'alex@creator.com',
+    submitterName: 'Alex Creator',
     title: 'VoiceClone',
     oneLiner: 'Real-time voice changing for content creators.',
     tags: ['Audio', 'AI', 'Creator'],
-
-    score: 8.1,
     status: 'submitted'
   },
   // EdTech Projects (Judging)
@@ -260,60 +261,52 @@ export const projects: Project[] = [
     id: 'pj-class-vr',
     hackathonId: 'hk-edtech-remote',
     sessionId: 'ss-edtech-final',
+    submitterEmail: 'vr@team.com',
+    submitterName: 'VR Team',
     title: 'ClassroomVR',
     oneLiner: 'Immersive history lessons in Virtual Reality.',
     description: 'Students can walk through ancient Rome or visit the moon landing. ClassroomVR brings textbooks to life with interactive 3D experiences.',
     tags: ['VR', 'Education', 'History'],
-
-    score: 9.5,
     status: 'submitted'
   },
   {
     id: 'pj-math-buddy',
     hackathonId: 'hk-edtech-remote',
     sessionId: 'ss-edtech-final',
+    submitterEmail: 'math@buddy.ai',
+    submitterName: 'Math Buddy Team',
     title: 'MathBuddy',
     oneLiner: 'Personalized math tutoring with adaptive learning paths.',
     tags: ['Education', 'AI', 'Math'],
-
-    score: 8.8,
     status: 'submitted'
-  },
-  // User Drafts (Mocking for Hacker Dashboard)
-  {
-    id: 'pj-draft-1',
-    hackathonId: 'hk-fintech-asia',
-    sessionId: '',
-    title: 'CryptoWallet X',
-    oneLiner: 'Next gen wallet for SEA market.',
-    tags: ['FinTech', 'Crypto'],
-
-    score: 0,
-    status: 'draft'
   }
 ]
 
 export const judges: Judge[] = [
   {
     id: 'jd-alice',
+    userId: 'usr-judge-alice',
     name: 'Alice Chen',
     title: 'VP of Product @ TechCorp',
     expertise: ['Product', 'UX', 'Growth'],
   },
   {
     id: 'jd-bob',
+    userId: 'usr-judge-bob',
     name: 'Bob Li',
     title: 'CTO @ StartupInc',
     expertise: ['Engineering', 'Scalability', 'Cloud'],
   },
   {
     id: 'jd-charlie',
+    userId: 'usr-judge-charlie',
     name: 'Charlie Kim',
     title: 'Design Partner @ VC',
     expertise: ['Design', 'Brand', 'Mobile'],
   },
   {
     id: 'jd-ai-tech',
+    userId: 'usr-ai-tech',
     name: 'AI Judge · Tech',
     title: 'Automated Code Analysis',
     expertise: ['Code Quality', 'Security', 'Performance'],
@@ -343,6 +336,19 @@ export const assignments: Assignment[] = [
     projectId: 'pj-smart-doc',
     judgeId: 'jd-alice',
     status: 'completed',
+    scores: { 'sc-innovation': 28, 'sc-technology': 25, 'sc-design': 18, 'sc-completion': 18 },
+    totalScore: 89,
+    comment: 'Excellent healthcare solution with strong AI integration.',
+  },
+  {
+    id: 'as-6',
+    sessionId: 'ss-ai-prelim',
+    projectId: 'pj-code-genie',
+    judgeId: 'jd-alice',
+    status: 'completed',
+    scores: { 'sc-innovation': 27, 'sc-technology': 28, 'sc-design': 19, 'sc-completion': 19 },
+    totalScore: 93,
+    comment: 'Impressive technical execution.',
   },
   // Assignments for Bob
   {
@@ -350,7 +356,10 @@ export const assignments: Assignment[] = [
     sessionId: 'ss-ai-prelim',
     projectId: 'pj-code-genie',
     judgeId: 'jd-bob',
-    status: 'pending',
+    status: 'completed',
+    scores: { 'sc-innovation': 25, 'sc-technology': 27, 'sc-design': 17, 'sc-completion': 18 },
+    totalScore: 87,
+    comment: 'Strong technical foundation.',
   },
   {
     id: 'as-5',
@@ -358,6 +367,19 @@ export const assignments: Assignment[] = [
     projectId: 'pj-legal-eagle',
     judgeId: 'jd-bob',
     status: 'completed',
+    scores: { 'sc-innovation': 22, 'sc-technology': 23, 'sc-design': 15, 'sc-completion': 16 },
+    totalScore: 76,
+    comment: 'Good concept but needs more polish.',
+  },
+  {
+    id: 'as-7',
+    sessionId: 'ss-ai-prelim',
+    projectId: 'pj-smart-doc',
+    judgeId: 'jd-bob',
+    status: 'completed',
+    scores: { 'sc-innovation': 26, 'sc-technology': 26, 'sc-design': 16, 'sc-completion': 17 },
+    totalScore: 85,
+    comment: 'Great healthcare application.',
   },
 ]
 

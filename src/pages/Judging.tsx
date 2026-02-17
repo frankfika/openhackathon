@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import { assignments, judges, projects, sessions } from '@/lib/mock-data'
 import { CheckCircle2, ChevronRight, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/lib/auth'
 
 const statuses: Array<'pending' | 'in_progress' | 'completed'> = [
   'pending',
@@ -11,25 +13,35 @@ const statuses: Array<'pending' | 'in_progress' | 'completed'> = [
   'completed',
 ]
 
-import { useNavigate } from 'react-router-dom'
-
-// ... existing imports ...
-
 export function Judging() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [status, setStatus] = useState<(typeof statuses)[number]>('in_progress')
 
+  // For judges, find their judge record
+  const currentJudge = useMemo(() => {
+    if (user?.role === 'judge') {
+      return judges.find(j => j.userId === user.id)
+    }
+    return null
+  }, [user])
+
   const rows = useMemo(() => {
-    return assignments
-      .filter((a) => a.status === status)
-      .map((a) => {
+    let filteredAssignments = assignments.filter((a) => a.status === status)
+
+    // If user is a judge, only show their assignments
+    if (currentJudge) {
+      filteredAssignments = filteredAssignments.filter((a) => a.judgeId === currentJudge.id)
+    }
+
+    return filteredAssignments.map((a) => {
         const judge = judges.find((j) => j.id === a.judgeId)
         const project = projects.find((p) => p.id === a.projectId)
         const session = sessions.find((s) => s.id === a.sessionId)
         return { a, judge, project, session }
       })
-  }, [status])
+  }, [status, currentJudge])
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)]">
@@ -89,10 +101,13 @@ export function Judging() {
                 <p className="text-sm text-foreground/80 leading-relaxed md:max-w-3xl">
                   {project?.oneLiner}
                 </p>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="rounded-full"
-                  onClick={() => navigate(`/dashboard/judging/${a.id}`)}
+                  onClick={() => {
+                    const path = user?.role === 'judge' ? `/judge/review/${a.id}` : `/dashboard/judging/${a.id}`
+                    navigate(path)
+                  }}
                 >
                   {t('judging.open_review')}
                   <ChevronRight className="ml-2 h-4 w-4" />
