@@ -109,10 +109,26 @@ model Assignment {
   judge     User     @relation(fields: [judgeId], references: [id])
 
   status     String   // pending, in_progress, completed
-  scores     Json?    // { "sc-innovation": 25, "sc-technology": 28, ... }
   comment    String?
   totalScore Float?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  scores Score[]
+
+  @@unique([sessionId, projectId, judgeId])
+}
+
+model Score {
+  id          String   @id @default(uuid())
+  assignmentId String
+  assignment  Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  criterionId String
+  score       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([assignmentId])
+  @@index([criterionId])
 }

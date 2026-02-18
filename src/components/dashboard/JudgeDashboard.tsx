@@ -2,18 +2,43 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { assignments, projects, hackathons } from '@/lib/mock-data'
-import { ArrowRight, CheckCircle2, Clock, Sparkles } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Clock, Sparkles, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { api } from '@/lib/api'
+import { useQuery } from '@tanstack/react-query'
+import { useAuth } from '@/lib/auth'
+import { useActiveHackathon } from '@/lib/active-hackathon'
 
 export function JudgeDashboard() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const { activeHackathon } = useActiveHackathon()
 
-  // Filter assignments for the current judge (mocking as user 'jd-alice' or first judge for now)
-  // In a real app, we'd use the user ID from auth context
+  // Fetch assignments for the current judge
+  const { data: assignments = [], isLoading: isLoadingAssignments } = useQuery({
+    queryKey: ['assignments', 'judge', user?.id],
+    queryFn: () => api.getAssignments({ judgeId: user?.id }),
+    enabled: !!user?.id,
+  })
+
+  // Fetch projects for display
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects', activeHackathon?.id],
+    queryFn: () => api.getProjects({ hackathonId: activeHackathon?.id }),
+    enabled: !!activeHackathon?.id,
+  })
+
   const pendingAssignments = assignments.filter(a => a.status === 'pending')
   const completedAssignments = assignments.filter(a => a.status === 'completed')
+
+  if (isLoadingAssignments) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4 md:space-y-8">
@@ -33,7 +58,7 @@ export function JudgeDashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{pendingAssignments.length}</div>
             <p className="text-xs text-muted-foreground">
-              {t('dashboard.judge.due_soon', 'Due within 24 hours')}
+              {t('dashboard.judge.due_soon', 'Awaiting your review')}
             </p>
           </CardContent>
         </Card>
@@ -65,17 +90,13 @@ export function JudgeDashboard() {
               ) : (
                 pendingAssignments.map((assignment) => {
                   const project = projects.find(p => p.id === assignment.projectId)
-                  const hackathon = hackathons.find(h => h.id === project?.hackathonId)
-                  
+
                   return (
                     <div key={assignment.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                       <div className="space-y-1">
                         <div className="font-semibold">{project?.title}</div>
-                        <div className="text-xs text-muted-foreground flex items-center gap-2">
-                          <span>{hackathon?.title}</span>
-                          {project?.tags.slice(0, 2).map(tag => (
-                             <span key={tag} className="px-1.5 py-0.5 bg-secondary rounded-md">{tag}</span>
-                          ))}
+                        <div className="text-xs text-muted-foreground">
+                          {project?.oneLiner}
                         </div>
                       </div>
                       <Button size="sm" onClick={() => navigate(`/dashboard/judging/${assignment.id}`)}>
@@ -89,7 +110,7 @@ export function JudgeDashboard() {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card className="col-span-3 border-0 shadow-sm bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -99,10 +120,10 @@ export function JudgeDashboard() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-              {t('dashboard.judge.ai_desc', 'AI has pre-screened all submissions for plagiarism and compliance. Use the AI summary to speed up your review process.')}
+              {t('dashboard.judge.ai_desc', 'Use the scoring rubric to ensure fair and consistent evaluation of all projects.')}
             </p>
             <div className="bg-background/50 p-3 rounded-lg text-xs border border-indigo-100 dark:border-indigo-900">
-              <strong>Pro Tip:</strong> Look for the "AI Analysis" tab in the judging view for code quality metrics.
+              <strong>Pro Tip:</strong> Click "Start Review" to access the detailed scoring interface.
             </div>
           </CardContent>
         </Card>

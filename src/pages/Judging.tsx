@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { assignments, judges, projects, sessions } from '@/lib/mock-data'
 import { CheckCircle2, ChevronRight, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
+import { api } from '@/lib/api'
+import { useQuery } from '@tanstack/react-query'
+import { useActiveHackathon } from '@/lib/active-hackathon'
 
 const statuses: Array<'pending' | 'in_progress' | 'completed'> = [
   'pending',
@@ -17,31 +19,39 @@ export function Judging() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { activeHackathon } = useActiveHackathon()
   const [status, setStatus] = useState<(typeof statuses)[number]>('in_progress')
 
-  // For judges, find their judge record
-  const currentJudge = useMemo(() => {
-    if (user?.role === 'judge') {
-      return judges.find(j => j.userId === user.id)
-    }
-    return null
-  }, [user])
+  // Fetch assignments from API
+  const { data: assignments = [] } = useQuery({
+    queryKey: ['assignments', activeHackathon?.id, user?.id, user?.role],
+    queryFn: async () => {
+      const params: { sessionId?: string; judgeId?: string } = {}
+      if (activeHackathon?.sessions?.[0]?.id) {
+        params.sessionId = activeHackathon.sessions[0].id
+      }
+      if (user?.role === 'judge') {
+        params.judgeId = user.id
+      }
+      return api.getAssignments(params)
+    },
+    enabled: !!activeHackathon?.id,
+  })
+
+  // Fetch projects for display
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects', activeHackathon?.id],
+    queryFn: () => api.getProjects({ hackathonId: activeHackathon?.id }),
+    enabled: !!activeHackathon?.id,
+  })
 
   const rows = useMemo(() => {
     let filteredAssignments = assignments.filter((a) => a.status === status)
-
-    // If user is a judge, only show their assignments
-    if (currentJudge) {
-      filteredAssignments = filteredAssignments.filter((a) => a.judgeId === currentJudge.id)
-    }
-
     return filteredAssignments.map((a) => {
-        const judge = judges.find((j) => j.id === a.judgeId)
-        const project = projects.find((p) => p.id === a.projectId)
-        const session = sessions.find((s) => s.id === a.sessionId)
-        return { a, judge, project, session }
-      })
-  }, [status, currentJudge])
+      const project = projects.find((p) => p.id === a.projectId)
+      return { a, project, session: a.session }
+    })
+  }, [status, assignments, projects])
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)]">
@@ -68,23 +78,21 @@ export function Judging() {
         </div>
 
         <div className="mt-8 grid gap-4">
-          {rows.map(({ a, judge, project, session }) => (
+          {rows.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground">
+              {t('judging.no_assignments', 'No assignments found')}
+            </div>
+          )}
+          {rows.map(({ a, project, session }) => (
             <Card key={a.id} className="border-0 shadow-sm">
               <CardHeader className="flex flex-row items-start justify-between gap-4">
                 <div className="space-y-1">
                   <CardTitle className="text-lg">{project?.title}</CardTitle>
                   <div className="text-xs text-muted-foreground">
-                    {session?.name} · {judge?.name}
-                    {judge?.isAi ? ` · ${t('judging.ai_judge')}` : ''}
+                    {session?.name} · {a.judge?.name}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {judge?.isAi ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-fuchsia-500/10 px-2.5 py-1 text-xs font-medium text-fuchsia-600">
-                      <Sparkles className="h-3.5 w-3.5" />
-                      Optional
-                    </span>
-                  ) : null}
                   {a.status === 'completed' ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700">
                       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -120,4 +128,3 @@ export function Judging() {
     </div>
   )
 }
-

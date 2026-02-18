@@ -6,46 +6,106 @@ import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { assignments, projects, hackathons } from '@/lib/mock-data'
-import { calculateProjectScore } from '@/lib/scoring'
 import { ArrowLeft, ExternalLink, Github, Save } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth'
+import { api } from '@/lib/api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 export function JudgingDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { user } = useAuth()
+  const queryClient = useQueryClient()
 
-  // Try to find by assignment ID first (for judges)
-  const assignment = useMemo(() => assignments.find((a) => a.id === id), [id])
-  // If not found, try to find by project ID (for public view)
-  const project = useMemo(() => {
-    if (assignment) {
-      return projects.find((p) => p.id === assignment.projectId)
-    }
-    return projects.find((p) => p.id === id)
-  }, [assignment, id])
+  // Fetch assignment
+  const { data: assignment, isLoading: isLoadingAssignment } = useQuery({
+    queryKey: ['assignment', id],
+    queryFn: () => api.getAssignments().then(assignments => assignments.find(a => a.id === id)),
+    enabled: !!id,
+  })
 
-  const hackathon = useMemo(() => {
-    if (project) {
-      return hackathons.find(h => h.id === project.hackathonId)
-    }
-    return null
-  }, [project])
+  // Fetch project
+  const { data: project, isLoading: isLoadingProject } = useQuery({
+    queryKey: ['project', assignment?.projectId],
+    queryFn: () => api.getProject(assignment!.projectId),
+    enabled: !!assignment?.projectId,
+  })
+
+  // Fetch hackathon for scoring criteria
+  const { data: hackathon } = useQuery({
+    queryKey: ['hackathon', project?.hackathonId],
+    queryFn: () => api.getHackathon(project!.hackathonId),
+    enabled: !!project?.hackathonId,
+  })
 
   const scoringCriteria = hackathon?.scoringCriteria || []
 
+  // Initialize scores from existing scores
   const [scores, setScores] = useState<Record<string, number>>(() => {
+    if (assignment?.scores) {
+      const existingScores: Record<string, number> = {}
+      assignment.scores.forEach((s: any) => {
+        existingScores[s.criterionId] = s.score
+      })
+      return existingScores
+    }
     const initialScores: Record<string, number> = {}
     scoringCriteria.forEach(criterion => {
       initialScores[criterion.id] = 0
     })
     return initialScores
   })
-  const [comment, setComment] = useState('')
+
+  const [comment, setComment] = useState(assignment?.comment || '')
+
+  // Submit scores mutation
+  const submitMutation = useMutation({
+    mutationFn: () => {
+      if (!assignment) throw new Error('No assignment')
+      const scoresArray = Object.entries(scores).map(([criterionId, score]) => ({
+        criterionId,
+        score,
+      }))
+      return api.submitScores(assignment.id, {
+        scores: scoresArray,
+        comment,
+        status: 'completed',
+      })
+    },
+    onSuccess: () => {
+      toast.success(t('judging.score_submitted', 'Score submitted successfully'))
+      queryClient.invalidateQueries({ queryKey: ['assignments'] })
+      if (user?.role === 'judge') {
+        navigate('/judge')
+      } else {
+        navigate('/dashboard/judging')
+      }
+    },
+    onError: () => {
+      toast.error(t('judging.submit_error', 'Failed to submit score'))
+    },
+  })
+
+  // Update scores when assignment data loads
+  React.useEffect(() => {
+    if (assignment?.scores) {
+      const existingScores: Record<string, number> = {}
+      assignment.scores.forEach((s: any) => {
+        existingScores[s.criterionId] = s.score
+      })
+      setScores(existingScores)
+    }
+    if (assignment?.comment) {
+      setComment(assignment.comment)
+    }
+  }, [assignment])
+
+  if (isLoadingAssignment || isLoadingProject) {
+    return <div>Loading...</div>
+  }
 
   if (!project) {
     return <div>Project not found</div>
@@ -59,18 +119,11 @@ export function JudgingDetail() {
   }
 
   const handleSubmit = () => {
-    // In a real app, this would submit to the backend
-    const totalScore = Object.values(scores).reduce((a, b) => a + b, 0)
-    console.log('Submitting scores:', { scores, comment, totalScore })
-    toast.success(t('judging.score_submitted', 'Score submitted successfully'))
-    if (user?.role === 'judge') {
-      navigate('/judge')
-    } else {
-      navigate('/dashboard/judging')
-    }
+    submitMutation.mutate()
   }
 
   const totalScore = Object.values(scores).reduce((a, b) => a + b, 0)
+  const maxPossible = scoringCriteria.reduce((sum, c) => sum + (c.maxScore || 0), 0)
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -93,7 +146,7 @@ export function JudgingDetail() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-foreground/80 leading-relaxed">{project.oneLiner}</p>
-              
+
               {project.description && (
                 <div className="mt-4 prose dark:prose-invert max-w-none">
                   <h3 className="text-lg font-semibold mb-2">{t('projects.description', 'Description')}</h3>
@@ -104,7 +157,7 @@ export function JudgingDetail() {
               )}
 
               <div className="flex flex-wrap gap-2 mt-4">
-                {project.tags.map((tag) => (
+                {project.tags?.map((tag: string) => (
                   <span key={tag} className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
                     {tag}
                   </span>
@@ -132,16 +185,22 @@ export function JudgingDetail() {
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-sm">
-            <CardHeader>
-              <CardTitle>{t('projects.media', 'Media')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="aspect-video w-full rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
-                Project Demo Video / Screenshots
-              </div>
-            </CardContent>
-          </Card>
+          {/* Submission Data */}
+          {project.submissionData && Object.keys(project.submissionData).length > 0 && (
+            <Card className="border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle>{t('projects.submission_data', 'Submission Data')}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {Object.entries(project.submissionData).map(([key, value]) => (
+                  <div key={key}>
+                    <Label className="text-muted-foreground">{key}</Label>
+                    <p className="text-sm">{String(value)}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Scoring Form - Only visible to judges/admins with an assignment */}
@@ -151,7 +210,7 @@ export function JudgingDetail() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   {t('judging.score_card', 'Score Card')}
-                  <span className="text-2xl font-bold text-primary">{totalScore} / 100</span>
+                  <span className="text-2xl font-bold text-primary">{totalScore} / {maxPossible}</span>
                 </CardTitle>
                 <CardDescription>Rate the project based on the criteria below</CardDescription>
               </CardHeader>
@@ -187,9 +246,9 @@ export function JudgingDetail() {
                   />
                 </div>
 
-                <Button onClick={handleSubmit} className="w-full">
+                <Button onClick={handleSubmit} className="w-full" disabled={submitMutation.isPending}>
                   <Save className="mr-2 h-4 w-4" />
-                  {t('judging.submit_score', 'Submit Score')}
+                  {submitMutation.isPending ? 'Submitting...' : t('judging.submit_score', 'Submit Score')}
                 </Button>
               </CardContent>
             </Card>
@@ -201,7 +260,7 @@ export function JudgingDetail() {
                 <CardTitle className="flex items-center justify-between">
                   {t('projects.score', 'Score')}
                   <span className="text-2xl font-bold text-primary">
-                    {calculateProjectScore(project.id, assignments).toFixed(1)} / 100
+                    {totalScore > 0 ? totalScore : '-'} / {maxPossible || 100}
                   </span>
                 </CardTitle>
                 <CardDescription>{t('projects.score_desc', 'Final score awarded by judges')}</CardDescription>

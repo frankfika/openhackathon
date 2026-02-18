@@ -2,10 +2,8 @@ import React, { useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { projects, judges, assignments } from '@/lib/mock-data'
 import { useActiveHackathon } from '@/lib/active-hackathon'
-import { calculateProjectScore } from '@/lib/scoring'
-import { Download, BarChart3, TrendingUp } from 'lucide-react'
+import { Download, BarChart3, TrendingUp, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   Table,
@@ -15,81 +13,94 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { api } from '@/lib/api'
+import { useQuery } from '@tanstack/react-query'
 
 export function ScoringReport() {
   const { t } = useTranslation()
   const { activeHackathon } = useActiveHackathon()
 
-  // Filter projects by active hackathon
-  const hackathonProjects = useMemo(() => {
-    return projects
-      .filter(p => p.hackathonId === activeHackathon.id && p.status === 'submitted')
-      .map(p => ({
-        ...p,
-        score: calculateProjectScore(p.id, assignments)
-      }))
-      .sort((a, b) => b.score - a.score)
-  }, [activeHackathon.id])
+  // Fetch report data from API
+  const { data: reportData = [], isLoading: isLoadingReport } = useQuery({
+    queryKey: ['scoring-report', activeHackathon?.id],
+    queryFn: () => api.getScoringReport({ hackathonId: activeHackathon?.id }),
+    enabled: !!activeHackathon?.id,
+  })
 
-  // Get judge scores for a project
-  const getJudgeScores = (projectId: string) => {
-    const projectAssignments = assignments.filter(
-      a => a.projectId === projectId && a.status === 'completed'
-    )
+  // Fetch projects
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects', activeHackathon?.id],
+    queryFn: () => api.getProjects({ hackathonId: activeHackathon?.id }),
+    enabled: !!activeHackathon?.id,
+  })
 
-    const scores: Record<string, number | null> = {}
-    judges.forEach(judge => {
-      const assignment = projectAssignments.find(a => a.judgeId === judge.id)
-      scores[judge.id] = assignment?.totalScore ?? null
-    })
-
-    return scores
-  }
+  // Fetch judges
+  const { data: judges = [] } = useQuery({
+    queryKey: ['users', 'judges'],
+    queryFn: () => api.getUsers({ role: 'judge' }),
+  })
 
   // Calculate statistics
   const stats = useMemo(() => {
-    const totalProjects = hackathonProjects.length
-    const scoredProjects = hackathonProjects.filter(p => p.score > 0).length
-    const avgScore = hackathonProjects.reduce((sum, p) => sum + p.score, 0) / totalProjects || 0
-    const completedAssignments = assignments.filter(a => a.status === 'completed').length
-    const totalAssignments = assignments.length
+    const totalProjects = projects.length
+    const scoredProjects = new Set(reportData.map(r => r.projectId)).size
+    const avgScore = reportData.length > 0
+      ? reportData.reduce((sum, r) => sum + (r.totalScore || 0), 0) / reportData.length
+      : 0
+    const totalAssignments = projects.length * judges.length
+    const completionRate = totalAssignments > 0
+      ? (reportData.length / totalAssignments) * 100
+      : 0
 
     return {
       totalProjects,
       scoredProjects,
       avgScore: avgScore.toFixed(1),
-      completionRate: totalAssignments > 0
-        ? ((completedAssignments / totalAssignments) * 100).toFixed(0)
-        : '0'
+      completionRate: completionRate.toFixed(0)
     }
-  }, [hackathonProjects])
+  }, [projects, reportData, judges.length])
+
+  // Get judge scores for a project
+  const getJudgeScores = (projectId: string) => {
+    const projectScores = reportData.filter(r => r.projectId === projectId)
+    const scores: Record<string, number | null> = {}
+    judges.forEach(judge => {
+      const entry = projectScores.find(r => r.judgeId === judge.id)
+      scores[judge.id] = entry?.totalScore ?? null
+    })
+    return scores
+  }
+
+  // Get average score for a project
+  const getProjectAvgScore = (projectId: string) => {
+    const projectScores = reportData.filter(r => r.projectId === projectId)
+    if (projectScores.length === 0) return 0
+    return projectScores.reduce((sum, r) => sum + (r.totalScore || 0), 0) / projectScores.length
+  }
 
   // Download CSV
   const downloadCSV = () => {
-    // Build CSV header
     const headers = ['Rank', 'Project', 'Submitter', ...judges.map(j => j.name), 'Average Score']
 
-    // Build CSV rows
-    const rows = hackathonProjects.map((project, index) => {
+    const rows = projects.map((project, index) => {
       const judgeScores = getJudgeScores(project.id)
       const scoreValues = judges.map(j => judgeScores[j.id] !== null ? judgeScores[j.id] : '-')
+      const avgScore = getProjectAvgScore(project.id)
 
       return [
         index + 1,
         `"${project.title}"`,
         `"${project.submitterName || project.submitterEmail}"`,
         ...scoreValues,
-        project.score > 0 ? project.score.toFixed(1) : '-'
+        avgScore > 0 ? avgScore.toFixed(1) : '-'
       ]
     })
 
-    // Combine into CSV
     const csvContent = [
       headers.join(','),
       ...rows.map(row => row.join(','))
     ].join('\n')
 
-    // Download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     const url = URL.createObjectURL(blob)
@@ -99,6 +110,14 @@ export function ScoringReport() {
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  if (isLoadingReport) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -188,9 +207,6 @@ export function ScoringReport() {
                   {judges.map(judge => (
                     <TableHead key={judge.id} className="text-center min-w-[100px]">
                       {judge.name}
-                      {judge.isAi && (
-                        <Badge variant="outline" className="ml-1 text-xs">AI</Badge>
-                      )}
                     </TableHead>
                   ))}
                   <TableHead className="text-center font-semibold min-w-[100px]">
@@ -199,8 +215,9 @@ export function ScoringReport() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {hackathonProjects.map((project, index) => {
+                {projects.map((project, index) => {
                   const judgeScores = getJudgeScores(project.id)
+                  const avgScore = getProjectAvgScore(project.id)
 
                   return (
                     <TableRow key={project.id}>
@@ -228,9 +245,9 @@ export function ScoringReport() {
                         </TableCell>
                       ))}
                       <TableCell className="text-center">
-                        {project.score > 0 ? (
+                        {avgScore > 0 ? (
                           <Badge variant="default" className="font-semibold">
-                            {project.score.toFixed(1)}
+                            {avgScore.toFixed(1)}
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground">-</span>

@@ -3,33 +3,83 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
-import { projects, judges, assignments as initialAssignments, sessions } from '@/lib/mock-data'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { toast } from 'sonner'
-import { Users, CheckSquare, Info } from 'lucide-react'
+import { Users, CheckSquare, Info, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { api } from '@/lib/api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 export function AssignmentManager() {
   const { t } = useTranslation()
   const { activeHackathon } = useActiveHackathon()
-  const [assignments, setAssignments] = useState(initialAssignments)
+  const queryClient = useQueryClient()
 
-  // Filter projects by active hackathon
-  const hackathonProjects = useMemo(() => {
-    return projects.filter(p => p.hackathonId === activeHackathon.id && p.status === 'submitted')
-  }, [activeHackathon.id])
+  // Fetch projects
+  const { data: projects = [], isLoading: isLoadingProjects } = useQuery({
+    queryKey: ['projects', activeHackathon?.id],
+    queryFn: () => api.getProjects({ hackathonId: activeHackathon?.id }),
+    enabled: !!activeHackathon?.id,
+  })
+
+  // Fetch judges (users with judge role)
+  const { data: judges = [], isLoading: isLoadingJudges } = useQuery({
+    queryKey: ['users', 'judges'],
+    queryFn: () => api.getUsers({ role: 'judge' }),
+  })
+
+  // Fetch existing assignments
+  const { data: assignments = [], isLoading: isLoadingAssignments } = useQuery({
+    queryKey: ['assignments', activeHackathon?.id],
+    queryFn: async () => {
+      const sessionId = activeHackathon?.sessions?.[0]?.id
+      if (!sessionId) return []
+      return api.getAssignments({ sessionId })
+    },
+    enabled: !!activeHackathon?.sessions?.[0]?.id,
+  })
+
+  // Create assignments mutation
+  const createMutation = useMutation({
+    mutationFn: (data: { sessionId: string; projectId: string; judgeId: string }[]) =>
+      api.createAssignments(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['assignments'] })
+      toast.success('Assignment created')
+    },
+    onError: () => {
+      toast.error('Failed to create assignment')
+    },
+  })
+
+  // Delete assignment mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteAssignment(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['assignments'] })
+      toast.success('Assignment removed')
+    },
+    onError: () => {
+      toast.error('Failed to remove assignment')
+    },
+  })
 
   // Get session info
   const getSession = (projectId: string) => {
     const project = projects.find(p => p.id === projectId)
     if (!project?.sessionId) return null
-    return sessions.find(s => s.id === project.sessionId)
+    return activeHackathon?.sessions?.find(s => s.id === project.sessionId)
   }
 
   // Check if a project is assigned to a judge
   const isAssigned = (projectId: string, judgeId: string) => {
     return assignments.some(a => a.projectId === projectId && a.judgeId === judgeId)
+  }
+
+  // Get assignment ID
+  const getAssignmentId = (projectId: string, judgeId: string) => {
+    return assignments.find(a => a.projectId === projectId && a.judgeId === judgeId)?.id
   }
 
   // Get assignment counts
@@ -43,52 +93,45 @@ export function AssignmentManager() {
 
   // Toggle assignment
   const toggleAssignment = (projectId: string, judgeId: string) => {
-    const existingAssignment = assignments.find(
-      a => a.projectId === projectId && a.judgeId === judgeId
-    )
+    const existingId = getAssignmentId(projectId, judgeId)
+    const sessionId = activeHackathon?.sessions?.[0]?.id
 
-    if (existingAssignment) {
+    if (existingId) {
       // Remove assignment
-      setAssignments(assignments.filter(a => a.id !== existingAssignment.id))
-      toast.success('Assignment removed')
-    } else {
+      deleteMutation.mutate(existingId)
+    } else if (sessionId) {
       // Create new assignment
-      const project = projects.find(p => p.id === projectId)
-      const newAssignment = {
-        id: `as-${Date.now()}`,
-        sessionId: project?.sessionId || '',
-        projectId,
-        judgeId,
-        status: 'pending' as const,
-      }
-      setAssignments([...assignments, newAssignment])
-      toast.success('Assignment created')
+      createMutation.mutate([{ sessionId, projectId, judgeId }])
     }
   }
 
   // Assign all projects to a judge
   const assignAllToJudge = (judgeId: string) => {
-    const newAssignments = [...assignments]
-    hackathonProjects.forEach(project => {
-      const exists = assignments.some(a => a.projectId === project.id && a.judgeId === judgeId)
-      if (!exists) {
-        newAssignments.push({
-          id: `as-${Date.now()}-${project.id}`,
-          sessionId: project.sessionId || '',
-          projectId: project.id,
-          judgeId,
-          status: 'pending' as const,
-        })
-      }
-    })
-    setAssignments(newAssignments)
-    toast.success(`All projects assigned to ${judges.find(j => j.id === judgeId)?.name}`)
+    const sessionId = activeHackathon?.sessions?.[0]?.id
+    if (!sessionId) return
+
+    const newAssignments = projects
+      .filter(project => !isAssigned(project.id, judgeId))
+      .map(project => ({
+        sessionId,
+        projectId: project.id,
+        judgeId,
+      }))
+
+    if (newAssignments.length > 0) {
+      createMutation.mutate(newAssignments)
+      toast.success(`Assigned ${newAssignments.length} projects to ${judges.find(j => j.id === judgeId)?.name}`)
+    }
   }
 
-  // Save assignments
-  const handleSave = () => {
-    console.log('Saving assignments:', assignments)
-    toast.success('Assignments saved successfully')
+  const isLoading = isLoadingProjects || isLoadingJudges || isLoadingAssignments
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -102,10 +145,6 @@ export function AssignmentManager() {
             Assign projects to judges for evaluation
           </p>
         </div>
-        <Button onClick={handleSave}>
-          <CheckSquare className="mr-2 h-4 w-4" />
-          Save Assignments
-        </Button>
       </div>
 
       <Alert>
@@ -121,7 +160,7 @@ export function AssignmentManager() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              Projects ({hackathonProjects.length})
+              Projects ({projects.length})
             </CardTitle>
             <CardDescription>
               Select projects to assign to judges
@@ -129,7 +168,12 @@ export function AssignmentManager() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
-              {hackathonProjects.map(project => {
+              {projects.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  No projects found
+                </div>
+              )}
+              {projects.map(project => {
                 const session = getSession(project.id)
                 const assignedCount = getProjectAssignmentCount(project.id)
 
@@ -164,6 +208,7 @@ export function AssignmentManager() {
                           <Checkbox
                             checked={isAssigned(project.id, judge.id)}
                             onCheckedChange={() => toggleAssignment(project.id, judge.id)}
+                            disabled={createMutation.isPending || deleteMutation.isPending}
                           />
                           <span className="text-xs">{judge.name.split(' ')[0]}</span>
                         </label>
@@ -189,6 +234,11 @@ export function AssignmentManager() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+              {judges.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  No judges found
+                </div>
+              )}
               {judges.map(judge => {
                 const assignedCount = getJudgeAssignmentCount(judge.id)
                 const assignedProjects = assignments
@@ -205,20 +255,10 @@ export function AssignmentManager() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <h4 className="font-medium">{judge.name}</h4>
-                          {judge.isAi && (
-                            <Badge variant="outline" className="text-xs">AI</Badge>
-                          )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
-                          {judge.title}
+                          {judge.email}
                         </p>
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {judge.expertise.map(exp => (
-                            <Badge key={exp} variant="secondary" className="text-xs">
-                              {exp}
-                            </Badge>
-                          ))}
-                        </div>
                       </div>
                       <Badge variant="default">
                         {assignedCount} projects
@@ -230,7 +270,11 @@ export function AssignmentManager() {
                       size="sm"
                       className="w-full"
                       onClick={() => assignAllToJudge(judge.id)}
+                      disabled={createMutation.isPending}
                     >
+                      {createMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : null}
                       Assign All Projects
                     </Button>
 

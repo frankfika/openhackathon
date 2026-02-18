@@ -2,23 +2,42 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { hackathons, projects, users } from '@/lib/mock-data'
 import { useActiveHackathon } from '@/lib/active-hackathon'
-import { Plus, Users, FolderGit2, Gavel, BarChart3, Settings as SettingsIcon, FileText } from 'lucide-react'
+import { Plus, Users, FolderGit2, Gavel, BarChart3, Settings as SettingsIcon, FileText, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { api } from '@/lib/api'
+import { useQuery } from '@tanstack/react-query'
+import { useAuth } from '@/lib/auth'
 
 export function AdminDashboard() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { activeHackathon } = useActiveHackathon()
+  const { user } = useAuth()
 
-  const hackathonProjects = projects.filter(p => p.hackathonId === activeHackathon.id)
-  const hackathonJudges = users.filter(u => u.role === 'judge')
+  // Fetch dashboard stats
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ['dashboard-stats', activeHackathon?.id],
+    queryFn: () => api.getDashboardStats({
+      hackathonId: activeHackathon?.id,
+      role: 'admin',
+    }),
+    enabled: !!activeHackathon?.id,
+  })
 
-  const stats = [
-    { label: t('dashboard.stats.total_projects', 'Projects'), value: hackathonProjects.length, icon: FolderGit2, color: 'text-blue-600 bg-blue-100' },
-    { label: t('dashboard.stats.judges', 'Judges'), value: hackathonJudges.length, icon: Gavel, color: 'text-purple-600 bg-purple-100' },
+  const statCards = [
+    { label: t('dashboard.stats.total_projects', 'Projects'), value: stats?.totalProjects || 0, icon: FolderGit2, color: 'text-blue-600 bg-blue-100' },
+    { label: t('dashboard.stats.judges', 'Judges'), value: stats?.totalJudges || 0, icon: Gavel, color: 'text-purple-600 bg-purple-100' },
+    { label: t('dashboard.stats.pending_reviews', 'Pending Reviews'), value: stats?.pendingReviews || 0, icon: FileText, color: 'text-orange-600 bg-orange-100' },
   ]
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4 md:space-y-8">
@@ -34,8 +53,8 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {stats.map((stat, index) => (
+      <div className="grid gap-4 md:grid-cols-3">
+        {statCards.map((stat, index) => (
           <Card key={index} className="border-0 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">

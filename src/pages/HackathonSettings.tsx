@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -10,10 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SubmissionConfigBuilder } from '@/components/SubmissionConfigBuilder'
 import { ScoringCriteriaBuilder } from '@/components/ScoringCriteriaBuilder'
-import { hackathons, SubmissionField, ScoringCriterion } from '@/lib/mock-data'
+import { SubmissionField, ScoringCriterion } from '@/lib/mock-data'
 import { toast } from 'sonner'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { api } from '@/lib/api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const hackathonSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -30,57 +32,106 @@ export function HackathonSettings() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
-  const [isLoading, setIsLoading] = useState(false)
+  const queryClient = useQueryClient()
 
-  // Mock data fetching
-  const hackathon = hackathons.find(h => h.id === id) || hackathons[0]
-  const [submissionSchema, setSubmissionSchema] = useState<SubmissionField[]>(hackathon.submissionSchema || [])
-  const [scoringCriteria, setScoringCriteria] = useState<ScoringCriterion[]>(hackathon.scoringCriteria || [])
+  // Fetch hackathon data
+  const { data: hackathon, isLoading: isLoadingHackathon } = useQuery({
+    queryKey: ['hackathon', id],
+    queryFn: () => api.getHackathon(id!),
+    enabled: !!id,
+  })
+
+  const [submissionSchema, setSubmissionSchema] = useState<SubmissionField[]>([])
+  const [scoringCriteria, setScoringCriteria] = useState<ScoringCriterion[]>([])
+
+  // Update local state when hackathon data loads
+  useEffect(() => {
+    if (hackathon) {
+      setSubmissionSchema(hackathon.submissionSchema?.fields || [])
+      setScoringCriteria(hackathon.scoringCriteria || [])
+    }
+  }, [hackathon])
 
   const {
     register,
     handleSubmit,
     formState: { errors },
+    reset,
   } = useForm({
     resolver: zodResolver(hackathonSchema),
     defaultValues: {
-      title: hackathon.title,
-      tagline: hackathon.tagline,
-      city: hackathon.city,
-      startAt: hackathon.startAt,
-      endAt: hackathon.endAt,
-      gitbookUrl: hackathon.gitbookUrl || '',
+      title: '',
+      tagline: '',
+      city: '',
+      startAt: '',
+      endAt: '',
+      gitbookUrl: '',
     }
   })
 
-  const onSubmit = async (data: HackathonFormValues) => {
-    setIsLoading(true)
-    // Simulate API call
-    setTimeout(() => {
-      console.log('Updating hackathon:', { ...data, submissionSchema })
+  // Update form values when hackathon data loads
+  useEffect(() => {
+    if (hackathon) {
+      reset({
+        title: hackathon.title,
+        tagline: hackathon.tagline,
+        city: hackathon.city || '',
+        startAt: hackathon.startAt ? new Date(hackathon.startAt).toISOString().split('T')[0] : '',
+        endAt: hackathon.endAt ? new Date(hackathon.endAt).toISOString().split('T')[0] : '',
+        gitbookUrl: hackathon.gitbookUrl || '',
+      })
+    }
+  }, [hackathon, reset])
+
+  // Update hackathon mutation
+  const updateMutation = useMutation({
+    mutationFn: (data: Partial<HackathonFormValues>) => {
+      if (!id) throw new Error('No hackathon ID')
+      return api.updateHackathon(id, {
+        ...data,
+        submissionSchema: { fields: submissionSchema },
+        scoringCriteria,
+      })
+    },
+    onSuccess: () => {
       toast.success(t('settings.saved', 'Settings saved successfully'))
-      setIsLoading(false)
-    }, 1000)
+      queryClient.invalidateQueries({ queryKey: ['hackathon', id] })
+    },
+    onError: () => {
+      toast.error(t('settings.save_error', 'Failed to save settings'))
+    },
+  })
+
+  const onSubmit = async (data: HackathonFormValues) => {
+    updateMutation.mutate(data)
   }
 
   const onSaveSubmissionSchema = async (schema: SubmissionField[]) => {
-    setIsLoading(true)
-    setTimeout(() => {
-      console.log('Updating submission schema:', { hackathonId: hackathon.id, submissionSchema: schema })
-      setSubmissionSchema(schema)
-      toast.success(t('settings.saved', 'Settings saved successfully'))
-      setIsLoading(false)
-    }, 1000)
+    if (!id) return
+    setSubmissionSchema(schema)
+    updateMutation.mutate({
+      submissionSchema: { fields: schema },
+    } as any)
   }
 
   const onSaveScoringCriteria = async (criteria: ScoringCriterion[]) => {
-    setIsLoading(true)
-    setTimeout(() => {
-      console.log('Updating scoring criteria:', { hackathonId: hackathon.id, scoringCriteria: criteria })
-      setScoringCriteria(criteria)
-      toast.success(t('settings.saved', 'Scoring criteria saved successfully'))
-      setIsLoading(false)
-    }, 1000)
+    if (!id) return
+    setScoringCriteria(criteria)
+    updateMutation.mutate({
+      scoringCriteria: criteria,
+    } as any)
+  }
+
+  if (isLoadingHackathon) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+
+  if (!hackathon) {
+    return <div>Hackathon not found</div>
   }
 
   return (
@@ -147,8 +198,8 @@ export function HackathonSettings() {
                 </div>
 
                 <div className="pt-4">
-                  <Button type="submit" disabled={isLoading}>
-                    {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <Button type="submit" disabled={updateMutation.isPending}>
+                    {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {t('common.save', 'Save Changes')}
                   </Button>
                 </div>

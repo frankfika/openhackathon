@@ -8,11 +8,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { projects, SubmissionField } from '@/lib/mock-data'
+import { SubmissionField } from '@/lib/mock-data'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { api } from '@/lib/api'
+import { useQuery } from '@tanstack/react-query'
 
 // Default schema if none is configured
 const defaultSubmissionSchema: SubmissionField[] = [
@@ -29,7 +31,14 @@ export function PublicSubmit() {
   const [isLoading, setIsLoading] = useState(false)
   const { activeHackathon: hackathon } = useActiveHackathon()
 
-  const schema = hackathon.submissionSchema || defaultSubmissionSchema
+  // Fetch existing projects to check for duplicates
+  const { data: existingProjects = [] } = useQuery({
+    queryKey: ['projects', hackathon?.id],
+    queryFn: () => api.getProjects({ hackathonId: hackathon?.id }),
+    enabled: !!hackathon?.id,
+  })
+
+  const schema = hackathon.submissionSchema?.fields || defaultSubmissionSchema
 
   // Dynamic Zod schema generation - includes email fields
   const formSchema = z.object({
@@ -60,8 +69,8 @@ export function PublicSubmit() {
     const rawTitle = titleField ? (data as Record<string, unknown>)[titleField] : undefined
     if (typeof rawTitle === 'string' && rawTitle.trim().length > 0) {
       const normalizedTitle = rawTitle.toLowerCase()
-      const exists = projects.some(
-        (p) => p.hackathonId === hackathon.id && p.title.toLowerCase() === normalizedTitle
+      const exists = existingProjects.some(
+        (p) => p.title?.toLowerCase() === normalizedTitle
       )
       return !exists
     }
@@ -84,13 +93,45 @@ export function PublicSubmit() {
   const onSubmit = async (data: Record<string, unknown>) => {
     setIsLoading(true)
 
-    // Simulate API call
-    setTimeout(() => {
-      console.log('Submitted data:', data)
+    try {
+      // Extract standard fields
+      const { submitterEmail, submitterName, ...rest } = data
+
+      // Build submissionData from dynamic fields
+      const submissionData: Record<string, unknown> = {}
+      const standardFields = ['title', 'oneLiner', 'description', 'repoUrl', 'demoUrl', 'tags']
+
+      for (const field of schema) {
+        if (!standardFields.includes(field.id)) {
+          submissionData[field.id] = rest[field.id]
+        }
+      }
+
+      // Find active session
+      const activeSession = hackathon.sessions?.find(s => s.status === 'active') || hackathon.sessions?.[0]
+
+      await api.createProject({
+        hackathonId: hackathon.id,
+        sessionId: activeSession?.id,
+        submitterEmail: submitterEmail as string,
+        submitterName: submitterName as string,
+        title: (rest.title as string) || '',
+        oneLiner: (rest.oneLiner as string) || '',
+        description: (rest.description as string) || '',
+        repoUrl: (rest.repoUrl as string) || '',
+        demoUrl: (rest.demoUrl as string) || '',
+        tags: rest.tags ? (rest.tags as string).split(',').map(t => t.trim()) : [],
+        submissionData,
+      })
+
       toast.success(t('submission.success', 'Project submitted successfully!'))
       navigate('/submit/success')
+    } catch (error) {
+      console.error('Submit error:', error)
+      toast.error(t('submission.error', 'Failed to submit project. Please try again.'))
+    } finally {
       setIsLoading(false)
-    }, 1000)
+    }
   }
 
   return (

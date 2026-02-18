@@ -1,25 +1,22 @@
-import React, { useMemo } from 'react'
+import React from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { projects, assignments } from '@/lib/mock-data'
 import { useActiveHackathon } from '@/lib/active-hackathon'
-import { calculateProjectScore } from '@/lib/scoring'
-import { Trophy, Medal, Award, Star } from 'lucide-react'
+import { Trophy, Medal, Award, Star, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { api } from '@/lib/api'
+import { useQuery } from '@tanstack/react-query'
 
 export function Leaderboard() {
   const { t } = useTranslation()
   const { activeHackathon } = useActiveHackathon()
 
-  const rankedProjects = useMemo(() => {
-    return projects
-      .filter(p => p.hackathonId === activeHackathon.id)
-      .map(p => ({
-        ...p,
-        score: calculateProjectScore(p.id, assignments)
-      }))
-      .sort((a, b) => b.score - a.score)
-  }, [activeHackathon.id])
+  // Fetch leaderboard from API
+  const { data: rankedProjects = [], isLoading } = useQuery({
+    queryKey: ['leaderboard', activeHackathon?.id],
+    queryFn: () => api.getLeaderboard({ hackathonId: activeHackathon?.id }),
+    enabled: !!activeHackathon?.id,
+  })
 
   const getRankIcon = (index: number) => {
     switch (index) {
@@ -47,6 +44,14 @@ export function Leaderboard() {
     }
   }
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+
   return (
     <div className="flex-1">
       <section className="container py-6 md:py-14">
@@ -57,6 +62,11 @@ export function Leaderboard() {
           </div>
 
           <div className="grid gap-3 md:gap-4">
+            {rankedProjects.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                {t('leaderboard.no_projects', 'No projects scored yet')}
+              </div>
+            )}
             {rankedProjects.map((project, index) => (
               <Card
                 key={project.id}
@@ -74,7 +84,7 @@ export function Leaderboard() {
                     <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 mb-1">
                       <h3 className="text-base md:text-lg font-semibold truncate">{project.title}</h3>
                       <div className="flex flex-wrap gap-1">
-                        {project.tags.slice(0, 3).map(tag => (
+                        {project.tags?.slice(0, 3).map(tag => (
                           <span key={tag} className="px-2 py-0.5 rounded-full bg-background/50 text-[10px] md:text-xs font-medium text-muted-foreground">
                             {tag}
                           </span>
@@ -88,9 +98,9 @@ export function Leaderboard() {
                     <div className="flex flex-col items-end">
                       <div className="flex items-center gap-1 text-base md:text-lg font-bold text-primary">
                         <Star className="h-3 w-3 md:h-4 md:w-4 fill-primary text-primary" />
-                        {project.score > 0 ? project.score.toFixed(1) : '-'}
+                        {project.avgScore > 0 ? project.avgScore.toFixed(1) : '-'}
                       </div>
-                      <span className="text-[10px] md:text-xs text-muted-foreground">/ 100</span>
+                      <span className="text-[10px] md:text-xs text-muted-foreground">/ {project.maxPossible}</span>
                     </div>
                   </div>
                 </CardContent>
