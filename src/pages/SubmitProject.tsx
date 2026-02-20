@@ -8,11 +8,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { projects, SubmissionField } from '@/lib/mock-data'
+import { SubmissionField } from '@/lib/types'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { toast } from 'sonner'
 import { Loader2, ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { api } from '@/lib/api'
+import { useQuery } from '@tanstack/react-query'
 
 // Default schema if none is configured
 const defaultSubmissionSchema: SubmissionField[] = [
@@ -29,7 +31,16 @@ export function SubmitProject() {
   const [isLoading, setIsLoading] = useState(false)
   const { activeHackathon: hackathon } = useActiveHackathon()
 
-  const schema = hackathon.submissionSchema || defaultSubmissionSchema
+  // Fetch existing projects to check for duplicates
+  const { data: existingProjects = [] } = useQuery({
+    queryKey: ['projects', hackathon?.id],
+    queryFn: () => api.getProjects({ hackathonId: hackathon?.id }),
+    enabled: !!hackathon?.id,
+  })
+
+  const schema = Array.isArray(hackathon.submissionSchema)
+    ? hackathon.submissionSchema
+    : hackathon.submissionSchema?.fields || defaultSubmissionSchema
 
   // Dynamic Zod schema generation
   const formSchema = z.object(
@@ -59,8 +70,8 @@ export function SubmitProject() {
     const rawTitle = titleField ? (data as Record<string, unknown>)[titleField] : undefined
     if (typeof rawTitle === 'string' && rawTitle.trim().length > 0) {
       const normalizedTitle = rawTitle.toLowerCase()
-      const exists = projects.some(
-        (p) => p.hackathonId === hackathon.id && p.title.toLowerCase() === normalizedTitle
+      const exists = existingProjects.some(
+        (p) => p.title?.toLowerCase() === normalizedTitle
       )
       return !exists
     }
@@ -78,16 +89,44 @@ export function SubmitProject() {
     resolver: zodResolver(formSchema),
   })
 
+  // Fields that map directly to Project model columns
+  const PROJECT_COLUMN_FIELDS = ['title', 'oneLiner', 'description', 'repoUrl', 'demoUrl', 'tags']
+
   const onSubmit = async (data: Record<string, unknown>) => {
     setIsLoading(true)
-    
-    // Simulate API call
-    setTimeout(() => {
-      console.log('Submitted data:', data)
+
+    try {
+      // Build submissionData from custom fields (not standard Project columns)
+      const submissionData: Record<string, unknown> = {}
+      for (const field of schema) {
+        if (!PROJECT_COLUMN_FIELDS.includes(field.id)) {
+          submissionData[field.id] = data[field.id]
+        }
+      }
+
+      // Find active session
+      const activeSession = hackathon.sessions?.find(s => s.status === 'active') || hackathon.sessions?.[0]
+
+      await api.createProject({
+        hackathonId: hackathon.id,
+        sessionId: activeSession?.id,
+        title: (data.title as string) || '',
+        oneLiner: (data.oneLiner as string) || '',
+        description: (data.description as string) || '',
+        repoUrl: (data.repoUrl as string) || '',
+        demoUrl: (data.demoUrl as string) || '',
+        tags: data.tags ? (data.tags as string).split(',').map(t => t.trim()) : [],
+        submissionData: Object.keys(submissionData).length > 0 ? submissionData : undefined,
+      })
+
       toast.success(t('submission.success', 'Project submitted successfully!'))
       navigate('/dashboard/projects')
+    } catch (error) {
+      console.error('Submit error:', error)
+      toast.error(t('submission.error', 'Failed to submit project. Please try again.'))
+    } finally {
       setIsLoading(false)
-    }, 1000)
+    }
   }
 
   return (

@@ -5,7 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { toast } from 'sonner'
-import { Users, CheckSquare, Info, Loader2 } from 'lucide-react'
+import { Users, CheckSquare, Info, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { api } from '@/lib/api'
@@ -15,6 +15,7 @@ export function AssignmentManager() {
   const { t } = useTranslation()
   const { activeHackathon } = useActiveHackathon()
   const queryClient = useQueryClient()
+  const [expandedJudge, setExpandedJudge] = useState<string | null>(null)
 
   // Fetch projects
   const { data: projects = [], isLoading: isLoadingProjects } = useQuery({
@@ -46,10 +47,10 @@ export function AssignmentManager() {
       api.createAssignments(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assignments'] })
-      toast.success('Assignment created')
+      toast.success(t('assignments.created'))
     },
     onError: () => {
-      toast.error('Failed to create assignment')
+      toast.error(t('assignments.create_failed'))
     },
   })
 
@@ -58,10 +59,10 @@ export function AssignmentManager() {
     mutationFn: (id: string) => api.deleteAssignment(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['assignments'] })
-      toast.success('Assignment removed')
+      toast.success(t('assignments.removed'))
     },
     onError: () => {
-      toast.error('Failed to remove assignment')
+      toast.error(t('assignments.remove_failed'))
     },
   })
 
@@ -120,7 +121,7 @@ export function AssignmentManager() {
 
     if (newAssignments.length > 0) {
       createMutation.mutate(newAssignments)
-      toast.success(`Assigned ${newAssignments.length} projects to ${judges.find(j => j.id === judgeId)?.name}`)
+      toast.success(t('assignments.assigned_count', { count: newAssignments.length, name: judges.find(j => j.id === judgeId)?.name }))
     }
   }
 
@@ -142,7 +143,7 @@ export function AssignmentManager() {
             {t('assignments.title', 'Project Assignments')}
           </h1>
           <p className="text-sm md:text-base text-muted-foreground">
-            Assign projects to judges for evaluation
+            {t('assignments.subtitle')}
           </p>
         </div>
       </div>
@@ -150,7 +151,7 @@ export function AssignmentManager() {
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
-          Check the boxes to assign projects to judges. Each project can be assigned to multiple judges.
+          {t('assignments.help')}
         </AlertDescription>
       </Alert>
 
@@ -160,17 +161,17 @@ export function AssignmentManager() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              Projects ({projects.length})
+              {t('assignments.projects_count', { count: projects.length })}
             </CardTitle>
             <CardDescription>
-              Select projects to assign to judges
+              {t('assignments.projects_desc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
               {projects.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
-                  No projects found
+                  {t('assignments.no_projects')}
                 </div>
               )}
               {projects.map(project => {
@@ -195,7 +196,7 @@ export function AssignmentManager() {
                         )}
                       </div>
                       <Badge variant="secondary" className="shrink-0">
-                        {assignedCount} {assignedCount === 1 ? 'judge' : 'judges'}
+                        {t(assignedCount === 1 ? 'assignments.judge_count' : 'assignments.judges_count_label', { count: assignedCount })}
                       </Badge>
                     </div>
 
@@ -226,70 +227,95 @@ export function AssignmentManager() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              Judges ({judges.length})
+              {t('assignments.judges_count', { count: judges.length })}
             </CardTitle>
             <CardDescription>
-              View judge assignments and assign all projects
+              {t('assignments.judges_desc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
               {judges.length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
-                  No judges found
+                  {t('assignments.no_judges')}
                 </div>
               )}
               {judges.map(judge => {
                 const assignedCount = getJudgeAssignmentCount(judge.id)
-                const assignedProjects = assignments
-                  .filter(a => a.judgeId === judge.id)
-                  .map(a => projects.find(p => p.id === a.projectId))
-                  .filter(Boolean)
+                const isExpanded = expandedJudge === judge.id
 
                 return (
                   <div
                     key={judge.id}
                     className="p-4 rounded-lg border bg-card"
                   >
-                    <div className="flex items-start justify-between gap-3 mb-3">
+                    <div
+                      className="flex items-start justify-between gap-3 cursor-pointer"
+                      onClick={() => setExpandedJudge(isExpanded ? null : judge.id)}
+                    >
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <h4 className="font-medium">{judge.name}</h4>
+                          {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
                           {judge.email}
                         </p>
                       </div>
                       <Badge variant="default">
-                        {assignedCount} projects
+                        {assignedCount}/{projects.length}
                       </Badge>
                     </div>
 
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => assignAllToJudge(judge.id)}
-                      disabled={createMutation.isPending}
-                    >
-                      {createMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : null}
-                      Assign All Projects
-                    </Button>
-
-                    {assignedProjects.length > 0 && (
+                    {isExpanded && (
                       <div className="mt-3 pt-3 border-t">
-                        <p className="text-xs text-muted-foreground mb-2">Assigned to:</p>
-                        <div className="space-y-1">
-                          {assignedProjects.slice(0, 3).map(project => (
-                            <p key={project!.id} className="text-xs truncate">
-                              • {project!.title}
-                            </p>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs text-muted-foreground">{t('assignments.select_projects')}</p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => assignAllToJudge(judge.id)}
+                            disabled={createMutation.isPending || assignedCount === projects.length}
+                          >
+                            {t('common.select_all')}
+                          </Button>
+                        </div>
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                          {projects.map(project => (
+                            <label
+                              key={project.id}
+                              className="flex items-center gap-2 p-2 rounded hover:bg-muted/50 cursor-pointer"
+                            >
+                              <Checkbox
+                                checked={isAssigned(project.id, judge.id)}
+                                onCheckedChange={() => toggleAssignment(project.id, judge.id)}
+                                disabled={createMutation.isPending || deleteMutation.isPending}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm truncate">{project.title}</p>
+                                <p className="text-xs text-muted-foreground truncate">{project.oneLiner}</p>
+                              </div>
+                            </label>
                           ))}
-                          {assignedProjects.length > 3 && (
+                        </div>
+                      </div>
+                    )}
+
+                    {!isExpanded && assignedCount > 0 && (
+                      <div className="mt-3 pt-3 border-t">
+                        <div className="space-y-1">
+                          {projects
+                            .filter(p => isAssigned(p.id, judge.id))
+                            .slice(0, 3)
+                            .map(project => (
+                              <p key={project.id} className="text-xs truncate">
+                                • {project.title}
+                              </p>
+                            ))}
+                          {assignedCount > 3 && (
                             <p className="text-xs text-muted-foreground">
-                              +{assignedProjects.length - 3} more
+                              {t('common.more_count', { count: assignedCount - 3 })}
                             </p>
                           )}
                         </div>

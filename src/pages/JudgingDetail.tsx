@@ -47,9 +47,14 @@ export function JudgingDetail() {
   const [scores, setScores] = useState<Record<string, number>>(() => {
     if (assignment?.scores) {
       const existingScores: Record<string, number> = {}
-      assignment.scores.forEach((s: any) => {
-        existingScores[s.criterionId] = s.score
-      })
+      // Handle both array format (from API) and Record format (from mock)
+      if (Array.isArray(assignment.scores)) {
+        assignment.scores.forEach((s: any) => {
+          existingScores[s.criterionId] = s.score
+        })
+      } else {
+        Object.assign(existingScores, assignment.scores)
+      }
       return existingScores
     }
     const initialScores: Record<string, number> = {}
@@ -78,11 +83,9 @@ export function JudgingDetail() {
     onSuccess: () => {
       toast.success(t('judging.score_submitted', 'Score submitted successfully'))
       queryClient.invalidateQueries({ queryKey: ['assignments'] })
-      if (user?.role === 'judge') {
-        navigate('/judge')
-      } else {
-        navigate('/dashboard/judging')
-      }
+      // Navigate based on user role
+      const redirectPath = user?.role === 'judge' ? '/judge' : '/dashboard/judging'
+      navigate(redirectPath)
     },
     onError: () => {
       toast.error(t('judging.submit_error', 'Failed to submit score'))
@@ -93,9 +96,14 @@ export function JudgingDetail() {
   React.useEffect(() => {
     if (assignment?.scores) {
       const existingScores: Record<string, number> = {}
-      assignment.scores.forEach((s: any) => {
-        existingScores[s.criterionId] = s.score
-      })
+      // Handle both array format (from API) and Record format (from mock)
+      if (Array.isArray(assignment.scores)) {
+        assignment.scores.forEach((s: any) => {
+          existingScores[s.criterionId] = s.score
+        })
+      } else {
+        Object.assign(existingScores, assignment.scores)
+      }
       setScores(existingScores)
     }
     if (assignment?.comment) {
@@ -104,11 +112,11 @@ export function JudgingDetail() {
   }, [assignment])
 
   if (isLoadingAssignment || isLoadingProject) {
-    return <div>Loading...</div>
+    return <div>{t('common.loading')}</div>
   }
 
   if (!project) {
-    return <div>Project not found</div>
+    return <div>{t('projects.not_found')}</div>
   }
 
   // If we're viewing directly by project ID (no assignment), show read-only view
@@ -124,11 +132,12 @@ export function JudgingDetail() {
 
   const totalScore = Object.values(scores).reduce((a, b) => a + b, 0)
   const maxPossible = scoringCriteria.reduce((sum, c) => sum + (c.maxScore || 0), 0)
+  const backPath = user?.role === 'judge' ? '/judge' : '/dashboard/judging'
 
   return (
     <div className="space-y-4 md:space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard/judging')}>
+        <Button variant="ghost" size="icon" onClick={() => navigate(backPath)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
@@ -169,7 +178,7 @@ export function JudgingDetail() {
                   <a href={project.repoUrl} target="_blank" rel="noreferrer">
                     <Button variant="outline" className="gap-2">
                       <Github className="h-4 w-4" />
-                      Repository
+                      {t('projects.repository')}
                     </Button>
                   </a>
                 )}
@@ -177,7 +186,7 @@ export function JudgingDetail() {
                   <a href={project.demoUrl} target="_blank" rel="noreferrer">
                     <Button variant="outline" className="gap-2">
                       <ExternalLink className="h-4 w-4" />
-                      Live Demo
+                      {t('projects.live_demo')}
                     </Button>
                   </a>
                 )}
@@ -212,7 +221,7 @@ export function JudgingDetail() {
                   {t('judging.score_card', 'Score Card')}
                   <span className="text-2xl font-bold text-primary">{totalScore} / {maxPossible}</span>
                 </CardTitle>
-                <CardDescription>Rate the project based on the criteria below</CardDescription>
+                <CardDescription>{t('judging.score_criteria_desc')}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-4">
@@ -248,7 +257,7 @@ export function JudgingDetail() {
 
                 <Button onClick={handleSubmit} className="w-full" disabled={submitMutation.isPending}>
                   <Save className="mr-2 h-4 w-4" />
-                  {submitMutation.isPending ? 'Submitting...' : t('judging.submit_score', 'Submit Score')}
+                  {submitMutation.isPending ? t('judging.submitting') : t('judging.submit_score', 'Submit Score')}
                 </Button>
               </CardContent>
             </Card>

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { SubmissionField } from '@/lib/mock-data'
+import { SubmissionField } from '@/lib/types'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
@@ -16,14 +16,6 @@ import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 
-// Default schema if none is configured
-const defaultSubmissionSchema: SubmissionField[] = [
-  { id: 'title', label: 'Project Name', type: 'text', required: true, placeholder: 'My Awesome Project' },
-  { id: 'oneLiner', label: 'One Liner', type: 'text', required: true, placeholder: 'A short catchy description' },
-  { id: 'description', label: 'Detailed Description', type: 'textarea', required: true, placeholder: 'Tell us more about your project...' },
-  { id: 'repoUrl', label: 'Repository URL', type: 'url', required: true, placeholder: 'https://github.com/...' },
-  { id: 'demoUrl', label: 'Demo URL', type: 'url', required: false, placeholder: 'https://...' },
-]
 
 export function PublicSubmit() {
   const { t } = useTranslation()
@@ -38,7 +30,10 @@ export function PublicSubmit() {
     enabled: !!hackathon?.id,
   })
 
-  const schema = hackathon.submissionSchema?.fields || defaultSubmissionSchema
+  // Use backend data as-is — no defaults
+  const schema: SubmissionField[] = Array.isArray(hackathon.submissionSchema)
+    ? hackathon.submissionSchema
+    : hackathon.submissionSchema?.fields || []
 
   // Dynamic Zod schema generation - includes email fields
   const formSchema = z.object({
@@ -90,19 +85,19 @@ export function PublicSubmit() {
     resolver: zodResolver(formSchema),
   })
 
+  // Fields that map directly to Project model columns
+  const PROJECT_COLUMN_FIELDS = ['title', 'oneLiner', 'description', 'repoUrl', 'demoUrl', 'tags']
+
   const onSubmit = async (data: Record<string, unknown>) => {
     setIsLoading(true)
 
     try {
-      // Extract standard fields
       const { submitterEmail, submitterName, ...rest } = data
 
-      // Build submissionData from dynamic fields
+      // Build submissionData from custom fields (not standard Project columns)
       const submissionData: Record<string, unknown> = {}
-      const standardFields = ['title', 'oneLiner', 'description', 'repoUrl', 'demoUrl', 'tags']
-
       for (const field of schema) {
-        if (!standardFields.includes(field.id)) {
+        if (!PROJECT_COLUMN_FIELDS.includes(field.id)) {
           submissionData[field.id] = rest[field.id]
         }
       }
@@ -121,7 +116,7 @@ export function PublicSubmit() {
         repoUrl: (rest.repoUrl as string) || '',
         demoUrl: (rest.demoUrl as string) || '',
         tags: rest.tags ? (rest.tags as string).split(',').map(t => t.trim()) : [],
-        submissionData,
+        submissionData: Object.keys(submissionData).length > 0 ? submissionData : undefined,
       })
 
       toast.success(t('submission.success', 'Project submitted successfully!'))

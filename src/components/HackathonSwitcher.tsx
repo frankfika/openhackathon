@@ -16,14 +16,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { hackathons } from '@/lib/mock-data'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { useTranslation } from 'react-i18next'
 
 export function HackathonSwitcher() {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
-  const { activeHackathon, setActiveHackathonId } = useActiveHackathon()
+  const { activeHackathon, setActiveHackathonId, hackathons } = useActiveHackathon()
 
   const formattedHackathons = useMemo(() => {
     return hackathons.map((h) => ({
@@ -31,7 +30,7 @@ export function HackathonSwitcher() {
       value: h.id,
       status: h.status
     }))
-  }, [])
+  }, [hackathons])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -59,6 +58,30 @@ export function HackathonSwitcher() {
             <CommandGroup heading={t('dashboard.active_hackathons', 'Active')}>
               {formattedHackathons
                 .filter((h) => h.status === 'active' || h.status === 'judging')
+                .map((hackathon) => (
+                  <CommandItem
+                    key={hackathon.value}
+                    onSelect={() => {
+                      setActiveHackathonId(hackathon.value)
+                      setOpen(false)
+                    }}
+                    className="text-sm"
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        activeHackathon.id === hackathon.value
+                          ? "opacity-100"
+                          : "opacity-0"
+                      )}
+                    />
+                    {hackathon.label}
+                  </CommandItem>
+                ))}
+            </CommandGroup>
+            <CommandGroup heading={t('dashboard.upcoming_hackathons', 'Upcoming')}>
+              {formattedHackathons
+                .filter((h) => h.status === 'upcoming' || h.status === 'draft')
                 .map((hackathon) => (
                   <CommandItem
                     key={hackathon.value}

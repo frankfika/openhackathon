@@ -2,7 +2,6 @@ import React from 'react'
 import { useAuth } from '@/lib/auth'
 import { AdminDashboard } from '@/components/dashboard/AdminDashboard'
 import { JudgeDashboard } from '@/components/dashboard/JudgeDashboard'
-import { HackerDashboard } from '@/components/dashboard/HackerDashboard'
 
 export function Dashboard() {
   const { user } = useAuth()
@@ -19,5 +18,6 @@ export function Dashboard() {
     return <JudgeDashboard />
   }
 
-  return <HackerDashboard />
+  // Fallback - should not happen as system only has admin and judge roles
+  return <div>Unknown user role</div>
 }

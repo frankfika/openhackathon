@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { UserRole } from '../lib/mock-data'
+import { UserRole } from '../lib/types'
 
 type RequireRoleProps = {
   children: React.ReactNode

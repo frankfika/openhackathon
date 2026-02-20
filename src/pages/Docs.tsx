@@ -11,8 +11,20 @@ export function Docs() {
 
   if (!h.gitbookUrl) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center text-muted-foreground">
-        {t('landing.gitbook.no_docs', 'No documentation configured yet.')}
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center px-4">
+        <FileText className="h-12 w-12 text-muted-foreground/30" />
+        <div className="space-y-2 max-w-md">
+          <p className="text-lg font-medium text-foreground">{t('landing.gitbook.no_docs_title', 'No documentation yet')}</p>
+          <p className="text-sm text-muted-foreground">
+            {t('landing.gitbook.no_docs_desc', 'The organizer has not configured event documentation. Documentation can be created on GitBook and linked in the hackathon settings.')}
+          </p>
+        </div>
+        <a href="https://www.gitbook.com" target="_blank" rel="noreferrer">
+          <Button variant="outline" className="rounded-full gap-2">
+            {t('landing.gitbook.go_gitbook', 'Create on GitBook')}
+            <ExternalLink className="h-4 w-4" />
+          </Button>
+        </a>
       </div>
     )
   }

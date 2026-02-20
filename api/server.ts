@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -78,7 +79,7 @@ app.put('/api/hackathons/:id', async (req, res) => {
       endAt: endAt ? new Date(endAt) : undefined,
       status,
       coverGradient,
-      submissionSchema: submissionSchema || {},
+      submissionSchema: submissionSchema !== undefined ? submissionSchema : undefined,
     }
   });
 
@@ -384,9 +385,46 @@ app.get('/api/dashboard/stats', async (req, res) => {
 
 // ===== Leaderboard =====
 
+// Get auto-calculated leaderboard (scores-based)
 app.get('/api/leaderboard', async (req, res) => {
   const { hackathonId, sessionId } = req.query;
 
+  const hackathon = hackathonId ? await prisma.hackathon.findUnique({
+    where: { id: String(hackathonId) },
+    select: { leaderboardData: true, leaderboardPublished: true }
+  }) : null;
+
+  // If published, return curated leaderboard
+  if (hackathon?.leaderboardPublished && hackathon?.leaderboardData) {
+    const entries = hackathon.leaderboardData as { projectId: string; rank: number; award: string }[];
+    const projectIds = entries.map(e => e.projectId);
+    const projects = await prisma.project.findMany({
+      where: { id: { in: projectIds } },
+      include: {
+        assignments: { where: { status: 'completed' }, select: { totalScore: true } },
+        hackathon: { include: { scoringCriteria: true } },
+      }
+    });
+
+    const result = entries.map(entry => {
+      const p = projects.find(p => p.id === entry.projectId);
+      if (!p) return null;
+      const scores = p.assignments.map(a => a.totalScore || 0);
+      const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+      const maxPossible = p.hackathon.scoringCriteria.reduce((sum, c) => sum + c.maxScore, 0);
+      return {
+        id: p.id, title: p.title, oneLiner: p.oneLiner, tags: p.tags,
+        avgScore: Math.round(avgScore * 100) / 100, maxPossible,
+        judgeCount: scores.length, submitterName: p.submitterName,
+        rank: entry.rank, award: entry.award,
+      };
+    }).filter(Boolean);
+
+    result.sort((a: any, b: any) => a.rank - b.rank);
+    return res.json(result);
+  }
+
+  // Otherwise return scores-based ranking
   const projects = await prisma.project.findMany({
     where: {
       ...(hackathonId ? { hackathonId: String(hackathonId) } : {}),
@@ -409,20 +447,36 @@ app.get('/api/leaderboard', async (req, res) => {
     const maxPossible = p.hackathon.scoringCriteria.reduce((sum, c) => sum + c.maxScore, 0);
 
     return {
-      id: p.id,
-      title: p.title,
-      oneLiner: p.oneLiner,
-      tags: p.tags,
-      avgScore: Math.round(avgScore * 100) / 100,
-      maxPossible,
-      judgeCount: scores.length,
-      submitterName: p.submitterName,
+      id: p.id, title: p.title, oneLiner: p.oneLiner, tags: p.tags,
+      avgScore: Math.round(avgScore * 100) / 100, maxPossible,
+      judgeCount: scores.length, submitterName: p.submitterName,
     };
   });
 
   leaderboard.sort((a, b) => b.avgScore - a.avgScore);
-
   res.json(leaderboard);
+});
+
+// Save curated leaderboard
+app.put('/api/hackathons/:id/leaderboard', async (req, res) => {
+  const { entries, published } = req.body;
+  const hackathon = await prisma.hackathon.update({
+    where: { id: req.params.id },
+    data: {
+      leaderboardData: entries,
+      leaderboardPublished: published,
+    }
+  });
+  res.json(hackathon);
+});
+
+// Get curated leaderboard data (admin)
+app.get('/api/hackathons/:id/leaderboard', async (req, res) => {
+  const hackathon = await prisma.hackathon.findUnique({
+    where: { id: req.params.id },
+    select: { leaderboardData: true, leaderboardPublished: true }
+  });
+  res.json(hackathon);
 });
 
 // ===== Scoring Report =====
@@ -466,9 +520,84 @@ app.get('/api/users', async (req, res) => {
   const { role } = req.query;
   const users = await prisma.user.findMany({
     where: role ? { role: String(role) } : {},
-    select: { id: true, email: true, name: true, role: true, avatarUrl: true }
+    select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true }
   });
   res.json(users);
+});
+
+app.post('/api/users', async (req, res) => {
+  try {
+    const { email, name, password, role } = req.body;
+    if (!email || !name || !password) {
+      return res.status(400).json({ error: 'Email, name, and password are required' });
+    }
+    // Check if user already exists
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      return res.status(409).json({ error: 'A user with this email already exists' });
+    }
+    const hashedPassword = bcrypt.hashSync(password, 10);
+    const user = await prisma.user.create({
+      data: {
+        email,
+        name,
+        password: hashedPassword,
+        role: role || 'judge',
+      },
+      select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true }
+    });
+    res.json(user);
+  } catch (error) {
+    console.error('Create user error:', error);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    // Delete scores, then assignments, then user
+    await prisma.score.deleteMany({
+      where: { assignment: { judgeId: req.params.id } }
+    });
+    await prisma.assignment.deleteMany({
+      where: { judgeId: req.params.id }
+    });
+    await prisma.user.delete({
+      where: { id: req.params.id }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// ===== Auth =====
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const valid = bcrypt.compareSync(password, user.password);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // Return user without password
+    const { password: _, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed' });
+  }
 });
 
 app.listen(port, () => {

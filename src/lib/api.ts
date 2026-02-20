@@ -1,7 +1,7 @@
 import axios from 'axios'
-import { Hackathon, Project, Assignment } from './mock-data'
+import { Hackathon, Project, Assignment, User } from './types'
 
-const API_URL = import.meta.env.VITE_API_URL || '/api'
+const API_URL = '/api'
 
 export const api = {
   // Hackathons
@@ -90,7 +90,19 @@ export const api = {
       maxPossible: number;
       judgeCount: number;
       submitterName: string;
+      rank?: number;
+      award?: string;
     }[]>(`${API_URL}/leaderboard`, { params })
+    return res.data
+  },
+
+  getLeaderboardConfig: async (hackathonId: string) => {
+    const res = await axios.get<{ leaderboardData: { projectId: string; rank: number; award: string }[] | null; leaderboardPublished: boolean }>(`${API_URL}/hackathons/${hackathonId}/leaderboard`)
+    return res.data
+  },
+
+  saveLeaderboard: async (hackathonId: string, data: { entries: { projectId: string; rank: number; award: string }[]; published: boolean }) => {
+    const res = await axios.put(`${API_URL}/hackathons/${hackathonId}/leaderboard`, data)
     return res.data
   },
 
@@ -113,7 +125,21 @@ export const api = {
 
   // Users
   getUsers: async (params?: { role?: string }) => {
-    const res = await axios.get<{ id: string; email: string; name: string; role: string; avatarUrl?: string }[]>(`${API_URL}/users`, { params })
+    const res = await axios.get<{ id: string; email: string; name: string; role: string; avatarUrl?: string; createdAt?: string }[]>(`${API_URL}/users`, { params })
+    return res.data
+  },
+  createUser: async (data: { email: string; name: string; password: string; role?: string }) => {
+    const res = await axios.post<{ id: string; email: string; name: string; role: string }>(`${API_URL}/users`, data)
+    return res.data
+  },
+  deleteUser: async (id: string) => {
+    const res = await axios.delete(`${API_URL}/users/${id}`)
+    return res.data
+  },
+
+  // Auth
+  login: async (email: string, password: string): Promise<User> => {
+    const res = await axios.post<User>(`${API_URL}/auth/login`, { email, password })
     return res.data
   },
 }

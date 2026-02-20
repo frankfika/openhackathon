@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Plus, Trash2, GripVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { SubmissionField } from '@/lib/mock-data'
+import { SubmissionField } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { useTranslation } from 'react-i18next'
 
@@ -23,6 +23,10 @@ interface SubmissionConfigBuilderProps {
 export function SubmissionConfigBuilder({ initialSchema = [], onSave }: SubmissionConfigBuilderProps) {
   const { t } = useTranslation()
   const [fields, setFields] = useState<SubmissionField[]>(initialSchema)
+
+  useEffect(() => {
+    setFields(initialSchema)
+  }, [initialSchema])
 
   const addField = () => {
     const newField: SubmissionField = {
@@ -50,7 +54,10 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium">{t('submission.config_title', 'Submission Form Configuration')}</h3>
+        <div>
+          <h3 className="text-lg font-medium">{t('submission.config_title', 'Submission Form Configuration')}</h3>
+          <p className="text-sm text-muted-foreground mt-1">{t('submission.config_desc', 'Configure the fields participants see when submitting a project.')}</p>
+        </div>
         <Button onClick={addField} size="sm" className="gap-2">
           <Plus className="h-4 w-4" />
           {t('submission.add_field', 'Add Field')}
@@ -59,17 +66,18 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
 
       <div className="space-y-4">
         {fields.map((field, index) => (
-          <Card key={field.id} className="relative">
+          <Card key={field.id}>
             <CardContent className="pt-6">
               <div className="grid gap-4 md:grid-cols-12 items-start">
-                <div className="md:col-span-1 flex justify-center pt-3 cursor-move text-muted-foreground">
+                <div className="md:col-span-1 flex flex-col items-center gap-1 pt-3 cursor-move text-muted-foreground">
                   <GripVertical className="h-5 w-5" />
+                  <span className="text-[10px] text-muted-foreground/60 font-mono">{field.id}</span>
                 </div>
-                
+
                 <div className="md:col-span-4 space-y-2">
                   <Label>{t('submission.field_label', 'Label')}</Label>
-                  <Input 
-                    value={field.label} 
+                  <Input
+                    value={field.label}
                     onChange={(e) => updateField(index, { label: e.target.value })}
                     placeholder="Field Label"
                   />
@@ -77,8 +85,8 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
 
                 <div className="md:col-span-3 space-y-2">
                   <Label>{t('submission.field_type', 'Type')}</Label>
-                  <Select 
-                    value={field.type} 
+                  <Select
+                    value={field.type}
                     onValueChange={(value) => updateField(index, { type: value as SubmissionField['type'] })}
                   >
                     <SelectTrigger>
@@ -94,8 +102,8 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
 
                 <div className="md:col-span-3 space-y-2">
                   <Label>{t('submission.placeholder', 'Placeholder')}</Label>
-                  <Input 
-                    value={field.placeholder || ''} 
+                  <Input
+                    value={field.placeholder || ''}
                     onChange={(e) => updateField(index, { placeholder: e.target.value })}
                     placeholder="Placeholder text"
                   />
@@ -104,14 +112,14 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
                 <div className="md:col-span-1 flex flex-col items-center gap-4 pt-1">
                   <div className="flex flex-col items-center gap-1.5">
                     <Label className="text-xs text-muted-foreground">{t('submission.required', 'Req.')}</Label>
-                    <Switch 
+                    <Switch
                       checked={field.required}
                       onCheckedChange={(checked) => updateField(index, { required: checked })}
                     />
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className="text-destructive hover:text-destructive/90"
                     onClick={() => removeField(index)}
                   >

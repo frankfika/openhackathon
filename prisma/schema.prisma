@@ -34,6 +34,12 @@ model Hackathon {
   status        String   // draft, upcoming, active, judging, completed
   coverGradient String
   submissionSchema Json?  // Stores the form configuration
+  leaderboardData Json?   // Admin-curated ranking: [{ projectId, rank, award }]
+  leaderboardPublished Boolean @default(false)
+  rulesUrl      String?
+  detailsUrl    String?
+  gitbookUrl    String?
+  prizePool     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -90,6 +96,7 @@ model Project {
   demoUrl     String?
   repoUrl     String?
   submissionData Json?  // Stores the actual form submission data
+  status      String?  // draft, submitted
 
   votes       Int      @default(0)
 

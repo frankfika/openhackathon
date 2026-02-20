@@ -1,4 +1,4 @@
-import { Assignment } from './mock-data'
+import { Assignment } from './types'
 
 /**
  * Calculate the average score for a project from all completed assignments

@@ -36,7 +36,6 @@ export function Layout() {
                 { to: '/', label: t('nav.home', 'Home'), exact: true },
                 { to: '/docs', label: t('nav.docs', 'Docs') },
                 { to: '/submit', label: t('nav.submit', 'Submit Project') },
-                { to: '/projects', label: t('nav.projects', 'Projects') },
                 { to: '/leaderboard', label: t('nav.leaderboard', 'Leaderboard') },
               ].map((link) => {
                 const active = link.exact
@@ -65,17 +64,17 @@ export function Layout() {
               <>
                 <Link to={user.role === 'admin' ? '/dashboard' : '/judge'}>
                   <Button variant="default" size="sm" className="rounded-full">
-                    Dashboard
+                    {t('nav.dashboard')}
                   </Button>
                 </Link>
                 <Button variant="ghost" size="sm" className="rounded-full" onClick={logout}>
-                  Log out
+                  {t('nav.logout')}
                 </Button>
               </>
             ) : (
               <Link to="/login">
                 <Button variant="ghost" size="sm" className="rounded-full font-medium">
-                  Log in
+                  {t('nav.login')}
                 </Button>
               </Link>
             )}
@@ -112,9 +111,6 @@ function FooterSection() {
           <nav className="flex items-center gap-6 text-sm text-muted-foreground">
             <Link to="/docs" className="hover:text-foreground transition-colors">
               {t('nav.docs', 'Docs')}
-            </Link>
-            <Link to="/projects" className="hover:text-foreground transition-colors">
-              {t('landing.footer.projects')}
             </Link>
             {h.rulesUrl && (
               <a href={h.rulesUrl} target="_blank" rel="noreferrer" className="hover:text-foreground transition-colors">

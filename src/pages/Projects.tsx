@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { Project, Assignment } from '@/lib/mock-data'
+import { Project, Assignment } from '@/lib/types'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { useTranslation } from 'react-i18next'
 import { 
@@ -54,7 +54,7 @@ export function Projects() {
   // Fetch projects
   const { data: projects, isLoading, isError } = useQuery({
     queryKey: ['projects', activeHackathon.id],
-    queryFn: () => api.getProjects(activeHackathon.id),
+    queryFn: () => api.getProjects({ hackathonId: activeHackathon.id }),
     enabled: !!activeHackathon.id
   })
 
@@ -118,11 +118,11 @@ export function Projects() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Project Name</TableHead>
-              <TableHead>Submitter</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Score</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>{t('projects.project_name')}</TableHead>
+              <TableHead>{t('projects.submitter')}</TableHead>
+              <TableHead>{t('projects.status')}</TableHead>
+              <TableHead>{t('projects.score')}</TableHead>
+              <TableHead className="text-right">{t('projects.actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -131,20 +131,20 @@ export function Projects() {
                 <TableCell colSpan={5} className="h-24 text-center">
                   <div className="flex justify-center items-center">
                     <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                    Loading projects...
+                    {t('projects.loading')}
                   </div>
                 </TableCell>
               </TableRow>
             ) : isError ? (
                <TableRow>
                 <TableCell colSpan={5} className="h-24 text-center text-red-500">
-                  Error loading projects
+                  {t('projects.load_error')}
                 </TableCell>
               </TableRow>
             ) : filteredProjects?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="h-24 text-center">
-                  No projects found.
+                  {t('projects.no_projects')}
                 </TableCell>
               </TableRow>
             ) : (
@@ -158,13 +158,13 @@ export function Projects() {
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col">
-                      <span>{project.submitterName || 'Anonymous'}</span>
+                      <span>{project.submitterName || t('common.anonymous')}</span>
                       <span className="text-xs text-muted-foreground">{project.submitterEmail}</span>
                     </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant={project.status === 'submitted' ? 'default' : 'secondary'}>
-                      {project.status || 'Draft'}
+                      {project.status || t('hackathons.status.draft')}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -177,14 +177,14 @@ export function Projects() {
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">Open menu</span>
+                          <span className="sr-only">{t('common.open_menu')}</span>
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => navigate(`/dashboard/judging/${project.id}`)}>
                           <Eye className="mr-2 h-4 w-4" />
-                          View Details
+                          {t('common.view_details')}
                         </DropdownMenuItem>
                         {/* 
                         <DropdownMenuItem onClick={() => console.log('Edit', project.id)}>
@@ -197,7 +197,7 @@ export function Projects() {
                           className="text-red-600 focus:text-red-600"
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
+                          {t('common.delete')}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -212,15 +212,14 @@ export function Projects() {
       <Dialog open={!!projectToDelete} onOpenChange={(open) => !open && setProjectToDelete(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Are you absolutely sure?</DialogTitle>
+            <DialogTitle>{t('projects.delete_confirm_title')}</DialogTitle>
             <DialogDescription>
-              This action cannot be undone. This will permanently delete the project
-              "{projectToDelete?.title}" and remove all associated data.
+              {t('projects.delete_confirm_desc', { title: projectToDelete?.title })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setProjectToDelete(null)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button 
               variant="destructive" 
@@ -228,7 +227,7 @@ export function Projects() {
               disabled={deleteMutation.isPending}
             >
               {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete Project
+              {t('projects.delete_project')}
             </Button>
           </DialogFooter>
         </DialogContent>

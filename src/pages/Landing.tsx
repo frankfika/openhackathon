@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useActiveHackathon } from '@/lib/active-hackathon'
-import { projects } from '@/lib/mock-data'
+import { api } from '@/lib/api'
 
 // ─── Animation variants ──────────────────────────────────────────────
 const fadeUp = {
@@ -41,8 +41,17 @@ function HeroSection() {
   const { activeHackathon: h } = useActiveHackathon()
 
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0 })
+  const [projectCount, setProjectCount] = useState(0)
   const isEnded = h.status === 'completed'
   const targetDate = h.status === 'active' ? h.endAt : h.startAt
+
+  useEffect(() => {
+    if (h.id) {
+      api.getProjects({ hackathonId: h.id }).then(projects => {
+        setProjectCount(projects.length)
+      })
+    }
+  }, [h.id])
 
   useEffect(() => {
     function calc() {
@@ -59,12 +68,6 @@ function HeroSection() {
     const id = setInterval(() => setCountdown(calc()), 60000)
     return () => clearInterval(id)
   }, [targetDate])
-
-  // Stats: project count + prize pool
-  const projectCount = useMemo(
-    () => projects.filter((p) => p.hackathonId === h.id && p.status === 'submitted').length,
-    [h.id]
-  )
 
   return (
     <section className="relative flex flex-1 items-center justify-center overflow-hidden py-8 md:py-0">
@@ -103,7 +106,7 @@ function HeroSection() {
                 statusColor[h.status] || statusColor.draft
               )}
             >
-              {t(`landing.status.${h.status}`)}
+              {t('landing.status.' + h.status, h.status)}
             </span>
           </motion.div>
 
@@ -191,9 +194,7 @@ function HeroSection() {
                 ))}
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                {h.status === 'active'
-                  ? t('landing.hero.countdown_to_submission')
-                  : t('landing.hero.countdown_to_start')}
+                {h.status === 'active' ? t('landing.hero.countdown_to_submission') : t('landing.hero.countdown_to_start')}
               </p>
             </motion.div>
           )}
@@ -213,7 +214,7 @@ function HeroSection() {
                 size="lg"
                 className="h-12 rounded-full bg-blue-600 px-8 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700"
               >
-                {t('landing.hero.submit_project') || 'Submit Project'}
+                {t('landing.hero.submit_project')}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>

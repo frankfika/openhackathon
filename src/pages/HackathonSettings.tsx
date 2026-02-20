@@ -8,19 +8,34 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
 import { SubmissionConfigBuilder } from '@/components/SubmissionConfigBuilder'
 import { ScoringCriteriaBuilder } from '@/components/ScoringCriteriaBuilder'
-import { SubmissionField, ScoringCriterion } from '@/lib/mock-data'
+import { SubmissionField, ScoringCriterion } from '@/lib/types'
 import { toast } from 'sonner'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Check, Bell, Puzzle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+
+const GRADIENT_PRESETS = [
+  { name: 'Violet Fusion', value: 'from-violet-600/20 via-fuchsia-500/10 to-indigo-600/20' },
+  { name: 'Ocean Breeze', value: 'from-blue-500/20 via-sky-500/10 to-indigo-500/20' },
+  { name: 'Emerald Teal', value: 'from-emerald-500/20 via-teal-500/10 to-cyan-500/20' },
+  { name: 'Sunset Glow', value: 'from-orange-500/20 via-amber-500/10 to-yellow-500/20' },
+  { name: 'Rose Garden', value: 'from-rose-500/20 via-pink-500/10 to-red-500/20' },
+  { name: 'Forest Green', value: 'from-green-500/20 via-lime-500/10 to-emerald-600/20' },
+  { name: 'Slate Storm', value: 'from-slate-600/20 via-gray-500/10 to-zinc-600/20' },
+  { name: 'Purple Haze', value: 'from-purple-600/20 via-violet-500/10 to-fuchsia-500/20' },
+  { name: 'Coral Reef', value: 'from-red-400/20 via-orange-400/10 to-pink-500/20' },
+  { name: 'Midnight Blue', value: 'from-blue-800/20 via-indigo-700/10 to-slate-800/20' },
+]
 
 const hackathonSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   tagline: z.string().min(1, 'Tagline is required'),
   city: z.string().optional(),
+  prizePool: z.string().max(50).optional(),
   startAt: z.string(),
   endAt: z.string(),
   gitbookUrl: z.string().url().optional().or(z.literal('')),
@@ -43,12 +58,17 @@ export function HackathonSettings() {
 
   const [submissionSchema, setSubmissionSchema] = useState<SubmissionField[]>([])
   const [scoringCriteria, setScoringCriteria] = useState<ScoringCriterion[]>([])
+  const [coverGradient, setCoverGradient] = useState('')
 
-  // Update local state when hackathon data loads
+  // Update local state when hackathon data loads — no defaults, use backend data as-is
   useEffect(() => {
     if (hackathon) {
-      setSubmissionSchema(hackathon.submissionSchema?.fields || [])
+      const fields = Array.isArray(hackathon.submissionSchema)
+        ? hackathon.submissionSchema
+        : hackathon.submissionSchema?.fields || []
+      setSubmissionSchema(fields)
       setScoringCriteria(hackathon.scoringCriteria || [])
+      setCoverGradient(hackathon.coverGradient || '')
     }
   }, [hackathon])
 
@@ -63,6 +83,7 @@ export function HackathonSettings() {
       title: '',
       tagline: '',
       city: '',
+      prizePool: '',
       startAt: '',
       endAt: '',
       gitbookUrl: '',
@@ -76,6 +97,7 @@ export function HackathonSettings() {
         title: hackathon.title,
         tagline: hackathon.tagline,
         city: hackathon.city || '',
+        prizePool: hackathon.prizePool || '',
         startAt: hackathon.startAt ? new Date(hackathon.startAt).toISOString().split('T')[0] : '',
         endAt: hackathon.endAt ? new Date(hackathon.endAt).toISOString().split('T')[0] : '',
         gitbookUrl: hackathon.gitbookUrl || '',
@@ -89,6 +111,7 @@ export function HackathonSettings() {
       if (!id) throw new Error('No hackathon ID')
       return api.updateHackathon(id, {
         ...data,
+        coverGradient,
         submissionSchema: { fields: submissionSchema },
         scoringCriteria,
       })
@@ -96,6 +119,7 @@ export function HackathonSettings() {
     onSuccess: () => {
       toast.success(t('settings.saved', 'Settings saved successfully'))
       queryClient.invalidateQueries({ queryKey: ['hackathon', id] })
+      queryClient.invalidateQueries({ queryKey: ['hackathons'] })
     },
     onError: () => {
       toast.error(t('settings.save_error', 'Failed to save settings'))
@@ -131,7 +155,7 @@ export function HackathonSettings() {
   }
 
   if (!hackathon) {
-    return <div>Hackathon not found</div>
+    return <div>{t('settings.hackathon_not_found', 'Hackathon not found')}</div>
   }
 
   return (
@@ -148,10 +172,18 @@ export function HackathonSettings() {
       </div>
 
       <Tabs defaultValue="general">
-        <TabsList className="grid w-full grid-cols-3 mb-8">
-          <TabsTrigger value="general">{t('settings.general', 'General Info')}</TabsTrigger>
-          <TabsTrigger value="submission">{t('settings.submission', 'Submission Form')}</TabsTrigger>
-          <TabsTrigger value="scoring">{t('settings.scoring', 'Scoring Criteria')}</TabsTrigger>
+        <TabsList className="flex flex-wrap w-full mb-8 h-auto gap-1 p-1">
+          <TabsTrigger value="general" className="flex-1 min-w-[100px]">{t('settings.general', 'General Info')}</TabsTrigger>
+          <TabsTrigger value="submission" className="flex-1 min-w-[100px]">{t('settings.submission', 'Submission Form')}</TabsTrigger>
+          <TabsTrigger value="scoring" className="flex-1 min-w-[100px]">{t('settings.scoring', 'Scoring Criteria')}</TabsTrigger>
+          <TabsTrigger value="notifications" className="flex-1 min-w-[100px] gap-1">
+            <Bell className="h-3.5 w-3.5" />
+            {t('settings.notifications', 'Notifications')}
+          </TabsTrigger>
+          <TabsTrigger value="integrations" className="flex-1 min-w-[100px] gap-1">
+            <Puzzle className="h-3.5 w-3.5" />
+            {t('settings.integrations', 'Integrations')}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -191,10 +223,45 @@ export function HackathonSettings() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="prizePool">{t('hackathons.prize_pool', 'Prize Pool')}</Label>
+                  <Input id="prizePool" placeholder={t('hackathons.prize_pool_placeholder', 'e.g. $50,000+')} {...register('prizePool')} />
+                  <p className="text-xs text-muted-foreground">{t('hackathons.prize_pool_desc', 'Enter the total prize amount or rewards description. Leave empty to hide.')}</p>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="gitbookUrl">{t('settings.gitbook_url', 'GitBook URL')}</Label>
                   <Input id="gitbookUrl" type="url" placeholder="https://docs.example.com" {...register('gitbookUrl')} />
                   <p className="text-xs text-muted-foreground">{t('settings.gitbook_url_desc', 'Embed a GitBook page on the landing page for event details.')}</p>
                   {errors.gitbookUrl && <p className="text-sm text-destructive">{errors.gitbookUrl.message as string}</p>}
+                </div>
+
+                <div className="space-y-3">
+                  <Label>{t('settings.cover_gradient', 'Cover Gradient')}</Label>
+                  <p className="text-xs text-muted-foreground">{t('settings.cover_gradient_desc', 'Choose a gradient theme for your hackathon cover.')}</p>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                    {GRADIENT_PRESETS.map((preset) => (
+                      <button
+                        key={preset.value}
+                        type="button"
+                        onClick={() => setCoverGradient(preset.value)}
+                        className={`relative h-16 rounded-lg bg-gradient-to-r ${preset.value} border-2 transition-all hover:scale-105 ${
+                          coverGradient === preset.value
+                            ? 'border-primary ring-2 ring-primary/30'
+                            : 'border-transparent hover:border-muted-foreground/30'
+                        }`}
+                        title={preset.name}
+                      >
+                        {coverGradient === preset.value && (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <Check className="h-5 w-5 text-primary" />
+                          </div>
+                        )}
+                        <span className="absolute bottom-0.5 left-0 right-0 text-center text-[10px] text-muted-foreground truncate px-1">
+                          {preset.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="pt-4">
@@ -226,6 +293,46 @@ export function HackathonSettings() {
               onSaveScoringCriteria(criteria)
             }}
           />
+        </TabsContent>
+
+        <TabsContent value="notifications">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" />
+                {t('settings.notifications', 'Notifications')}
+                <Badge variant="secondary" className="text-xs">{t('common.coming_soon', 'Coming Soon')}</Badge>
+              </CardTitle>
+              <CardDescription>{t('settings.notifications_desc', 'Configure email and in-app notifications for your hackathon.')}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
+                <Bell className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                <p className="font-medium">{t('settings.notifications_coming_soon', 'Email notifications coming soon')}</p>
+                <p className="text-sm mt-1">{t('settings.notifications_coming_soon_desc', 'Notify judges of new assignments, remind participants of deadlines, and send automated updates.')}</p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="integrations">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Puzzle className="h-5 w-5" />
+                {t('settings.integrations', 'Integrations')}
+                <Badge variant="secondary" className="text-xs">{t('common.coming_soon', 'Coming Soon')}</Badge>
+              </CardTitle>
+              <CardDescription>{t('settings.integrations_desc', 'Connect third-party tools to enhance your hackathon.')}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
+                <Puzzle className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                <p className="font-medium">{t('settings.integrations_coming_soon', 'GitHub, Slack integrations coming soon')}</p>
+                <p className="text-sm mt-1">{t('settings.integrations_coming_soon_desc', 'Auto-import projects from GitHub repos, send notifications to Slack channels, and more.')}</p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

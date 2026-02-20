@@ -113,8 +113,11 @@ export function Judging() {
                   variant="outline"
                   className="rounded-full"
                   onClick={() => {
-                    const path = user?.role === 'judge' ? `/judge/review/${a.id}` : `/dashboard/judging/${a.id}`
-                    navigate(path)
+                    // Navigate based on user role
+                    const reviewPath = user?.role === 'judge'
+                      ? `/judge/review/${a.id}`
+                      : `/dashboard/judging/${a.id}`
+                    navigate(reviewPath)
                   }}
                 >
                   {t('judging.open_review')}

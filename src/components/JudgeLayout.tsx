@@ -1,8 +1,10 @@
 import { Outlet, Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../lib/auth'
 import { LogOut, ClipboardList } from 'lucide-react'
 
 export function JudgeLayout() {
+  const { t } = useTranslation()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
 
@@ -27,7 +29,7 @@ export function JudgeLayout() {
                   className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900"
                 >
                   <ClipboardList className="w-4 h-4" />
-                  My Tasks
+                  {t('nav.my_tasks')}
                 </Link>
               </nav>
             </div>
@@ -35,14 +37,14 @@ export function JudgeLayout() {
             <div className="flex items-center gap-4">
               <div className="text-sm">
                 <div className="font-medium text-gray-900">{user?.name}</div>
-                <div className="text-gray-500">Judge</div>
+                <div className="text-gray-500">{t('auth.judge')}</div>
               </div>
               <button
                 onClick={handleLogout}
                 className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900"
               >
                 <LogOut className="w-4 h-4" />
-                Logout
+                {t('nav.logout')}
               </button>
             </div>
           </div>

@@ -78,7 +78,7 @@ export function ScoringReport() {
     return projectScores.reduce((sum, r) => sum + (r.totalScore || 0), 0) / projectScores.length
   }
 
-  // Download CSV
+  // {t('reports.download_csv')}
   const downloadCSV = () => {
     const headers = ['Rank', 'Project', 'Submitter', ...judges.map(j => j.name), 'Average Score']
 
@@ -128,12 +128,12 @@ export function ScoringReport() {
             {t('reports.title', 'Scoring Report')}
           </h1>
           <p className="text-sm md:text-base text-muted-foreground">
-            View detailed scoring data and download reports
+            {t('reports.subtitle')}
           </p>
         </div>
         <Button onClick={downloadCSV}>
           <Download className="mr-2 h-4 w-4" />
-          Download CSV
+          {t('reports.download_csv')}
         </Button>
       </div>
 
@@ -141,49 +141,49 @@ export function ScoringReport() {
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="border-0 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Projects</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('reports.total_projects')}</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalProjects}</div>
             <p className="text-xs text-muted-foreground">
-              {stats.scoredProjects} scored
+              {t('reports.scored_count', { count: stats.scoredProjects })}
             </p>
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Average Score</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('reports.avg_score')}</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.avgScore}</div>
-            <p className="text-xs text-muted-foreground">out of 100</p>
+            <p className="text-xs text-muted-foreground">{t('reports.out_of', { max: 100 })}</p>
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('reports.completion_rate')}</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.completionRate}%</div>
             <p className="text-xs text-muted-foreground">
-              assignments completed
+              {t('reports.assignments_completed')}
             </p>
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Judges</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('reports.judges')}</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{judges.length}</div>
-            <p className="text-xs text-muted-foreground">evaluating projects</p>
+            <p className="text-xs text-muted-foreground">{t('reports.evaluating')}</p>
           </CardContent>
         </Card>
       </div>
@@ -191,9 +191,9 @@ export function ScoringReport() {
       {/* Scoring Matrix Table */}
       <Card className="border-0 shadow-sm">
         <CardHeader>
-          <CardTitle>Scoring Matrix</CardTitle>
+          <CardTitle>{t('reports.scoring_matrix')}</CardTitle>
           <CardDescription>
-            Detailed breakdown of scores by project and judge
+            {t('reports.scoring_matrix_desc')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -201,16 +201,16 @@ export function ScoringReport() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-12">Rank</TableHead>
-                  <TableHead className="min-w-[200px]">Project</TableHead>
-                  <TableHead className="min-w-[150px]">Submitter</TableHead>
+                  <TableHead className="w-12">{t('reports.rank')}</TableHead>
+                  <TableHead className="min-w-[200px]">{t('reports.project')}</TableHead>
+                  <TableHead className="min-w-[150px]">{t('reports.submitter')}</TableHead>
                   {judges.map(judge => (
                     <TableHead key={judge.id} className="text-center min-w-[100px]">
                       {judge.name}
                     </TableHead>
                   ))}
                   <TableHead className="text-center font-semibold min-w-[100px]">
-                    Average
+                    {t('reports.average')}
                   </TableHead>
                 </TableRow>
               </TableHeader>

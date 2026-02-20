@@ -20,14 +20,15 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 import { ThemeLanguageSwitcher } from '@/components/ThemeLanguageSwitcher'
-import { HackathonSwitcher } from '@/components/HackathonSwitcher'
 import { useAuth } from '@/lib/auth';
+import { useActiveHackathon } from '@/lib/active-hackathon';
 import { siteConfig } from '@/lib/site-config';
 import { useTranslation } from 'react-i18next'
 
 export function DashboardLayout() {
   const { t } = useTranslation()
   const { user } = useAuth()
+  const { activeHackathon } = useActiveHackathon()
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -43,20 +44,23 @@ export function DashboardLayout() {
   }
 
   const navigation = React.useMemo(() => {
-    // Dashboard is admin-only now
     const allNav = [
-      { name: t('nav.dashboard'), href: '/dashboard', icon: LayoutDashboard },
-      { name: t('nav.hackathons'), href: '/dashboard/hackathons', icon: Trophy },
-      { name: t('nav.projects'), href: '/dashboard/projects', icon: FolderGit2 },
-      { name: t('nav.judging'), href: '/dashboard/judging', icon: CheckSquare },
-      { name: t('nav.assignments', 'Assignments'), href: '/dashboard/assignments', icon: Users },
-      { name: t('nav.reports', 'Reports'), href: '/dashboard/reports', icon: FileText },
-      { name: t('nav.leaderboard', 'Leaderboard'), href: '/dashboard/leaderboard', icon: BarChart3 },
-      { name: t('settings.title'), href: '/dashboard/settings', icon: Settings },
+      { name: t('nav.dashboard'), href: '/dashboard', icon: LayoutDashboard, adminOnly: false },
+      { name: t('nav.hackathons'), href: activeHackathon.id ? `/dashboard/hackathons/${activeHackathon.id}/settings` : '/dashboard/hackathons', icon: Trophy, adminOnly: true },
+      { name: t('nav.projects'), href: '/dashboard/projects', icon: FolderGit2, adminOnly: false },
+      { name: t('nav.judging'), href: '/dashboard/judging', icon: CheckSquare, judgeOnly: true },
+      { name: t('nav.assignments', 'Assignments'), href: '/dashboard/assignments', icon: Users, adminOnly: true },
+      { name: t('nav.reports', 'Reports'), href: '/dashboard/reports', icon: FileText, adminOnly: true },
+      { name: t('nav.leaderboard', 'Leaderboard'), href: '/dashboard/leaderboard', icon: BarChart3, adminOnly: false },
+      { name: t('settings.title'), href: '/dashboard/settings', icon: Settings, adminOnly: true },
     ];
 
-    return allNav
-  }, [t])
+    return allNav.filter(item => {
+      if (item.judgeOnly) return !isAdmin
+      if (item.adminOnly) return isAdmin
+      return true
+    })
+  }, [t, activeHackathon.id])
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -96,22 +100,16 @@ export function DashboardLayout() {
             </button>
           </div>
 
-          {isAdmin && (
-            <div className="px-4 pt-4">
-              <HackathonSwitcher />
-            </div>
-          )}
-
           <nav className="space-y-1 px-3 py-4">
           {navigation.map((item) => {
-            const isActive = location.pathname === item.href;
+            const isActive = location.pathname === item.href || location.pathname.startsWith(item.href + '/');
             return (
               <Link
                 key={item.name}
                 to={item.href}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted/50",
-                  item.href === location.pathname
+                  isActive
                     ? "bg-muted text-foreground"
                     : "text-muted-foreground"
                 )}

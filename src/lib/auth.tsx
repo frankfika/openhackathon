@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { User, users, UserRole } from './mock-data'
+import { User } from './types'
+import { api } from './api'
 
 type AuthContextType = {
   user: User | null
-  login: (role: UserRole) => void
+  login: (email: string, password: string) => Promise<void>
   logout: () => void
   isLoading: boolean
+  error: string | null
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -13,6 +15,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     // Check local storage for persisted user
@@ -27,11 +30,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false)
   }, [])
 
-  const login = (role: UserRole) => {
-    // Find the first user with the matching role
-    const foundUser = users.find((u) => u.role === role) || users[0]
-    setUser(foundUser)
-    localStorage.setItem('openhackathon_user', JSON.stringify(foundUser))
+  const login = async (email: string, password: string) => {
+    setError(null)
+    setIsLoading(true)
+    try {
+      const user = await api.login(email, password)
+      setUser(user)
+      localStorage.setItem('openhackathon_user', JSON.stringify(user))
+    } catch (err: any) {
+      const message = err.response?.data?.error || 'Login failed. Please try again.'
+      setError(message)
+      throw new Error(message)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const logout = () => {
@@ -40,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, login, logout, isLoading, error }}>
       {children}
     </AuthContext.Provider>
   )

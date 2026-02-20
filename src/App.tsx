@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Layout } from './components/Layout';
 import { AuthProvider } from './lib/auth';
 import { ActiveHackathonProvider } from './lib/active-hackathon';
@@ -24,11 +25,14 @@ import { Landing } from './pages/Landing'
 import { Docs } from './pages/Docs'
 import { Settings } from './pages/Settings';
 
+const queryClient = new QueryClient();
+
 function App() {
   return (
-    <AuthProvider>
-      <ActiveHackathonProvider>
-        <BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <ActiveHackathonProvider>
+          <BrowserRouter>
           <Toaster position="top-center" richColors />
           <PoweredByBadge />
           <Routes>
@@ -82,6 +86,7 @@ function App() {
         </BrowserRouter>
       </ActiveHackathonProvider>
     </AuthProvider>
+    </QueryClientProvider>
   );
 }
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ArrowRight, CheckCircle2, Clock, Sparkles, Loader2 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
@@ -99,7 +100,7 @@ export function JudgeDashboard() {
                           {project?.oneLiner}
                         </div>
                       </div>
-                      <Button size="sm" onClick={() => navigate(`/dashboard/judging/${assignment.id}`)}>
+                      <Button size="sm" onClick={() => navigate(`/judge/review/${assignment.id}`)}>
                         {t('dashboard.judge.start', 'Start Review')}
                         <ArrowRight className="ml-2 h-4 w-4" />
                       </Button>
@@ -116,6 +117,7 @@ export function JudgeDashboard() {
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-indigo-500" />
               {t('dashboard.judge.ai_copilot', 'AI Copilot')}
+              <Badge variant="secondary" className="text-xs">{t('common.coming_soon', 'Coming Soon')}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -123,7 +125,7 @@ export function JudgeDashboard() {
               {t('dashboard.judge.ai_desc', 'Use the scoring rubric to ensure fair and consistent evaluation of all projects.')}
             </p>
             <div className="bg-background/50 p-3 rounded-lg text-xs border border-indigo-100 dark:border-indigo-900">
-              <strong>Pro Tip:</strong> Click "Start Review" to access the detailed scoring interface.
+              <strong>{t('dashboard.judge.ai_copilot_tip_title', 'Pro Tip:')}</strong> {t('dashboard.judge.ai_copilot_tip', 'Click "Start Review" to access the detailed scoring interface.')}
             </div>
           </CardContent>
         </Card>

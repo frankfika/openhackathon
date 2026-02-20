@@ -96,7 +96,7 @@ export function AdminDashboard() {
             <BarChart3 className="mr-2 h-4 w-4" />
             {t('nav.leaderboard', 'Leaderboard')}
           </Button>
-          <Button variant="outline" className="justify-start" onClick={() => navigate(`/dashboard/hackathons/${activeHackathon.id}/settings`)}>
+          <Button variant="default" className="justify-start" onClick={() => navigate(`/dashboard/hackathons/${activeHackathon.id}/settings`)}>
             <SettingsIcon className="mr-2 h-4 w-4" />
             {t('dashboard.hackathon_settings', 'Hackathon Settings')}
           </Button>

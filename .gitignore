@@ -28,3 +28,16 @@ dist-ssr
 .vite
 
 /generated/prisma
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# Local HTTPS certificates
+*.pem
+
+# Package manager lock files (using npm)
+pnpm-lock.yaml
+yarn.lock

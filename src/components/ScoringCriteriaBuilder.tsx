@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { ScoringCriterion } from '@/lib/mock-data'
+import { ScoringCriterion } from '@/lib/types'
 import { useTranslation } from 'react-i18next'
 
 interface ScoringCriteriaBuilderProps {
