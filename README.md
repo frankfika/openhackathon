@@ -9,7 +9,7 @@
 ![Stack](https://img.shields.io/badge/Stack-React%20%7C%20Express%20%7C%20PostgreSQL-1f6feb?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
-[核心能力](#-核心能力) • [界面截图](#-界面截图) • [快速开始](#-快速开始) • [部署](#-部署) • [发布](#-发布)
+[核心能力](#-核心能力) • [界面截图](#-界面截图) • [体验基线](#-体验基线) • [快速开始](#-快速开始) • [部署](#-部署) • [发布](#-发布)
 
 __简体中文__ | [English](./README_EN.md)
 
@@ -47,6 +47,38 @@ OpenHackathon 是一个面向黑客松主办方、评委与参赛团队的全流
 
 ![Promotions](./docs/assets/promotions.png)
 
+### 5. 赛事详情统一入口（规则/文档去重）
+- 前台统一使用「赛事详情」入口，不再拆分成重复的“规则”和“文档”菜单。
+- 文档来源按优先级自动回退：`gitbookUrl` → `rulesUrl` → `detailsUrl`。
+- 后台活动设置支持三种链接配置，便于主办方逐步完善内容。
+
+### 6. 公开提交回执与邮件通知
+- `/submit` 页面仅强制邮箱，提交后后端自动生成回执号（如 `SUB-20260228-ABC123`）。
+- 后端可通过 SMTP 自动发送回执邮件，并在回执中记录发送状态（`emailSent`/失败原因/最后尝试时间）。
+- 支持管理员手动重发回执：`POST /api/projects/:id/receipt/resend`。
+
+## 📧 提交回执邮件配置
+在 `.env` 中配置以下变量（完整示例见 `.env.example`）：
+
+```bash
+SUBMISSION_RECEIPT_PREFIX=SUB
+SUBMISSION_EMAIL_ENABLED=true
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your_smtp_user
+SMTP_PASS=your_smtp_password
+SUBMISSION_RECEIPT_FROM="OpenHackathon <no-reply@example.com>"
+SUBMISSION_RECEIPT_REPLY_TO=ops@example.com
+SUBMISSION_RECEIPT_SUBJECT="[{{hackathonTitle}}] Submission Receipt {{receiptId}}"
+SUBMISSION_EMAIL_TIMEOUT_MS=10000
+```
+
+说明：
+- `SUBMISSION_EMAIL_ENABLED=false` 时，不会发邮件，但仍会生成回执号并记录 `emailFailureReason=disabled`。
+- `SUBMISSION_RECEIPT_SUBJECT` 支持模板变量：`{{hackathonTitle}}`、`{{receiptId}}`、`{{projectTitle}}`。
+- 若 SMTP 短时异常，可在后台调用重发接口补发回执。
+
 ## 🖼️ 界面截图
 | 首页 | 项目页 | 排行榜 |
 |---|---|---|
@@ -55,6 +87,11 @@ OpenHackathon 是一个面向黑客松主办方、评委与参赛团队的全流
 | 评审页 | 设置页 | 晋级管理 |
 |---|---|---|
 | ![Judging](./docs/assets/judging.png) | ![Settings](./docs/assets/settings.png) | ![Promotions](./docs/assets/promotions.png) |
+
+## 🎨 体验基线
+- 首页视觉与 README 截图 `docs/assets/home.png` 对齐，确保线上 UI 风格一致。
+- 管理端与评委端共用同一套玻璃质感组件（按钮、卡片、输入、表格、弹窗、Tabs）。
+- 所有关键列表页（项目、评分报表、晋级、设置）统一为“概览区 + 面板区 + 表格区”的层次结构。
 
 ## 🚀 快速开始
 ### 环境要求

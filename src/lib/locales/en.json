@@ -11,11 +11,27 @@
     "open_menu": "Open menu",
     "select_all": "Select All",
     "more_count": "+{{count}} more",
-    "view_details": "View Details"
+    "view_details": "View Details",
+    "back": "Back",
+    "edit": "Edit",
+    "home": "Back to Home",
+    "overview": "Overview",
+    "save": "Save",
+    "save_changes": "Save Changes",
+    "view_projects": "View All Projects",
+    "theme": "Theme",
+    "language": "Language",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "english": "English",
+    "chinese": "中文",
+    "profile": "Profile",
+    "close": "Close"
   },
   "nav": {
     "home": "Home",
-    "docs": "Docs",
+    "docs": "Event Details",
     "hackathons": "Hackathons",
     "projects": "Projects",
     "leaderboard": "Leaderboard",
@@ -47,7 +63,9 @@
     "logout_success": "Logged out successfully",
     "sign_in_failed": "Failed to sign in",
     "invalid_email": "Invalid email address",
-    "password_min": "Password must be at least 6 characters"
+    "password_min": "Password must be at least 6 characters",
+    "password_required": "Password is required",
+    "role_hint": "Choose your role to continue"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -121,7 +139,7 @@
     "powered_by_text": "Powered By Text",
     "powered_by_url": "Powered By URL",
     "show_powered_by": "Show Powered By Badge",
-    "show_powered_by_desc": "Display the floating powered-by badge on pages.",
+    "show_powered_by_desc": "Display the powered-by branding text in the page footer.",
     "save_branding": "Save Branding",
     "branding_saved": "Branding settings saved",
     "branding_save_failed": "Failed to save branding settings",
@@ -129,8 +147,12 @@
     "saved": "AI configuration saved",
     "saved_desc": "Settings will be used for all AI features in this browser.",
     "hackathon_not_found": "Hackathon not found",
-    "gitbook_url": "GitBook URL",
-    "gitbook_url_desc": "Embed a GitBook page on the Docs tab for event details.",
+    "gitbook_url": "Event Details URL",
+    "gitbook_url_desc": "Set one event details URL (GitBook or rules page) and it will be shown in Event Details.",
+    "rules_url": "Rules URL",
+    "rules_url_desc": "Optional rules page URL used as a fallback source for Event Details.",
+    "details_url": "Additional Details URL",
+    "details_url_desc": "Used when GitBook and rules URLs are not configured.",
     "cover_gradient": "Cover Gradient",
     "cover_gradient_desc": "Choose a gradient theme for your hackathon cover.",
     "notifications": "Notifications",
@@ -160,7 +182,11 @@
     "judge_create_failed": "Failed to create judge",
     "judge_deleted": "Judge account deleted",
     "judge_delete_failed": "Failed to delete judge",
-    "judge_delete_confirm": "Delete judge \"{{name}}\"? This will also remove all their assignments."
+    "judge_delete_confirm": "Delete judge \"{{name}}\"? This will also remove all their assignments.",
+    "hackathon_settings": "Hackathon Settings",
+    "basic_info": "Basic Information",
+    "basic_info_desc": "Manage the core details of your hackathon.",
+    "save_error": "Failed to save settings"
   },
   "hackathons": {
     "title": "Hackathons",
@@ -180,7 +206,11 @@
       "judging": "Judging"
     },
     "status_updated": "Status updated",
-    "status_error": "Failed to update status"
+    "status_error": "Failed to update status",
+    "tagline": "Tagline",
+    "start_date": "Start Date",
+    "end_date": "End Date",
+    "city": "City"
   },
   "projects": {
     "title": "Projects",
@@ -207,7 +237,18 @@
     "delete_confirm_desc": "This action cannot be undone. This will permanently delete the project \"{{title}}\" and remove all associated data.",
     "delete_project": "Delete Project",
     "repository": "Repository",
-    "live_demo": "Live Demo"
+    "live_demo": "Live Demo",
+    "one_liner": "One-liner",
+    "tags": "Tags",
+    "update_success": "Project updated successfully",
+    "update_error": "Failed to update project",
+    "view_scores": "View Scores",
+    "demo_url": "Demo URL",
+    "repo_url": "Repository URL",
+    "status_options": {
+      "draft": "Draft",
+      "submitted": "Submitted"
+    }
   },
   "judging": {
     "title": "Judging",
@@ -354,9 +395,9 @@
     "gitbook": {
       "title": "Event Details",
       "open_external": "Open in new tab",
-      "no_docs": "No documentation configured yet.",
-      "no_docs_title": "No documentation yet",
-      "no_docs_desc": "The organizer has not configured event documentation. Documentation can be created on GitBook and linked in the hackathon settings.",
+      "no_docs": "No event details configured yet.",
+      "no_docs_title": "No event details yet",
+      "no_docs_desc": "The organizer has not configured an event details URL yet. You can use a GitBook or rules page link.",
       "go_gitbook": "Create on GitBook",
       "embed_blocked": "This documentation site cannot be embedded."
     },
@@ -364,6 +405,88 @@
       "projects": "Projects",
       "leaderboard": "Leaderboard",
       "rules": "Rules"
+    },
+    "glance": {
+      "title": "At a Glance"
+    },
+    "quick_actions": {
+      "submit_desc": "Register your work and keep your project profile updated.",
+      "docs_desc": "Read the timeline, rules, and event details in one place.",
+      "leaderboard_desc": "Track rankings and judging progress in real time."
+    },
+    "criteria": {
+      "description": "All judges score with the same rubric for fair comparison.",
+      "empty": "Scoring criteria will appear here after configuration.",
+      "points": "{{count}} pts",
+      "leaderboard_desc": "Promotion decisions and rankings are based on completed judging rounds."
     }
+  },
+  "submission": {
+    "config_title": "Submission Form Configuration",
+    "config_desc": "Configure the fields participants see when submitting a project.",
+    "add_field": "Add Field",
+    "field_label": "Label",
+    "field_type": "Type",
+    "no_fields": "No fields configured. Add a field to get started.",
+    "placeholder": "Placeholder",
+    "required": "Required",
+    "submit_button": "Submit Project",
+    "submit_desc": "Submit your project for",
+    "submit_project": "Submit Project",
+    "success": "Project submitted successfully!",
+    "success_message": "We have received your submission. A receipt number has been generated and linked to your contact email.",
+    "success_subtitle": "Thank you for submitting your project to",
+    "success_title": "Project Submitted Successfully!",
+    "error": "Failed to submit project. Please try again.",
+    "sections": {
+      "contact_info": "Contact Information",
+      "project_details": "Project Details"
+    },
+    "side_title": "Submission Guide",
+    "side_desc": "Leave a reachable email first. Other details are optional.",
+    "required_fields_hint": "{{count}} required",
+    "contact_help": "Email is required so we can send your receipt and follow-up.",
+    "project_help": "Optional details help judges understand your project faster.",
+    "no_schema": "No additional fields configured yet",
+    "no_schema_desc": "You can still submit with email only.",
+    "step_contact": "Fill in contact information",
+    "step_project": "Optionally complete project details",
+    "step_review": "Receive your submission receipt",
+    "submit_tip": "Only email is required. The backend will automatically issue a receipt number.",
+    "optional": "Optional",
+    "contact_email_label": "Email Address",
+    "contact_name_label": "Your Name",
+    "contact_email_placeholder": "your@email.com",
+    "contact_name_placeholder": "John Doe",
+    "receipt_number_label": "Receipt Number",
+    "receipt_email_label": "Receipt Sent To",
+    "receipt_status_sent": "The receipt email has been sent.",
+    "receipt_status_pending": "Receipt email could not be sent immediately. Keep your receipt number for follow-up.",
+    "field_types": {
+      "text": "Text Input",
+      "textarea": "Text Area",
+      "url": "URL"
+    },
+    "validation": {
+      "email_invalid": "Please enter a valid email address",
+      "name_required": "Name is required",
+      "url_invalid": "Must be a valid URL",
+      "field_required": "{{field}} is required",
+      "project_exists": "Project name already exists in this hackathon"
+    },
+    "new_field": "New Field"
+  },
+  "scoring_builder": {
+    "config_title": "Scoring Criteria Configuration",
+    "config_desc": "Define the scoring criteria for judges. Total must equal 100 points.",
+    "add_criterion": "Add Criterion",
+    "criterion_name": "Criterion Name",
+    "criterion_name_placeholder": "e.g., Innovation, Technical Implementation",
+    "max_score": "Max Score",
+    "no_criteria": "No scoring criteria configured. Add a criterion to get started.",
+    "total_score": "Total Score: {{score}} / 100",
+    "need_more": "Need {{count}} more points",
+    "reduce_by": "Reduce by {{count}} points",
+    "new_criterion": "New Criterion"
   }
 }

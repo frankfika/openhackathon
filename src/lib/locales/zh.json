@@ -11,11 +11,27 @@
     "open_menu": "打开菜单",
     "select_all": "全选",
     "more_count": "还有 {{count}} 项",
-    "view_details": "查看详情"
+    "view_details": "查看详情",
+    "back": "返回",
+    "edit": "编辑",
+    "home": "返回首页",
+    "overview": "概览",
+    "save": "保存",
+    "save_changes": "保存更改",
+    "view_projects": "查看全部项目",
+    "theme": "主题",
+    "language": "语言",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统",
+    "english": "English",
+    "chinese": "中文",
+    "profile": "账户信息",
+    "close": "关闭"
   },
   "nav": {
     "home": "首页",
-    "docs": "赛事文档",
+    "docs": "赛事详情",
     "hackathons": "活动列表",
     "projects": "项目展示",
     "leaderboard": "排行榜",
@@ -47,7 +63,9 @@
     "logout_success": "已退出登录",
     "sign_in_failed": "登录失败，请重试",
     "invalid_email": "请输入有效的邮箱地址",
-    "password_min": "密码不少于 6 个字符"
+    "password_min": "密码不少于 6 个字符",
+    "password_required": "请输入密码",
+    "role_hint": "请选择身份后继续"
   },
   "dashboard": {
     "title": "工作台",
@@ -121,7 +139,7 @@
     "powered_by_text": "Powered By 文案",
     "powered_by_url": "Powered By 链接",
     "show_powered_by": "显示 Powered By 徽标",
-    "show_powered_by_desc": "在页面右下角显示浮动品牌徽标。",
+    "show_powered_by_desc": "在页面底部显示 Powered By 品牌信息。",
     "save_branding": "保存品牌设置",
     "branding_saved": "品牌设置已保存",
     "branding_save_failed": "品牌设置保存失败",
@@ -129,8 +147,12 @@
     "saved": "配置已保存",
     "saved_desc": "该配置将应用于当前浏览器中的所有 AI 功能。",
     "hackathon_not_found": "未找到该活动",
-    "gitbook_url": "GitBook 链接",
-    "gitbook_url_desc": "在赛事文档页中嵌入 GitBook 页面。",
+    "gitbook_url": "赛事详情链接",
+    "gitbook_url_desc": "填写赛事详情链接（可为 GitBook 或规则页），前台统一在「赛事详情」展示。",
+    "rules_url": "赛事规则链接",
+    "rules_url_desc": "可选的规则页链接，作为赛事详情的备用来源。",
+    "details_url": "补充详情链接",
+    "details_url_desc": "当未配置 GitBook 和规则链接时使用此链接。",
     "cover_gradient": "封面渐变色",
     "cover_gradient_desc": "为活动封面选择渐变主题色。",
     "notifications": "通知管理",
@@ -160,7 +182,11 @@
     "judge_create_failed": "评委创建失败",
     "judge_deleted": "评委已删除",
     "judge_delete_failed": "评委删除失败",
-    "judge_delete_confirm": "确定删除评委「{{name}}」？其所有评审任务也将一并删除。"
+    "judge_delete_confirm": "确定删除评委「{{name}}」？其所有评审任务也将一并删除。",
+    "hackathon_settings": "活动设置",
+    "basic_info": "基础信息",
+    "basic_info_desc": "管理活动的核心信息。",
+    "save_error": "保存设置失败"
   },
   "hackathons": {
     "title": "活动列表",
@@ -180,7 +206,11 @@
       "judging": "评审中"
     },
     "status_updated": "状态已更新",
-    "status_error": "状态更新失败"
+    "status_error": "状态更新失败",
+    "tagline": "活动标语",
+    "start_date": "开始日期",
+    "end_date": "结束日期",
+    "city": "城市"
   },
   "projects": {
     "title": "项目展示",
@@ -207,7 +237,18 @@
     "delete_confirm_desc": "此操作不可撤销，将永久删除项目「{{title}}」及其所有关联数据。",
     "delete_project": "删除项目",
     "repository": "代码仓库",
-    "live_demo": "在线演示"
+    "live_demo": "在线演示",
+    "one_liner": "一句话介绍",
+    "tags": "标签",
+    "update_success": "项目更新成功",
+    "update_error": "项目更新失败",
+    "view_scores": "查看评分",
+    "demo_url": "演示链接",
+    "repo_url": "代码仓库链接",
+    "status_options": {
+      "draft": "草稿",
+      "submitted": "已提交"
+    }
   },
   "judging": {
     "title": "评审管理",
@@ -354,9 +395,9 @@
     "gitbook": {
       "title": "赛事详情",
       "open_external": "在新标签页中打开",
-      "no_docs": "暂未配置赛事文档",
-      "no_docs_title": "暂无赛事文档",
-      "no_docs_desc": "主办方尚未配置赛事文档。可在 GitBook 创建文档后，在活动设置中填写链接。",
+      "no_docs": "暂未配置赛事详情",
+      "no_docs_title": "暂无赛事详情",
+      "no_docs_desc": "主办方尚未配置赛事详情链接。可填写 GitBook 或规则页链接后展示。",
       "go_gitbook": "前往 GitBook 创建",
       "embed_blocked": "此文档页面无法嵌入显示。"
     },
@@ -364,6 +405,88 @@
       "projects": "项目展示",
       "leaderboard": "排行榜",
       "rules": "赛事规则"
+    },
+    "glance": {
+      "title": "一目了然"
+    },
+    "quick_actions": {
+      "submit_desc": "登记你的作品并持续更新项目信息。",
+      "docs_desc": "在一个页面查看时间线、规则与赛事说明。",
+      "leaderboard_desc": "实时跟踪排名与评审进度。"
+    },
+    "criteria": {
+      "description": "所有评委基于同一评分标准打分，确保结果可比且公平。",
+      "empty": "评分标准配置后会在这里展示。",
+      "points": "{{count}} 分",
+      "leaderboard_desc": "晋级决策与榜单排名基于已完成的评审轮次。"
     }
+  },
+  "submission": {
+    "config_title": "提交表单配置",
+    "config_desc": "配置参赛者提交项目时看到的字段。",
+    "add_field": "添加字段",
+    "field_label": "字段标签",
+    "field_type": "字段类型",
+    "no_fields": "尚未配置字段，请先添加一个字段。",
+    "placeholder": "占位提示",
+    "required": "必填",
+    "submit_button": "提交项目",
+    "submit_desc": "提交你的项目到",
+    "submit_project": "提交项目",
+    "success": "项目提交成功！",
+    "success_message": "我们已收到你的提交，系统已自动生成回执编号并绑定到联系邮箱。",
+    "success_subtitle": "感谢你将项目提交到",
+    "success_title": "项目提交成功！",
+    "error": "提交项目失败，请稍后重试。",
+    "sections": {
+      "contact_info": "联系信息",
+      "project_details": "项目信息"
+    },
+    "side_title": "提交流程",
+    "side_desc": "先留下可联系邮箱，其他信息可选填。",
+    "required_fields_hint": "必填项 {{count}}",
+    "contact_help": "邮箱为必填，用于发送回执和后续联系。",
+    "project_help": "项目信息为选填，补充越完整越有利于评审理解。",
+    "no_schema": "主办方暂未配置额外字段",
+    "no_schema_desc": "你仍可仅填写邮箱直接提交。",
+    "step_contact": "填写联系信息",
+    "step_project": "可选填写项目资料",
+    "step_review": "获取提交回执",
+    "submit_tip": "仅邮箱为必填，提交后后台会自动生成回执编号。",
+    "optional": "选填",
+    "contact_email_label": "联系邮箱",
+    "contact_name_label": "姓名",
+    "contact_email_placeholder": "your@email.com",
+    "contact_name_placeholder": "张三",
+    "receipt_number_label": "回执编号",
+    "receipt_email_label": "回执邮箱",
+    "receipt_status_sent": "回执邮件已发送，请注意查收。",
+    "receipt_status_pending": "回执邮件暂未发送成功，请保留回执编号，后续可凭编号联系主办方。",
+    "field_types": {
+      "text": "单行文本",
+      "textarea": "多行文本",
+      "url": "网址"
+    },
+    "validation": {
+      "email_invalid": "请输入有效的邮箱地址",
+      "name_required": "请输入姓名",
+      "url_invalid": "请输入有效的 URL",
+      "field_required": "请填写{{field}}",
+      "project_exists": "当前活动中已存在同名项目"
+    },
+    "new_field": "新字段"
+  },
+  "scoring_builder": {
+    "config_title": "评分标准配置",
+    "config_desc": "为评委定义评分标准，总分必须等于 100 分。",
+    "add_criterion": "添加评分项",
+    "criterion_name": "评分项名称",
+    "criterion_name_placeholder": "例如：创新性、技术实现",
+    "max_score": "最高分",
+    "no_criteria": "尚未配置评分项，请先添加一个评分项。",
+    "total_score": "总分：{{score}} / 100",
+    "need_more": "还需增加 {{count}} 分",
+    "reduce_by": "需要减少 {{count}} 分",
+    "new_criterion": "新评分项"
   }
 }

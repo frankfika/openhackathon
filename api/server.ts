@@ -2,7 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import { randomBytes } from 'crypto';
+import { Prisma, PrismaClient } from '@prisma/client';
+import nodemailer from 'nodemailer';
 
 export const prisma = new PrismaClient();
 export const app = express();
@@ -11,6 +13,19 @@ const VALID_PROMOTION_STATUSES = new Set(['pending', 'advanced', 'eliminated']);
 const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true';
 const JWT_SECRET = process.env.JWT_SECRET || 'openhackathon-change-this-secret';
 const JWT_EXPIRES_IN_SECONDS = Number(process.env.JWT_EXPIRES_IN_SECONDS || 60 * 60 * 24 * 7);
+const SUBMISSION_RECEIPT_PREFIX = (process.env.SUBMISSION_RECEIPT_PREFIX || 'SUB').trim().toUpperCase() || 'SUB';
+const SUBMISSION_EMAIL_ENABLED = process.env.SUBMISSION_EMAIL_ENABLED === 'true';
+const SUBMISSION_EMAIL_HOST = process.env.SMTP_HOST;
+const SUBMISSION_EMAIL_PORT = Number(process.env.SMTP_PORT || 587);
+const SUBMISSION_EMAIL_SECURE = process.env.SMTP_SECURE === 'true';
+const SUBMISSION_EMAIL_USER = process.env.SMTP_USER;
+const SUBMISSION_EMAIL_PASS = process.env.SMTP_PASS;
+const SUBMISSION_EMAIL_FROM = process.env.SUBMISSION_RECEIPT_FROM || 'OpenHackathon <no-reply@localhost>';
+const SUBMISSION_EMAIL_REPLY_TO = process.env.SUBMISSION_RECEIPT_REPLY_TO;
+const SUBMISSION_EMAIL_SUBJECT_TEMPLATE = process.env.SUBMISSION_RECEIPT_SUBJECT || '[{{hackathonTitle}}] Submission Receipt {{receiptId}}';
+const SUBMISSION_EMAIL_TIMEOUT_MS = Number(process.env.SUBMISSION_EMAIL_TIMEOUT_MS || 10000);
+
+let submissionEmailTransporter: nodemailer.Transporter | null = null;
 
 type UserRole = 'admin' | 'judge';
 type AuthUser = {
@@ -27,6 +42,20 @@ type JwtPayload = {
   name: string;
   iat?: number;
   exp?: number;
+};
+
+type SubmissionReceiptEmailPayload = {
+  to: string;
+  receiptId: string;
+  hackathonTitle: string;
+  projectTitle: string;
+  issuedAtIso: string;
+};
+
+type SubmissionReceiptEmailResult = {
+  sent: boolean;
+  reason?: 'disabled' | 'missing_config' | 'send_failed';
+  messageId?: string;
 };
 
 declare global {
@@ -49,6 +78,115 @@ function asString(value: unknown): string | undefined {
 function asUserRole(value: unknown): UserRole | null {
   if (value === 'admin' || value === 'judge') return value;
   return null;
+}
+
+function generateSubmissionReceiptId(): string {
+  const now = new Date();
+  const yyyy = now.getUTCFullYear();
+  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(now.getUTCDate()).padStart(2, '0');
+  const suffix = randomBytes(3).toString('hex').toUpperCase();
+  return `${SUBMISSION_RECEIPT_PREFIX}-${yyyy}${mm}${dd}-${suffix}`;
+}
+
+function interpolateEmailTemplate(template: string, variables: Record<string, string>): string {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key: string) => variables[key] || '');
+}
+
+function getSubmissionEmailTransporter(): nodemailer.Transporter | null {
+  if (!SUBMISSION_EMAIL_HOST || !Number.isFinite(SUBMISSION_EMAIL_PORT) || SUBMISSION_EMAIL_PORT <= 0) {
+    return null;
+  }
+
+  if (submissionEmailTransporter) {
+    return submissionEmailTransporter;
+  }
+
+  submissionEmailTransporter = nodemailer.createTransport({
+    host: SUBMISSION_EMAIL_HOST,
+    port: SUBMISSION_EMAIL_PORT,
+    secure: SUBMISSION_EMAIL_SECURE,
+    auth: SUBMISSION_EMAIL_USER
+      ? {
+          user: SUBMISSION_EMAIL_USER,
+          pass: SUBMISSION_EMAIL_PASS,
+        }
+      : undefined,
+    connectionTimeout: SUBMISSION_EMAIL_TIMEOUT_MS,
+    greetingTimeout: SUBMISSION_EMAIL_TIMEOUT_MS,
+    socketTimeout: SUBMISSION_EMAIL_TIMEOUT_MS,
+  });
+
+  return submissionEmailTransporter;
+}
+
+function formatReceiptIssuedAt(issuedAtIso: string): string {
+  const date = new Date(issuedAtIso);
+  if (Number.isNaN(date.getTime())) return issuedAtIso;
+  return date.toISOString().replace('T', ' ').replace('Z', ' UTC');
+}
+
+async function sendSubmissionReceiptEmail(payload: SubmissionReceiptEmailPayload): Promise<SubmissionReceiptEmailResult> {
+  if (!SUBMISSION_EMAIL_ENABLED) {
+    return { sent: false, reason: 'disabled' };
+  }
+
+  const transporter = getSubmissionEmailTransporter();
+  if (!transporter) {
+    console.warn('[submission-email] SMTP is enabled but config is incomplete');
+    return { sent: false, reason: 'missing_config' };
+  }
+
+  const issuedAtText = formatReceiptIssuedAt(payload.issuedAtIso);
+  const subject = interpolateEmailTemplate(SUBMISSION_EMAIL_SUBJECT_TEMPLATE, {
+    receiptId: payload.receiptId,
+    hackathonTitle: payload.hackathonTitle,
+    projectTitle: payload.projectTitle,
+  }).trim();
+
+  const textBody = [
+    `Thank you for your submission to ${payload.hackathonTitle}.`,
+    '',
+    `Receipt ID: ${payload.receiptId}`,
+    `Contact Email: ${payload.to}`,
+    `Issued At: ${issuedAtText}`,
+    `Project: ${payload.projectTitle}`,
+    '',
+    'Please keep this receipt for future communication.',
+  ].join('\n');
+
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #0f172a;">
+      <p>Thank you for your submission to <strong>${payload.hackathonTitle}</strong>.</p>
+      <p><strong>Receipt ID:</strong> ${payload.receiptId}<br/>
+      <strong>Contact Email:</strong> ${payload.to}<br/>
+      <strong>Issued At:</strong> ${issuedAtText}<br/>
+      <strong>Project:</strong> ${payload.projectTitle}</p>
+      <p>Please keep this receipt for future communication.</p>
+    </div>
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: SUBMISSION_EMAIL_FROM,
+      to: payload.to,
+      ...(SUBMISSION_EMAIL_REPLY_TO ? { replyTo: SUBMISSION_EMAIL_REPLY_TO } : {}),
+      subject: subject || `[${payload.hackathonTitle}] Submission Receipt ${payload.receiptId}`,
+      text: textBody,
+      html: htmlBody,
+    });
+
+    return {
+      sent: true,
+      messageId: info.messageId,
+    };
+  } catch (error) {
+    console.error('[submission-email] Failed to send receipt email:', error);
+    return {
+      sent: false,
+      reason: 'send_failed',
+    };
+  }
 }
 
 function signTokenForUser(user: AuthUser): string {
@@ -381,7 +519,22 @@ app.get('/api/hackathons/:id', async (req, res) => {
 });
 
 app.post('/api/hackathons', requireAdmin, async (req, res) => {
-  const { title, tagline, city, startAt, endAt, status, coverGradient, submissionSchema, sessions, scoringCriteria } = req.body;
+  const {
+    title,
+    tagline,
+    city,
+    startAt,
+    endAt,
+    status,
+    coverGradient,
+    submissionSchema,
+    sessions,
+    scoringCriteria,
+    prizePool,
+    gitbookUrl,
+    rulesUrl,
+    detailsUrl,
+  } = req.body;
 
   const hackathon = await prisma.hackathon.create({
     data: {
@@ -392,6 +545,10 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
       endAt: new Date(endAt),
       status,
       coverGradient,
+      prizePool: prizePool || null,
+      gitbookUrl: gitbookUrl || null,
+      rulesUrl: rulesUrl || null,
+      detailsUrl: detailsUrl || null,
       submissionSchema: submissionSchema || {},
       sessions: sessions ? {
         create: sessions.map((s: any) => ({
@@ -416,7 +573,22 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
 });
 
 app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
-  const { title, tagline, city, startAt, endAt, status, coverGradient, submissionSchema, sessions, scoringCriteria } = req.body;
+  const {
+    title,
+    tagline,
+    city,
+    startAt,
+    endAt,
+    status,
+    coverGradient,
+    submissionSchema,
+    sessions,
+    scoringCriteria,
+    prizePool,
+    gitbookUrl,
+    rulesUrl,
+    detailsUrl,
+  } = req.body;
 
   // Update hackathon basic info
   const hackathon = await prisma.hackathon.update({
@@ -429,6 +601,10 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
       endAt: endAt ? new Date(endAt) : undefined,
       status,
       coverGradient,
+      prizePool: prizePool !== undefined ? (prizePool || null) : undefined,
+      gitbookUrl: gitbookUrl !== undefined ? (gitbookUrl || null) : undefined,
+      rulesUrl: rulesUrl !== undefined ? (rulesUrl || null) : undefined,
+      detailsUrl: detailsUrl !== undefined ? (detailsUrl || null) : undefined,
       submissionSchema: submissionSchema !== undefined ? submissionSchema : undefined,
     }
   });
@@ -553,19 +729,73 @@ app.get('/api/projects/:id', async (req, res) => {
 app.post('/api/projects', async (req, res) => {
   const { hackathonId, sessionId, title, oneLiner, description, tags, demoUrl, repoUrl, submitterEmail, submitterName, submissionData } = req.body;
 
+  const hackathonIdValue = asString(hackathonId);
+  const submitterEmailValue = asString(submitterEmail);
+  const submitterNameValue = asString(submitterName);
+
+  if (!hackathonIdValue) {
+    return res.status(400).json({ error: 'hackathonId is required' });
+  }
+
+  if (!submitterEmailValue) {
+    return res.status(400).json({ error: 'submitterEmail is required' });
+  }
+
+  const relatedHackathon = await prisma.hackathon.findUnique({
+    where: { id: hackathonIdValue },
+    include: { sessions: true },
+  });
+
+  if (!relatedHackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  const requestedSessionId = asString(sessionId);
+  const selectedSession = requestedSessionId
+    ? relatedHackathon.sessions.find((item) => item.id === requestedSessionId)
+    : relatedHackathon.sessions.find((item) => item.status === 'active') || relatedHackathon.sessions[0];
+
+  if (requestedSessionId && !selectedSession) {
+    return res.status(400).json({ error: 'sessionId does not belong to the target hackathon' });
+  }
+
+  const receipt = {
+    id: generateSubmissionReceiptId(),
+    email: submitterEmailValue,
+    issuedAt: new Date().toISOString(),
+  };
+
+  const incomingSubmissionData =
+    submissionData && typeof submissionData === 'object' && !Array.isArray(submissionData)
+      ? (submissionData as Record<string, unknown>)
+      : {};
+
+  const titleValue = asString(title) || `Submission ${receipt.id}`;
+  const oneLinerValue = asString(oneLiner) || 'Contact-only submission';
+  const descriptionValue = asString(description);
+  const demoUrlValue = asString(demoUrl);
+  const repoUrlValue = asString(repoUrl);
+  const tagsValue = Array.isArray(tags)
+    ? tags.filter((tag: unknown): tag is string => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean)
+    : [];
+
   const project = await prisma.project.create({
     data: {
-      hackathonId,
-      sessionId,
-      title,
-      oneLiner,
-      description,
-      tags: tags || [],
-      demoUrl,
-      repoUrl,
-      submitterEmail,
-      submitterName,
-      submissionData: submissionData || {},
+      hackathonId: hackathonIdValue,
+      sessionId: selectedSession?.id,
+      title: titleValue,
+      oneLiner: oneLinerValue,
+      description: descriptionValue,
+      tags: tagsValue,
+      demoUrl: demoUrlValue,
+      repoUrl: repoUrlValue,
+      submitterEmail: submitterEmailValue,
+      submitterName: submitterNameValue,
+      status: 'submitted',
+      submissionData: ({
+        ...incomingSubmissionData,
+        _receipt: receipt,
+      } as Prisma.InputJsonValue),
     },
     include: {
       hackathon: { include: { scoringCriteria: true } },
@@ -577,12 +807,71 @@ app.post('/api/projects', async (req, res) => {
     await ensureProjectRound(project.id, project.sessionId);
   }
 
-  res.json(project);
+  const emailResult = await sendSubmissionReceiptEmail({
+    to: submitterEmailValue,
+    receiptId: receipt.id,
+    hackathonTitle: relatedHackathon.title,
+    projectTitle: titleValue,
+    issuedAtIso: receipt.issuedAt,
+  });
+
+  const receiptWithDelivery = {
+    ...receipt,
+    emailSent: emailResult.sent,
+    emailMessageId: emailResult.messageId,
+    emailFailureReason: emailResult.reason,
+    emailLastAttemptAt: new Date().toISOString(),
+  };
+
+  let projectWithReceipt = project;
+  try {
+    projectWithReceipt = await prisma.project.update({
+      where: { id: project.id },
+      data: {
+        submissionData: ({
+          ...incomingSubmissionData,
+          _receipt: receiptWithDelivery,
+        } as Prisma.InputJsonValue),
+      },
+      include: {
+        hackathon: { include: { scoringCriteria: true } },
+        session: true,
+      },
+    });
+  } catch (error) {
+    console.error('[submission-email] Failed to persist receipt delivery status:', error);
+  }
+
+  res.json({
+    ...projectWithReceipt,
+    receipt: receiptWithDelivery,
+  });
 });
 
 app.put('/api/projects/:id', requireAdmin, async (req, res) => {
   try {
     const { title, oneLiner, description, tags, demoUrl, repoUrl, submissionData, status, sessionId } = req.body;
+    const existingProject = await prisma.project.findUnique({
+      where: { id: req.params.id },
+      select: { submissionData: true },
+    });
+    const existingSubmissionData =
+      existingProject?.submissionData &&
+      typeof existingProject.submissionData === 'object' &&
+      !Array.isArray(existingProject.submissionData)
+        ? (existingProject.submissionData as Record<string, unknown>)
+        : {};
+    const existingReceipt =
+      existingSubmissionData._receipt &&
+      typeof existingSubmissionData._receipt === 'object' &&
+      !Array.isArray(existingSubmissionData._receipt)
+        ? (existingSubmissionData._receipt as Record<string, unknown>)
+        : undefined;
+    const incomingSubmissionData =
+      submissionData && typeof submissionData === 'object' && !Array.isArray(submissionData)
+        ? (submissionData as Record<string, unknown>)
+        : {};
+
     const project = await prisma.project.update({
       where: { id: req.params.id },
       data: {
@@ -592,7 +881,10 @@ app.put('/api/projects/:id', requireAdmin, async (req, res) => {
         tags: tags || [],
         demoUrl,
         repoUrl,
-        submissionData: submissionData || {},
+        submissionData: ({
+          ...incomingSubmissionData,
+          ...(existingReceipt ? { _receipt: existingReceipt } : {}),
+        } as Prisma.InputJsonValue),
         status,
         ...(sessionId !== undefined ? { sessionId } : {}),
       }
@@ -624,6 +916,69 @@ app.delete('/api/projects/:id', requireAdmin, async (req, res) => {
     console.error('Delete error:', error);
     res.status(500).json({ error: 'Failed to delete project' });
   }
+});
+
+app.post('/api/projects/:id/receipt/resend', requireAdmin, async (req, res) => {
+  const project = await prisma.project.findUnique({
+    where: { id: req.params.id },
+    include: {
+      hackathon: true,
+    },
+  });
+
+  if (!project) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+
+  const existingSubmissionData =
+    project.submissionData &&
+    typeof project.submissionData === 'object' &&
+    !Array.isArray(project.submissionData)
+      ? (project.submissionData as Record<string, unknown>)
+      : {};
+  const existingReceipt =
+    existingSubmissionData._receipt &&
+    typeof existingSubmissionData._receipt === 'object' &&
+    !Array.isArray(existingSubmissionData._receipt)
+      ? (existingSubmissionData._receipt as Record<string, unknown>)
+      : {};
+
+  const receiptId = asString(existingReceipt.id) || generateSubmissionReceiptId();
+  const receiptIssuedAt = asString(existingReceipt.issuedAt) || new Date().toISOString();
+  const receiptEmail = project.submitterEmail;
+
+  const emailResult = await sendSubmissionReceiptEmail({
+    to: receiptEmail,
+    receiptId,
+    hackathonTitle: project.hackathon.title,
+    projectTitle: project.title,
+    issuedAtIso: receiptIssuedAt,
+  });
+
+  const receipt = {
+    id: receiptId,
+    email: receiptEmail,
+    issuedAt: receiptIssuedAt,
+    emailSent: emailResult.sent,
+    emailMessageId: emailResult.messageId,
+    emailFailureReason: emailResult.reason,
+    emailLastAttemptAt: new Date().toISOString(),
+  };
+
+  await prisma.project.update({
+    where: { id: project.id },
+    data: {
+      submissionData: ({
+        ...existingSubmissionData,
+        _receipt: receipt,
+      } as Prisma.InputJsonValue),
+    },
+  });
+
+  res.json({
+    projectId: project.id,
+    receipt,
+  });
 });
 
 // ===== Assignments =====

@@ -263,6 +263,11 @@ describe('API integration tests (real database)', () => {
       const projectId = createRes.body.id;
       expect(createRes.body.title).toBe('Vision AI');
       expect(createRes.body.hackathon.id).toBe(hackathon.id);
+      expect(createRes.body.status).toBe('submitted');
+      expect(createRes.body.receipt?.id).toMatch(/^SUB-\d{8}-[A-F0-9]{6}$/);
+      expect(createRes.body.receipt?.email).toBe('owner@example.com');
+      expect(createRes.body.receipt?.emailSent).toBe(false);
+      expect(createRes.body.receipt?.emailFailureReason).toBe('disabled');
 
       const listRes = await request(app)
         .get(`/api/projects?hackathonId=${hackathon.id}`)
@@ -273,6 +278,8 @@ describe('API integration tests (real database)', () => {
       const detailRes = await request(app).get(`/api/projects/${projectId}`).expect(200);
       expect(detailRes.body.id).toBe(projectId);
       expect(detailRes.body.hackathon.scoringCriteria).toHaveLength(2);
+      expect(detailRes.body.submissionData._receipt.emailSent).toBe(false);
+      expect(detailRes.body.submissionData._receipt.emailFailureReason).toBe('disabled');
 
       const updateRes = await request(app)
         .put(`/api/projects/${projectId}`)
@@ -289,6 +296,8 @@ describe('API integration tests (real database)', () => {
         .expect(200);
       expect(updateRes.body.title).toBe('Vision AI Updated');
       expect(updateRes.body.status).toBe('draft');
+      expect(updateRes.body.submissionData.stack).toEqual(['react']);
+      expect(updateRes.body.submissionData._receipt.id).toBe(createRes.body.receipt.id);
 
       await prisma.assignment.create({
         data: {
@@ -307,8 +316,52 @@ describe('API integration tests (real database)', () => {
       expect(projectCount).toBe(0);
     });
 
+    it('supports resending submission receipt and persists latest delivery status', async () => {
+      const { hackathon, session } = await seedHackathon();
+      const createRes = await request(app)
+        .post('/api/projects')
+        .send({
+          hackathonId: hackathon.id,
+          sessionId: session.id,
+          title: 'Resend Test Project',
+          submitterEmail: 'resend-owner@example.com',
+          submitterName: 'Resend Owner',
+        })
+        .expect(200);
+
+      const resendRes = await request(app)
+        .post(`/api/projects/${createRes.body.id}/receipt/resend`)
+        .expect(200);
+
+      expect(resendRes.body.projectId).toBe(createRes.body.id);
+      expect(resendRes.body.receipt.id).toBe(createRes.body.receipt.id);
+      expect(resendRes.body.receipt.email).toBe('resend-owner@example.com');
+      expect(resendRes.body.receipt.emailSent).toBe(false);
+      expect(resendRes.body.receipt.emailFailureReason).toBe('disabled');
+      expect(resendRes.body.receipt.emailLastAttemptAt).toBeDefined();
+
+      const detailRes = await request(app).get(`/api/projects/${createRes.body.id}`).expect(200);
+      expect(detailRes.body.submissionData._receipt.id).toBe(createRes.body.receipt.id);
+      expect(detailRes.body.submissionData._receipt.emailLastAttemptAt).toBeDefined();
+      expect(detailRes.body.submissionData._receipt.emailFailureReason).toBe('disabled');
+    });
+
     it('returns 404 for a non-existing project', async () => {
       await request(app).get('/api/projects/non-existent-id').expect(404);
+    });
+
+    it('requires submitterEmail for public project submission', async () => {
+      const { hackathon, session } = await seedHackathon();
+      const res = await request(app)
+        .post('/api/projects')
+        .send({
+          hackathonId: hackathon.id,
+          sessionId: session.id,
+          title: 'No Email Project',
+        })
+        .expect(400);
+
+      expect(res.body.error).toBe('submitterEmail is required');
     });
   });
 
