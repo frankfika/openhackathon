@@ -191,44 +191,43 @@ export function Layout() {
 function FooterSection() {
   const { t } = useTranslation()
   const { settings } = useSiteBranding()
+  const year = new Date().getFullYear()
 
   return (
     <footer className="border-t border-border/50 bg-background/70 py-5 backdrop-blur">
       <div className="container mx-auto px-4 md:px-6">
         <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-          <div className="flex items-center gap-3 text-sm font-medium">
-            {settings.logoUrl ? (
-              <img src={settings.logoUrl} alt={settings.siteName} className="h-7" />
-            ) : (
-              <>
-                <div className="h-7 w-7 rounded-md bg-primary" />
-                <span>{settings.siteName}</span>
-              </>
-            )}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3 text-sm font-medium">
+              {settings.logoUrl ? (
+                <img src={settings.logoUrl} alt={settings.siteName} className="h-7" />
+              ) : (
+                <>
+                  <div className="h-7 w-7 rounded-md bg-primary" />
+                  <span>{settings.siteName}</span>
+                </>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              © {year} {settings.siteName}
+            </p>
           </div>
 
-          <nav className="flex items-center gap-5 text-sm text-muted-foreground">
-            <Link to="/docs" className="hover:text-foreground transition-colors">
-              {t('nav.docs')}
-            </Link>
-            <Link to="/submit" className="hover:text-foreground transition-colors">
+          <div className="flex items-center gap-4">
+            <Link to="/submit" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
               {t('nav.submit')}
             </Link>
-            <Link to="/leaderboard" className="hover:text-foreground transition-colors">
-              {t('nav.leaderboard')}
-            </Link>
-          </nav>
-
-          {settings.showPoweredBy && (
-            <a
-              href={settings.poweredByUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-muted-foreground/80 hover:text-foreground transition-colors"
-            >
-              {settings.poweredByText}
-            </a>
-          )}
+            {settings.showPoweredBy && (
+              <a
+                href={settings.poweredByUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-muted-foreground/80 transition-colors hover:text-foreground"
+              >
+                {settings.poweredByText}
+              </a>
+            )}
+          </div>
         </div>
       </div>
     </footer>
