@@ -5,41 +5,39 @@ import { api } from '@/lib/api'
 import { Project, Assignment } from '@/lib/types'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { useTranslation } from 'react-i18next'
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription, 
-  DialogFooter 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Search, MoreHorizontal, Pencil, Trash2, Eye, Loader2 } from 'lucide-react'
+import { Search, MoreHorizontal, Pencil, Trash2, Eye, Loader2, BarChart3 } from 'lucide-react'
 import { toast } from 'sonner'
 
-// Helper function to calculate score from assignments
 function calculateProjectScore(projectId: string, assignments: Assignment[] = []) {
-  const projectAssignments = assignments.filter(a => a.projectId === projectId && a.status === 'completed');
-  if (projectAssignments.length === 0) return 0;
-  
-  const totalScore = projectAssignments.reduce((sum, a) => sum + (a.totalScore || 0), 0);
-  return totalScore / projectAssignments.length;
+  const projectAssignments = assignments.filter((a) => a.projectId === projectId && a.status === 'completed')
+  if (projectAssignments.length === 0) return 0
+  const totalScore = projectAssignments.reduce((sum, a) => sum + (a.totalScore || 0), 0)
+  return totalScore / projectAssignments.length
 }
 
 export function Projects() {
@@ -47,18 +45,16 @@ export function Projects() {
   const navigate = useNavigate()
   const { activeHackathon } = useActiveHackathon()
   const queryClient = useQueryClient()
-  
+
   const [query, setQuery] = useState('')
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
-  
-  // Fetch projects
+
   const { data: projects, isLoading, isError } = useQuery({
     queryKey: ['projects', activeHackathon.id],
     queryFn: () => api.getProjects({ hackathonId: activeHackathon.id }),
-    enabled: !!activeHackathon.id
+    enabled: !!activeHackathon.id,
   })
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteProject(id),
     onSuccess: () => {
@@ -66,27 +62,24 @@ export function Projects() {
       toast.success(t('projects.delete_success', 'Project deleted successfully'))
       setProjectToDelete(null)
     },
-    onError: (error) => {
-      console.error('Delete error:', error)
+    onError: () => {
       toast.error(t('projects.delete_error', 'Failed to delete project'))
-    }
+    },
   })
 
-  // Filter logic
-  const filteredProjects = projects?.filter((p: any) => {
+  const filteredProjects = projects?.filter((project: any) => {
     if (!query) return true
     const lowerQuery = query.toLowerCase()
     return (
-      p.title.toLowerCase().includes(lowerQuery) ||
-      p.oneLiner.toLowerCase().includes(lowerQuery) ||
-      (p.tags && p.tags.some((tag: string) => tag.toLowerCase().includes(lowerQuery)))
+      project.title.toLowerCase().includes(lowerQuery) ||
+      project.oneLiner.toLowerCase().includes(lowerQuery) ||
+      (project.tags && project.tags.some((tag: string) => tag.toLowerCase().includes(lowerQuery)))
     )
   })
 
   const handleDelete = () => {
-    if (projectToDelete) {
-      deleteMutation.mutate(projectToDelete.id)
-    }
+    if (!projectToDelete) return
+    deleteMutation.mutate(projectToDelete.id)
   }
 
   return (
@@ -99,7 +92,7 @@ export function Projects() {
           </p>
         </div>
       </div>
-      
+
       <div className="flex items-center justify-between space-x-2">
         <div className="flex flex-1 items-center space-x-2">
           <div className="relative w-full md:w-80">
@@ -136,7 +129,7 @@ export function Projects() {
                 </TableCell>
               </TableRow>
             ) : isError ? (
-               <TableRow>
+              <TableRow>
                 <TableCell colSpan={5} className="h-24 text-center text-red-500">
                   {t('projects.load_error')}
                 </TableCell>
@@ -153,7 +146,9 @@ export function Projects() {
                   <TableCell className="font-medium">
                     <div className="flex flex-col">
                       <span>{project.title}</span>
-                      <span className="text-xs text-muted-foreground truncate max-w-[200px]">{project.oneLiner}</span>
+                      <span className="text-xs text-muted-foreground truncate max-w-[220px]">
+                        {project.oneLiner}
+                      </span>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -169,8 +164,8 @@ export function Projects() {
                   </TableCell>
                   <TableCell>
                     {(() => {
-                      const score = calculateProjectScore(project.id, project.assignments || []);
-                      return score > 0 ? score.toFixed(1) : '-';
+                      const score = calculateProjectScore(project.id, project.assignments || [])
+                      return score > 0 ? score.toFixed(1) : '-'
                     })()}
                   </TableCell>
                   <TableCell className="text-right">
@@ -182,17 +177,23 @@ export function Projects() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => navigate(`/dashboard/judging/${project.id}`)}>
+                        <DropdownMenuItem onClick={() => navigate(`/dashboard/projects/${project.id}`)}>
                           <Eye className="mr-2 h-4 w-4" />
                           {t('common.view_details')}
                         </DropdownMenuItem>
-                        {/* 
-                        <DropdownMenuItem onClick={() => console.log('Edit', project.id)}>
+                        <DropdownMenuItem
+                          onClick={() => navigate(`/dashboard/projects/${project.id}?tab=scores`)}
+                        >
+                          <BarChart3 className="mr-2 h-4 w-4" />
+                          {t('projects.view_scores', 'View Scores')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => navigate(`/dashboard/projects/${project.id}?edit=1`)}
+                        >
                           <Pencil className="mr-2 h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem> 
-                        */}
-                        <DropdownMenuItem 
+                          {t('common.edit', 'Edit')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
                           onClick={() => setProjectToDelete(project)}
                           className="text-red-600 focus:text-red-600"
                         >
@@ -221,11 +222,7 @@ export function Projects() {
             <Button variant="outline" onClick={() => setProjectToDelete(null)}>
               {t('common.cancel')}
             </Button>
-            <Button 
-              variant="destructive" 
-              onClick={handleDelete}
-              disabled={deleteMutation.isPending}
-            >
+            <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('projects.delete_project')}
             </Button>

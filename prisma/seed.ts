@@ -15,6 +15,7 @@ async function main() {
   await prisma.session.deleteMany()
   await prisma.scoringCriterion.deleteMany()
   await prisma.hackathon.deleteMany()
+  await prisma.siteSetting.deleteMany()
   await prisma.user.deleteMany()
 
   console.log('Cleaned existing data')

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   db:
@@ -42,7 +40,6 @@ services:
     volumes:
       - ./api:/app/api
       - ./prisma:/app/prisma
-      - /app/node_modules
 
   # Frontend (React)
   web:
@@ -61,7 +58,6 @@ services:
       - ./src:/app/src
       - ./public:/app/public
       - ./vite.config.ts:/app/vite.config.ts
-      - /app/node_modules
 
 volumes:
   db_data:

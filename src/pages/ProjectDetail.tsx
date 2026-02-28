@@ -1,0 +1,519 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { Assignment, AssignmentStatus, ProjectRound } from '@/lib/types'
+import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { ArrowLeft, Loader2, Pencil, Save, X } from 'lucide-react'
+import { toast } from 'sonner'
+
+type ProjectDetailData = {
+  id: string
+  title: string
+  oneLiner: string
+  description?: string
+  tags?: string[]
+  demoUrl?: string
+  repoUrl?: string
+  status?: 'draft' | 'submitted'
+  submitterName?: string
+  submitterEmail: string
+  submissionData?: Record<string, unknown>
+  hackathon?: {
+    scoringCriteria?: { id: string; name: string; maxScore: number }[]
+  }
+  session?: {
+    name: string
+  }
+  projectRounds?: ProjectRound[]
+}
+
+const STATUS_OPTIONS: AssignmentStatus[] = ['pending', 'in_progress', 'completed']
+
+export function ProjectDetail() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const { id } = useParams()
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState<'overview' | 'scores'>(
+    searchParams.get('tab') === 'scores' ? 'scores' : 'overview'
+  )
+  const [isEditing, setIsEditing] = useState(searchParams.get('edit') === '1')
+  const [statusFilter, setStatusFilter] = useState<'all' | AssignmentStatus>('all')
+  const [selectedSessionId, setSelectedSessionId] = useState(searchParams.get('sessionId') || 'all')
+  const [selectedRoundId, setSelectedRoundId] = useState(searchParams.get('roundId') || 'all')
+  const [form, setForm] = useState({
+    title: '',
+    oneLiner: '',
+    description: '',
+    tags: '',
+    demoUrl: '',
+    repoUrl: '',
+    status: 'submitted' as 'draft' | 'submitted',
+  })
+
+  const { data: project, isLoading: isLoadingProject } = useQuery({
+    queryKey: ['project', id, 'detail'],
+    queryFn: () => api.getProject(id!) as Promise<ProjectDetailData>,
+    enabled: !!id,
+  })
+
+  const { data: assignments = [], isLoading: isLoadingAssignments } = useQuery({
+    queryKey: ['assignments', 'project', id],
+    queryFn: () => api.getAssignments({ projectId: id! }),
+    enabled: !!id,
+  })
+
+  useEffect(() => {
+    if (!project) return
+    setForm({
+      title: project.title || '',
+      oneLiner: project.oneLiner || '',
+      description: project.description || '',
+      tags: Array.isArray(project.tags) ? project.tags.join(', ') : '',
+      demoUrl: project.demoUrl || '',
+      repoUrl: project.repoUrl || '',
+      status: project.status || 'submitted',
+    })
+  }, [project])
+
+  const updateMutation = useMutation({
+    mutationFn: (data: typeof form) => {
+      if (!id) throw new Error('Project id is required')
+      return api.updateProject(id, {
+        title: data.title,
+        oneLiner: data.oneLiner,
+        description: data.description,
+        tags: data.tags
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+        demoUrl: data.demoUrl || undefined,
+        repoUrl: data.repoUrl || undefined,
+        status: data.status,
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', id] })
+      queryClient.invalidateQueries({ queryKey: ['project', id, 'detail'] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      toast.success(t('projects.update_success', 'Project updated successfully'))
+      setIsEditing(false)
+    },
+    onError: () => {
+      toast.error(t('projects.update_error', 'Failed to update project'))
+    },
+  })
+
+  const completedAssignments = useMemo(
+    () => assignments.filter((a) => a.status === 'completed'),
+    [assignments]
+  )
+  const pendingAssignments = useMemo(
+    () => assignments.filter((a) => a.status === 'pending'),
+    [assignments]
+  )
+  const inProgressAssignments = useMemo(
+    () => assignments.filter((a) => a.status === 'in_progress'),
+    [assignments]
+  )
+  const avgScore = useMemo(() => {
+    if (completedAssignments.length === 0) return 0
+    const total = completedAssignments.reduce((sum, a) => sum + (a.totalScore || 0), 0)
+    return total / completedAssignments.length
+  }, [completedAssignments])
+
+  const rounds = useMemo(() => {
+    return [...(project?.projectRounds || [])].sort((a, b) => {
+      const sessionA = a.session?.startAt ? new Date(a.session.startAt).getTime() : 0
+      const sessionB = b.session?.startAt ? new Date(b.session.startAt).getTime() : 0
+      return sessionA - sessionB
+    })
+  }, [project?.projectRounds])
+
+  const filteredAssignments = useMemo(() => {
+    return assignments.filter((assignment) => {
+      if (statusFilter !== 'all' && assignment.status !== statusFilter) return false
+      if (selectedRoundId !== 'all' && assignment.projectRoundId !== selectedRoundId) return false
+      if (selectedSessionId !== 'all' && assignment.sessionId !== selectedSessionId) return false
+      return true
+    })
+  }, [assignments, statusFilter, selectedRoundId, selectedSessionId])
+
+  const criterionNameMap = useMemo(() => {
+    const map = new Map<string, string>()
+    project?.hackathon?.scoringCriteria?.forEach((criterion) => {
+      map.set(criterion.id, criterion.name)
+    })
+    return map
+  }, [project?.hackathon?.scoringCriteria])
+
+  const formatScoreBreakdown = (assignment: Assignment) => {
+    if (!assignment.scores || !Array.isArray(assignment.scores) || assignment.scores.length === 0) {
+      return '-'
+    }
+
+    return assignment.scores
+      .map((score) => {
+        const criterionName = criterionNameMap.get(score.criterionId) || score.criterionId
+        return `${criterionName}: ${score.score}`
+      })
+      .join(' / ')
+  }
+
+  const handleSave = () => {
+    updateMutation.mutate(form)
+  }
+
+  if (isLoadingProject || isLoadingAssignments) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+
+  if (!project) {
+    return <div className="p-6">{t('projects.not_found', 'Project not found')}</div>
+  }
+
+  return (
+    <div className="space-y-6 p-6 md:p-8">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <Button variant="ghost" className="px-0" onClick={() => navigate('/dashboard/projects')}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            {t('common.back', 'Back')}
+          </Button>
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">{project.title}</h1>
+          <p className="text-sm text-muted-foreground">
+            {project.submitterName || project.submitterEmail}
+            {project.session?.name ? ` · ${project.session.name}` : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {!isEditing ? (
+            <Button variant="outline" onClick={() => setIsEditing(true)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              {t('common.edit', 'Edit')}
+            </Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setIsEditing(false)}>
+                <X className="mr-2 h-4 w-4" />
+                {t('common.cancel', 'Cancel')}
+              </Button>
+              <Button onClick={handleSave} disabled={updateMutation.isPending}>
+                {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Save className="mr-2 h-4 w-4" />
+                {t('common.save', 'Save')}
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant={activeTab === 'overview' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setActiveTab('overview')}
+        >
+          {t('common.overview', 'Overview')}
+        </Button>
+        <Button
+          variant={activeTab === 'scores' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setActiveTab('scores')}
+        >
+          {t('projects.view_scores', 'View Scores')}
+        </Button>
+      </div>
+
+      {activeTab === 'overview' && (
+        <>
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">{t('projects.status', 'Status')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Badge variant={form.status === 'submitted' ? 'default' : 'secondary'}>{form.status}</Badge>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">{t('projects.score', 'Score')}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-2xl font-bold">{avgScore > 0 ? avgScore.toFixed(1) : '-'}</CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">{t('reports.progress', 'Progress')}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-2xl font-bold">
+                {completedAssignments.length}/{assignments.length}
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">{t('reports.judges', 'Judges')}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                {t('reports.pending_short', 'Pending')}: {pendingAssignments.length}
+                <br />
+                {t('reports.in_progress_short', 'In Progress')}: {inProgressAssignments.length}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="border-0 shadow-sm">
+            <CardHeader>
+              <CardTitle>{t('projects.details', 'Details')}</CardTitle>
+              <CardDescription>{t('projects.subtitle', 'Manage and review project submissions')}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {isEditing ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>{t('projects.project_name', 'Project Name')}</Label>
+                    <Input
+                      value={form.title}
+                      onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t('projects.one_liner', 'One-liner')}</Label>
+                    <Input
+                      value={form.oneLiner}
+                      onChange={(e) => setForm((prev) => ({ ...prev, oneLiner: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t('projects.description', 'Description')}</Label>
+                    <Textarea
+                      value={form.description}
+                      onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                      rows={5}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t('projects.tags', 'Tags')}</Label>
+                    <Input
+                      value={form.tags}
+                      onChange={(e) => setForm((prev) => ({ ...prev, tags: e.target.value }))}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Demo URL</Label>
+                      <Input
+                        value={form.demoUrl}
+                        onChange={(e) => setForm((prev) => ({ ...prev, demoUrl: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Repo URL</Label>
+                      <Input
+                        value={form.repoUrl}
+                        onChange={(e) => setForm((prev) => ({ ...prev, repoUrl: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t('projects.status', 'Status')}</Label>
+                    <select
+                      value={form.status}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, status: e.target.value as 'draft' | 'submitted' }))
+                      }
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="draft">draft</option>
+                      <option value="submitted">submitted</option>
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">{project.oneLiner || '-'}</p>
+                  <p className="text-sm whitespace-pre-wrap">{project.description || '-'}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(project.tags || []).map((tag) => (
+                      <Badge key={tag} variant="outline">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    {project.demoUrl && (
+                      <a className="underline" href={project.demoUrl} target="_blank" rel="noreferrer">
+                        Demo
+                      </a>
+                    )}
+                    {project.repoUrl && (
+                      <a className="underline" href={project.repoUrl} target="_blank" rel="noreferrer">
+                        Repo
+                      </a>
+                    )}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-sm">
+            <CardHeader>
+              <CardTitle>{t('promotions.round_timeline', 'Round Timeline')}</CardTitle>
+              <CardDescription>{t('promotions.round_timeline_desc', 'Track advancement across rounds')}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {rounds.length === 0 && (
+                <div className="rounded-md border p-4 text-sm text-muted-foreground">
+                  {t('promotions.no_rounds', 'No round records yet')}
+                </div>
+              )}
+              {rounds.map((round) => (
+                <div key={round.id} className="flex items-center justify-between rounded-md border p-3">
+                  <div>
+                    <p className="font-medium">{round.session?.name || round.sessionId}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('promotions.decision', 'Decision')}: {round.promotionStatus || 'pending'}
+                      {round.nextSession?.name ? ` → ${round.nextSession.name}` : ''}
+                    </p>
+                  </div>
+                  <Badge variant="outline">{round.promotionStatus || 'pending'}</Badge>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {activeTab === 'scores' && (
+        <Card className="border-0 shadow-sm">
+          <CardHeader>
+            <CardTitle>{t('projects.view_scores', 'View Scores')}</CardTitle>
+            <CardDescription>
+              {t('reports.scoring_matrix_desc', 'Detailed breakdown of scores by project and judge')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+              <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t('reports.session', 'Session')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('reports.filter_all', 'All')}</SelectItem>
+                  {rounds.map((round) => (
+                    <SelectItem key={round.sessionId} value={round.sessionId}>
+                      {round.session?.name || round.sessionId}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedRoundId} onValueChange={setSelectedRoundId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t('promotions.round', 'Round')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('reports.filter_all', 'All')}</SelectItem>
+                  {rounds.map((round) => (
+                    <SelectItem key={round.id} value={round.id}>
+                      {round.session?.name || round.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant={statusFilter === 'all' ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter('all')}
+                >
+                  {t('reports.filter_all', 'All')}
+                </Button>
+                {STATUS_OPTIONS.map((status) => (
+                  <Button
+                    key={status}
+                    size="sm"
+                    variant={statusFilter === status ? 'default' : 'outline'}
+                    onClick={() => setStatusFilter(status)}
+                  >
+                    {t(`judging.status.${status}`, status)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => navigate('/dashboard/promotions')}>
+                {t('promotions.manage', 'Manage Promotions')}
+              </Button>
+            </div>
+
+            {filteredAssignments.length === 0 ? (
+              <div className="rounded-md border p-6 text-sm text-muted-foreground">
+                {t('judging.no_assignments', 'No assignments found')}
+              </div>
+            ) : (
+              <div className="rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t('reports.judges', 'Judges')}</TableHead>
+                      <TableHead>{t('reports.session', 'Session')}</TableHead>
+                      <TableHead>{t('projects.status', 'Status')}</TableHead>
+                      <TableHead>{t('projects.score', 'Score')}</TableHead>
+                      <TableHead>{t('reports.scoring_matrix', 'Scoring Matrix')}</TableHead>
+                      <TableHead>{t('judging.comments', 'Comments')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredAssignments.map((assignment) => (
+                      <TableRow key={assignment.id}>
+                        <TableCell>{assignment.judge?.name || assignment.judgeId}</TableCell>
+                        <TableCell>{assignment.session?.name || assignment.sessionId}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {String(t(`judging.status.${assignment.status}`, assignment.status))}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {assignment.status === 'completed' ? assignment.totalScore ?? '-' : '-'}
+                        </TableCell>
+                        <TableCell className="max-w-[340px] text-sm text-muted-foreground">
+                          {formatScoreBreakdown(assignment)}
+                        </TableCell>
+                        <TableCell className="max-w-[280px] truncate">
+                          {assignment.comment || '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}

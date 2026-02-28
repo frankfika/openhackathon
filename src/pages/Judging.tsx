@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 import { useActiveHackathon } from '@/lib/active-hackathon'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 const statuses: Array<'pending' | 'in_progress' | 'completed'> = [
   'pending',
@@ -21,14 +22,17 @@ export function Judging() {
   const { user } = useAuth()
   const { activeHackathon } = useActiveHackathon()
   const [status, setStatus] = useState<(typeof statuses)[number]>('in_progress')
+  const [selectedSessionId, setSelectedSessionId] = useState('all')
 
   // Fetch assignments from API
   const { data: assignments = [] } = useQuery({
-    queryKey: ['assignments', activeHackathon?.id, user?.id, user?.role],
+    queryKey: ['assignments', activeHackathon?.id, user?.id, user?.role, selectedSessionId],
     queryFn: async () => {
-      const params: { sessionId?: string; judgeId?: string } = {}
-      if (activeHackathon?.sessions?.[0]?.id) {
-        params.sessionId = activeHackathon.sessions[0].id
+      const params: { sessionId?: string; judgeId?: string; hackathonId?: string } = {
+        hackathonId: activeHackathon?.id,
+      }
+      if (selectedSessionId !== 'all') {
+        params.sessionId = selectedSessionId
       }
       if (user?.role === 'judge') {
         params.judgeId = user.id
@@ -46,7 +50,7 @@ export function Judging() {
   })
 
   const rows = useMemo(() => {
-    let filteredAssignments = assignments.filter((a) => a.status === status)
+    const filteredAssignments = assignments.filter((a) => a.status === status)
     return filteredAssignments.map((a) => {
       const project = projects.find((p) => p.id === a.projectId)
       return { a, project, session: a.session }
@@ -63,7 +67,22 @@ export function Judging() {
               {t('judging.subtitle')}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-[220px]">
+              <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t('reports.session', 'Session')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('reports.filter_all', 'All')}</SelectItem>
+                  {(activeHackathon?.sessions || []).map((session) => (
+                    <SelectItem key={session.id} value={session.id}>
+                      {session.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             {statuses.map((s) => (
               <Button
                 key={s}

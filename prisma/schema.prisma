@@ -22,6 +22,7 @@ model User {
 
   assignments Assignment[]
   projects    Project[]
+  decidedRounds ProjectRound[] @relation("RoundDecisionBy")
 }
 
 model Hackathon {
@@ -75,6 +76,8 @@ model Session {
 
   projects    Project[]
   assignments Assignment[]
+  projectRounds ProjectRound[] @relation("RoundSession")
+  incomingPromotions ProjectRound[] @relation("RoundNextSession")
 }
 
 model Project {
@@ -104,6 +107,37 @@ model Project {
   updatedAt   DateTime @updatedAt
 
   assignments Assignment[]
+  projectRounds ProjectRound[]
+}
+
+model ProjectRound {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sessionId   String
+  session     Session  @relation("RoundSession", fields: [sessionId], references: [id], onDelete: Cascade)
+
+  sourceRoundId String?
+  sourceRound   ProjectRound? @relation("RoundPromotionChain", fields: [sourceRoundId], references: [id])
+  promotedRounds ProjectRound[] @relation("RoundPromotionChain")
+
+  promotionStatus String @default("pending") // pending, advanced, eliminated
+  nextSessionId   String?
+  nextSession     Session? @relation("RoundNextSession", fields: [nextSessionId], references: [id])
+  decisionNote    String?
+  decidedById     String?
+  decidedBy       User? @relation("RoundDecisionBy", fields: [decidedById], references: [id])
+  decidedAt       DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignments Assignment[]
+
+  @@unique([projectId, sessionId])
+  @@index([sessionId])
+  @@index([projectId])
+  @@index([nextSessionId])
 }
 
 model Assignment {
@@ -112,10 +146,13 @@ model Assignment {
   session   Session  @relation(fields: [sessionId], references: [id])
   projectId String
   project   Project  @relation(fields: [projectId], references: [id])
+  projectRoundId String?
+  projectRound   ProjectRound? @relation(fields: [projectRoundId], references: [id], onDelete: Cascade)
   judgeId   String
   judge     User     @relation(fields: [judgeId], references: [id])
 
   status     String   // pending, in_progress, completed
+  isLocked   Boolean  @default(false)
   comment    String?
   totalScore Float?
 
@@ -125,6 +162,7 @@ model Assignment {
   scores Score[]
 
   @@unique([sessionId, projectId, judgeId])
+  @@index([projectRoundId])
 }
 
 model Score {
@@ -138,4 +176,20 @@ model Score {
 
   @@index([assignmentId])
   @@index([criterionId])
+}
+
+model SiteSetting {
+  id             String   @id @default(uuid())
+  key            String   @unique @default("default")
+  siteName       String   @default("OpenHackathon")
+  logoUrl        String?
+  tabTitle       String   @default("OpenHackathon")
+  seoTitle       String   @default("OpenHackathon")
+  seoDescription String   @default("OpenHackathon - Open source hackathon management platform")
+  faviconUrl     String   @default("/favicon.svg")
+  showPoweredBy  Boolean  @default(true)
+  poweredByText  String   @default("Powered by OpenHackathon")
+  poweredByUrl   String   @default("https://openhackathon.dev")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }

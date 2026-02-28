@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -15,97 +15,148 @@ import {
 } from '@/components/ui/table'
 import { api } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
+import { AssignmentStatus } from '@/lib/types'
+import { useNavigate } from 'react-router-dom'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+type ProjectScoringReportItem = {
+  projectRoundId?: string | null
+  projectId: string
+  projectTitle: string
+  submitterName?: string | null
+  submitterEmail: string
+  sessionId?: string | null
+  sessionName?: string | null
+  promotionStatus?: 'pending' | 'advanced' | 'eliminated'
+  nextSessionName?: string | null
+  averageScore: number
+  totalAssignments: number
+  completedAssignments: number
+  pendingAssignments: number
+  inProgressAssignments: number
+  judges: {
+    assignmentId: string
+    judgeId: string
+    judgeName: string
+    judgeEmail: string
+    status: AssignmentStatus
+    totalScore?: number | null
+  }[]
+}
 
 export function ScoringReport() {
   const { t } = useTranslation()
   const { activeHackathon } = useActiveHackathon()
+  const navigate = useNavigate()
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'in_progress' | 'completed'>('all')
+  const [selectedSessionId, setSelectedSessionId] = useState('all')
 
-  // Fetch report data from API
   const { data: reportData = [], isLoading: isLoadingReport } = useQuery({
-    queryKey: ['scoring-report', activeHackathon?.id],
-    queryFn: () => api.getScoringReport({ hackathonId: activeHackathon?.id }),
+    queryKey: ['project-scoring-report', activeHackathon?.id, selectedSessionId],
+    queryFn: () => api.getProjectScoringReport({
+      hackathonId: activeHackathon?.id,
+      sessionId: selectedSessionId === 'all' ? undefined : selectedSessionId,
+    }),
     enabled: !!activeHackathon?.id,
   })
 
-  // Fetch projects
-  const { data: projects = [] } = useQuery({
-    queryKey: ['projects', activeHackathon?.id],
-    queryFn: () => api.getProjects({ hackathonId: activeHackathon?.id }),
-    enabled: !!activeHackathon?.id,
-  })
-
-  // Fetch judges
   const { data: judges = [] } = useQuery({
     queryKey: ['users', 'judges'],
     queryFn: () => api.getUsers({ role: 'judge' }),
   })
 
-  // Calculate statistics
   const stats = useMemo(() => {
-    const totalProjects = projects.length
-    const scoredProjects = new Set(reportData.map(r => r.projectId)).size
-    const avgScore = reportData.length > 0
-      ? reportData.reduce((sum, r) => sum + (r.totalScore || 0), 0) / reportData.length
-      : 0
-    const totalAssignments = projects.length * judges.length
-    const completionRate = totalAssignments > 0
-      ? (reportData.length / totalAssignments) * 100
-      : 0
+    const totalProjects = reportData.length
+    const scoredProjects = reportData.filter((project) => project.completedAssignments > 0).length
+    const totalAssignments = reportData.reduce((sum, project) => sum + project.totalAssignments, 0)
+    const completedAssignments = reportData.reduce((sum, project) => sum + project.completedAssignments, 0)
+    const inProgressAssignments = reportData.reduce((sum, project) => sum + project.inProgressAssignments, 0)
+    const pendingAssignments = reportData.reduce((sum, project) => sum + project.pendingAssignments, 0)
+
+    const totalCompletedScore = reportData.reduce(
+      (sum, project) =>
+        sum +
+        project.judges.reduce((projectSum, judge) => {
+          if (judge.status !== 'completed') return projectSum
+          return projectSum + (judge.totalScore || 0)
+        }, 0),
+      0
+    )
+
+    const avgScore = completedAssignments > 0 ? totalCompletedScore / completedAssignments : 0
+    const completionRate = totalAssignments > 0 ? (completedAssignments / totalAssignments) * 100 : 0
 
     return {
       totalProjects,
       scoredProjects,
       avgScore: avgScore.toFixed(1),
-      completionRate: completionRate.toFixed(0)
+      completionRate: completionRate.toFixed(0),
+      totalAssignments,
+      completedAssignments,
+      inProgressAssignments,
+      pendingAssignments,
     }
-  }, [projects, reportData, judges.length])
+  }, [reportData])
 
-  // Get judge scores for a project
-  const getJudgeScores = (projectId: string) => {
-    const projectScores = reportData.filter(r => r.projectId === projectId)
-    const scores: Record<string, number | null> = {}
-    judges.forEach(judge => {
-      const entry = projectScores.find(r => r.judgeId === judge.id)
-      scores[judge.id] = entry?.totalScore ?? null
-    })
-    return scores
-  }
+  const filteredReportData = useMemo(() => {
+    if (statusFilter === 'all') return reportData
+    if (statusFilter === 'pending') {
+      return reportData.filter((project) => project.pendingAssignments > 0)
+    }
+    if (statusFilter === 'in_progress') {
+      return reportData.filter((project) => project.inProgressAssignments > 0)
+    }
+    return reportData.filter(
+      (project) => project.totalAssignments > 0 && project.completedAssignments === project.totalAssignments
+    )
+  }, [reportData, statusFilter])
 
-  // Get average score for a project
-  const getProjectAvgScore = (projectId: string) => {
-    const projectScores = reportData.filter(r => r.projectId === projectId)
-    if (projectScores.length === 0) return 0
-    return projectScores.reduce((sum, r) => sum + (r.totalScore || 0), 0) / projectScores.length
-  }
+  const filterCounts = useMemo(
+    () => ({
+      all: reportData.length,
+      pending: reportData.filter((project) => project.pendingAssignments > 0).length,
+      in_progress: reportData.filter((project) => project.inProgressAssignments > 0).length,
+      completed: reportData.filter(
+        (project) => project.totalAssignments > 0 && project.completedAssignments === project.totalAssignments
+      ).length,
+    }),
+    [reportData]
+  )
 
-  // {t('reports.download_csv')}
+  const getJudgeAssignment = (project: ProjectScoringReportItem, judgeId: string) =>
+    project.judges.find((judge) => judge.judgeId === judgeId)
+
   const downloadCSV = () => {
-    const headers = ['Rank', 'Project', 'Submitter', ...judges.map(j => j.name), 'Average Score']
+    const headers = ['Rank', 'Project', 'Submitter', 'Session', 'Promotion', ...judges.map((j) => j.name), 'Average Score', 'Progress']
 
-    const rows = projects.map((project, index) => {
-      const judgeScores = getJudgeScores(project.id)
-      const scoreValues = judges.map(j => judgeScores[j.id] !== null ? judgeScores[j.id] : '-')
-      const avgScore = getProjectAvgScore(project.id)
+    const rows = reportData.map((project, index) => {
+      const judgeCells = judges.map((judge) => {
+        const assignment = getJudgeAssignment(project, judge.id)
+        if (!assignment) return 'unassigned'
+        if (assignment.status === 'completed' && assignment.totalScore !== null && assignment.totalScore !== undefined) {
+          return `${assignment.totalScore} (completed)`
+        }
+        return assignment.status
+      })
 
       return [
         index + 1,
-        `"${project.title}"`,
+        `"${project.projectTitle}"`,
         `"${project.submitterName || project.submitterEmail}"`,
-        ...scoreValues,
-        avgScore > 0 ? avgScore.toFixed(1) : '-'
+        `"${project.sessionName || '-'}"`,
+        `"${project.promotionStatus || 'pending'}"`,
+        ...judgeCells,
+        project.averageScore > 0 ? project.averageScore.toFixed(1) : '-',
+        `${project.completedAssignments}/${project.totalAssignments}`,
       ]
     })
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n')
-
+    const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     const url = URL.createObjectURL(blob)
     link.setAttribute('href', url)
-    link.setAttribute('download', `scoring-report-${activeHackathon.id}-${Date.now()}.csv`)
+    link.setAttribute('download', `project-scoring-report-${activeHackathon?.id}-${Date.now()}.csv`)
     link.style.visibility = 'hidden'
     document.body.appendChild(link)
     link.click()
@@ -131,13 +182,29 @@ export function ScoringReport() {
             {t('reports.subtitle')}
           </p>
         </div>
-        <Button onClick={downloadCSV}>
-          <Download className="mr-2 h-4 w-4" />
-          {t('reports.download_csv')}
-        </Button>
+        <div className="flex w-full items-center gap-2 md:w-auto">
+          <div className="w-full md:w-[240px]">
+            <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
+              <SelectTrigger>
+                <SelectValue placeholder={t('reports.session', 'Session')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('reports.filter_all', 'All')}</SelectItem>
+                {(activeHackathon?.sessions || []).map((session) => (
+                  <SelectItem key={session.id} value={session.id}>
+                    {session.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={downloadCSV}>
+            <Download className="mr-2 h-4 w-4" />
+            {t('reports.download_csv')}
+          </Button>
+        </div>
       </div>
 
-      {/* Statistics Cards */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="border-0 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -171,7 +238,7 @@ export function ScoringReport() {
           <CardContent>
             <div className="text-2xl font-bold">{stats.completionRate}%</div>
             <p className="text-xs text-muted-foreground">
-              {t('reports.assignments_completed')}
+              {stats.completedAssignments}/{stats.totalAssignments} {t('reports.assignments_completed')}
             </p>
           </CardContent>
         </Card>
@@ -183,12 +250,44 @@ export function ScoringReport() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{judges.length}</div>
-            <p className="text-xs text-muted-foreground">{t('reports.evaluating')}</p>
+            <p className="text-xs text-muted-foreground">
+              {t('reports.pending_short', 'Pending')} {stats.pendingAssignments} · {t('reports.in_progress_short', 'In Progress')} {stats.inProgressAssignments}
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Scoring Matrix Table */}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant={statusFilter === 'all' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setStatusFilter('all')}
+        >
+          {t('reports.filter_all', 'All')} ({filterCounts.all})
+        </Button>
+        <Button
+          variant={statusFilter === 'pending' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setStatusFilter('pending')}
+        >
+          {t('reports.filter_pending', 'Pending')} ({filterCounts.pending})
+        </Button>
+        <Button
+          variant={statusFilter === 'in_progress' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setStatusFilter('in_progress')}
+        >
+          {t('reports.filter_in_progress', 'In Progress')} ({filterCounts.in_progress})
+        </Button>
+        <Button
+          variant={statusFilter === 'completed' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setStatusFilter('completed')}
+        >
+          {t('reports.filter_completed', 'Completed')} ({filterCounts.completed})
+        </Button>
+      </div>
+
       <Card className="border-0 shadow-sm">
         <CardHeader>
           <CardTitle>{t('reports.scoring_matrix')}</CardTitle>
@@ -202,60 +301,114 @@ export function ScoringReport() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">{t('reports.rank')}</TableHead>
-                  <TableHead className="min-w-[200px]">{t('reports.project')}</TableHead>
-                  <TableHead className="min-w-[150px]">{t('reports.submitter')}</TableHead>
-                  {judges.map(judge => (
-                    <TableHead key={judge.id} className="text-center min-w-[100px]">
+                  <TableHead className="min-w-[220px]">{t('reports.project')}</TableHead>
+                  <TableHead className="min-w-[140px]">{t('reports.submitter')}</TableHead>
+                  <TableHead className="min-w-[120px]">{t('reports.session', 'Session')}</TableHead>
+                  <TableHead className="min-w-[120px]">{t('promotions.decision', 'Decision')}</TableHead>
+                  {judges.map((judge) => (
+                    <TableHead key={judge.id} className="text-center min-w-[130px]">
                       {judge.name}
                     </TableHead>
                   ))}
                   <TableHead className="text-center font-semibold min-w-[100px]">
                     {t('reports.average')}
                   </TableHead>
+                  <TableHead className="text-center font-semibold min-w-[120px]">{t('reports.progress', 'Progress')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {projects.map((project, index) => {
-                  const judgeScores = getJudgeScores(project.id)
-                  const avgScore = getProjectAvgScore(project.id)
+                {filteredReportData.map((project, index) => (
+                  <TableRow key={project.projectId}>
+                    <TableCell className="font-medium">{index + 1}</TableCell>
+                    <TableCell>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const params = new URLSearchParams({ tab: 'scores' })
+                          if (project.sessionId) params.set('sessionId', project.sessionId)
+                          if (project.projectRoundId) params.set('roundId', project.projectRoundId)
+                          navigate(`/dashboard/projects/${project.projectId}?${params.toString()}`)
+                        }}
+                        className="font-medium text-left hover:underline"
+                      >
+                        {project.projectTitle}
+                      </button>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {project.submitterName || project.submitterEmail}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {project.sessionName || '-'}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <Badge variant="outline">
+                        {project.promotionStatus || 'pending'}
+                      </Badge>
+                    </TableCell>
+                    {judges.map((judge) => {
+                      const assignment = getJudgeAssignment(project, judge.id)
+                      if (!assignment) {
+                        return (
+                          <TableCell key={judge.id} className="text-center">
+                            <Badge variant="outline">{t('reports.unassigned', 'Unassigned')}</Badge>
+                          </TableCell>
+                        )
+                      }
 
-                  return (
-                    <TableRow key={project.id}>
-                      <TableCell className="font-medium">
-                        {index + 1}
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{project.title}</div>
-                        <div className="text-sm text-muted-foreground truncate max-w-[200px]">
-                          {project.oneLiner}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {project.submitterName || project.submitterEmail}
-                      </TableCell>
-                      {judges.map(judge => (
-                        <TableCell key={judge.id} className="text-center">
-                          {judgeScores[judge.id] !== null ? (
-                            <Badge variant="secondary">
-                              {judgeScores[judge.id]}
+                      if (assignment.status === 'pending') {
+                        return (
+                          <TableCell key={judge.id} className="text-center">
+                            <Badge variant="outline" className="border-amber-300 text-amber-700">
+                              {t('judging.status.pending', 'Pending')}
                             </Badge>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-center">
-                        {avgScore > 0 ? (
-                          <Badge variant="default" className="font-semibold">
-                            {avgScore.toFixed(1)}
+                          </TableCell>
+                        )
+                      }
+
+                      if (assignment.status === 'in_progress') {
+                        return (
+                          <TableCell key={judge.id} className="text-center">
+                            <Badge variant="outline" className="border-blue-300 text-blue-700">
+                              {t('judging.status.in_progress', 'In Progress')}
+                            </Badge>
+                          </TableCell>
+                        )
+                      }
+
+                      if (assignment.status === 'completed') {
+                        return (
+                          <TableCell key={judge.id} className="text-center">
+                            <Badge variant="secondary">
+                              {assignment.totalScore ?? '-'}
+                            </Badge>
+                          </TableCell>
+                        )
+                      }
+
+                      return (
+                        <TableCell key={judge.id} className="text-center">
+                          <Badge variant="outline">
+                            {String(t(`judging.status.${assignment.status}`, assignment.status))}
                           </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
+                        </TableCell>
+                      )
+                    })}
+                    <TableCell className="text-center">
+                      {project.averageScore > 0 ? (
+                        <Badge variant="default" className="font-semibold">
+                          {project.averageScore.toFixed(1)}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="outline">
+                        {project.completedAssignments}/{project.totalAssignments}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </div>

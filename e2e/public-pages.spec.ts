@@ -12,7 +12,7 @@ test.describe('Public Pages', () => {
 
     // Check navigation links in header nav (first nav)
     const headerNav = page.locator('nav').first();
-    await expect(headerNav).toContainText('Projects');
+    await expect(headerNav).toContainText(/Submit Project|提交项目/i);
     await expect(headerNav).toContainText('Leaderboard');
   });
 
@@ -52,9 +52,9 @@ test.describe('Public Pages', () => {
   test('navigation works between public pages', async ({ page }) => {
     await page.goto('/');
 
-    // Navigate to Projects using nav link
-    await page.getByRole('link', { name: /projects/i }).first().click();
-    await expect(page).toHaveURL(/.*projects/);
+    // Navigate to submit page using header nav link
+    await page.getByRole('link', { name: /submit project|提交项目/i }).first().click();
+    await expect(page).toHaveURL(/.*submit/);
   });
 
   test('login link from landing page works', async ({ page }) => {

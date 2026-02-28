@@ -54,10 +54,24 @@ export type Session = {
   endAt: string
 }
 
+export type SiteSettings = {
+  id?: string
+  key?: string
+  siteName: string
+  logoUrl?: string | null
+  tabTitle: string
+  seoTitle: string
+  seoDescription: string
+  faviconUrl: string
+  showPoweredBy: boolean
+  poweredByText: string
+  poweredByUrl: string
+}
+
 export type Project = {
   id: string
   hackathonId: string
-  sessionId: string
+  sessionId?: string | null
   userId?: string
   submitterEmail: string
   submitterName?: string
@@ -69,6 +83,7 @@ export type Project = {
   repoUrl?: string
   status: 'draft' | 'submitted'
   submissionData?: Record<string, any>
+  projectRounds?: ProjectRound[]
 }
 
 export type Judge = {
@@ -85,12 +100,16 @@ export type AssignmentScore = {
   score: number
 }
 
+export type AssignmentStatus = 'pending' | 'in_progress' | 'completed'
+
 export type Assignment = {
   id: string
   sessionId: string
   projectId: string
+  projectRoundId?: string | null
   judgeId: string
-  status: 'pending' | 'in_progress' | 'completed'
+  status: AssignmentStatus
+  isLocked?: boolean
   scores?: AssignmentScore[] | Record<string, number>
   comment?: string
   totalScore?: number
@@ -98,6 +117,30 @@ export type Assignment = {
   session?: Session
   project?: Project
   judge?: User
+  projectRound?: ProjectRound
+}
+
+export type PromotionStatus = 'pending' | 'advanced' | 'eliminated'
+
+export type ProjectRound = {
+  id: string
+  projectId: string
+  sessionId: string
+  sourceRoundId?: string | null
+  promotionStatus: PromotionStatus
+  nextSessionId?: string | null
+  decisionNote?: string | null
+  decidedById?: string | null
+  decidedAt?: string | null
+  averageScore?: number
+  totalAssignments?: number
+  completedAssignments?: number
+  pendingAssignments?: number
+  inProgressAssignments?: number
+  session?: Session
+  nextSession?: Session | null
+  project?: Project
+  assignments?: Assignment[]
 }
 
 export function formatDateRange(startAt: string, endAt: string) {

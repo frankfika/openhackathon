@@ -11,6 +11,8 @@ type AuthContextType = {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
+const USER_STORAGE_KEY = 'openhackathon_user'
+const TOKEN_STORAGE_KEY = 'openhackathon_token'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -19,7 +21,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Check local storage for persisted user
-    const savedUser = localStorage.getItem('openhackathon_user')
+    const savedUser = localStorage.getItem(USER_STORAGE_KEY)
     if (savedUser) {
       try {
         setUser(JSON.parse(savedUser))
@@ -34,9 +36,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null)
     setIsLoading(true)
     try {
-      const user = await api.login(email, password)
+      const loginResult = await api.login(email, password)
+      const { token, ...user } = loginResult
       setUser(user)
-      localStorage.setItem('openhackathon_user', JSON.stringify(user))
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
+      if (token) {
+        localStorage.setItem(TOKEN_STORAGE_KEY, token)
+      } else {
+        localStorage.removeItem(TOKEN_STORAGE_KEY)
+      }
     } catch (err: any) {
       const message = err.response?.data?.error || 'Login failed. Please try again.'
       setError(message)
@@ -48,7 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     setUser(null)
-    localStorage.removeItem('openhackathon_user')
+    localStorage.removeItem(USER_STORAGE_KEY)
+    localStorage.removeItem(TOKEN_STORAGE_KEY)
   }
 
   return (

@@ -5,7 +5,7 @@ import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import { useActiveHackathon } from '@/lib/active-hackathon'
-import { siteConfig } from '@/lib/site-config'
+import { useSiteBranding } from '@/lib/site-branding'
 
 import { ThemeLanguageSwitcher } from './ThemeLanguageSwitcher'
 
@@ -13,6 +13,7 @@ export function Layout() {
   const location = useLocation()
   const { t } = useTranslation()
   const { user, logout } = useAuth()
+  const { settings } = useSiteBranding()
   const isAuthPage = ['/login', '/register'].includes(location.pathname)
 
   if (isAuthPage) {
@@ -25,10 +26,10 @@ export function Layout() {
         <div className="container flex h-14 items-center justify-between">
           <div className="flex items-center gap-6">
             <Link to="/" className="text-lg font-bold tracking-tight">
-              {siteConfig.organizerLogo ? (
-                <img src={siteConfig.organizerLogo} alt={siteConfig.organizerName} className="h-8" />
+              {settings.logoUrl ? (
+                <img src={settings.logoUrl} alt={settings.siteName} className="h-8" />
               ) : (
-                siteConfig.organizerName
+                settings.siteName
               )}
             </Link>
             <nav className="hidden items-center gap-1 text-sm md:flex">
@@ -93,18 +94,19 @@ export function Layout() {
 function FooterSection() {
   const { t } = useTranslation()
   const { activeHackathon: h } = useActiveHackathon()
+  const { settings } = useSiteBranding()
 
   return (
     <footer className="border-t border-border/40 py-4">
       <div className="container mx-auto px-4 md:px-6">
         <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
           <div className="flex items-center gap-3">
-            {siteConfig.organizerLogo ? (
-              <img src={siteConfig.organizerLogo} alt={siteConfig.organizerName} className="h-8" />
+            {settings.logoUrl ? (
+              <img src={settings.logoUrl} alt={settings.siteName} className="h-8" />
             ) : (
               <>
                 <div className="h-8 w-8 rounded-lg bg-primary" />
-                <span className="text-sm font-bold">{siteConfig.organizerName}</span>
+                <span className="text-sm font-bold">{settings.siteName}</span>
               </>
             )}
           </div>
@@ -118,14 +120,14 @@ function FooterSection() {
               </a>
             )}
           </nav>
-          {siteConfig.poweredBy.show && (
+          {settings.showPoweredBy && (
             <a
-              href={siteConfig.poweredBy.url}
+              href={settings.poweredByUrl}
               target="_blank"
               rel="noreferrer"
               className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors"
             >
-              {siteConfig.poweredBy.text}
+              {settings.poweredByText}
             </a>
           )}
         </div>

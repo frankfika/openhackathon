@@ -19,6 +19,7 @@ export function JudgingDetail() {
   const { t } = useTranslation()
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const hasMarkedInProgress = React.useRef(false)
 
   // Fetch assignment
   const { data: assignment, isLoading: isLoadingAssignment } = useQuery({
@@ -28,11 +29,21 @@ export function JudgingDetail() {
   })
 
   // Fetch project
-  const { data: project, isLoading: isLoadingProject } = useQuery({
+  const { data: projectFromAssignment, isLoading: isLoadingProjectFromAssignment } = useQuery({
     queryKey: ['project', assignment?.projectId],
     queryFn: () => api.getProject(assignment!.projectId),
     enabled: !!assignment?.projectId,
   })
+
+  // Fallback: open by project id directly (from project list)
+  const { data: projectFromDirectId, isLoading: isLoadingProjectFromDirectId } = useQuery({
+    queryKey: ['project', id, 'direct'],
+    queryFn: () => api.getProject(id!),
+    enabled: !!id && !assignment,
+    retry: false,
+  })
+
+  const project = projectFromAssignment || projectFromDirectId
 
   // Fetch hackathon for scoring criteria
   const { data: hackathon } = useQuery({
@@ -110,6 +121,24 @@ export function JudgingDetail() {
       setComment(assignment.comment)
     }
   }, [assignment])
+
+  React.useEffect(() => {
+    if (!assignment || assignment.status !== 'pending') return
+    if (user?.role !== 'judge') return
+    if (hasMarkedInProgress.current) return
+
+    hasMarkedInProgress.current = true
+    api.updateAssignmentStatus(assignment.id, 'in_progress')
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ['assignment', id] })
+        queryClient.invalidateQueries({ queryKey: ['assignments'] })
+      })
+      .catch(() => {
+        hasMarkedInProgress.current = false
+      })
+  }, [assignment, id, queryClient, user?.role])
+
+  const isLoadingProject = assignment ? isLoadingProjectFromAssignment : isLoadingProjectFromDirectId
 
   if (isLoadingAssignment || isLoadingProject) {
     return <div>{t('common.loading')}</div>

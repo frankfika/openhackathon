@@ -1,0 +1,5 @@
+<svg width="220" height="48" viewBox="0 0 220 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="48" height="48" rx="12" fill="#1D4ED8"/>
+  <path d="M14 14H22V34H14V14ZM26 14H34C38.4183 14 42 17.5817 42 22V26C42 30.4183 38.4183 34 34 34H26V14ZM34 22H30V26H34V22Z" fill="white"/>
+  <text x="60" y="30" fill="#0F172A" font-size="22" font-family="Arial, sans-serif" font-weight="700">OpenHackathon</text>
+</svg>

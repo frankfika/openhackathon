@@ -1,9 +1,37 @@
 import axios from 'axios'
-import { Hackathon, Project, Assignment, User } from './types'
+import { Hackathon, Project, Assignment, User, AssignmentStatus, ProjectRound, PromotionStatus, SiteSettings } from './types'
 
 const API_URL = '/api'
+const AUTH_TOKEN_KEY = 'openhackathon_token'
+
+if (axios.interceptors?.request?.use) {
+  axios.interceptors.request.use((config) => {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY)
+    if (token) {
+      if (config.headers && typeof (config.headers as { set?: unknown }).set === 'function') {
+        (config.headers as { set: (key: string, value: string) => void }).set('Authorization', `Bearer ${token}`)
+      } else {
+        (config as { headers: Record<string, string> }).headers = {
+          ...((config.headers || {}) as Record<string, string>),
+          Authorization: `Bearer ${token}`,
+        }
+      }
+    }
+    return config
+  })
+}
 
 export const api = {
+  // Site Settings
+  getSiteSettings: async () => {
+    const res = await axios.get<SiteSettings>(`${API_URL}/site-settings`)
+    return res.data
+  },
+  updateSiteSettings: async (data: Partial<SiteSettings>) => {
+    const res = await axios.put<SiteSettings>(`${API_URL}/site-settings`, data)
+    return res.data
+  },
+
   // Hackathons
   getHackathons: async () => {
     const res = await axios.get<Hackathon[]>(`${API_URL}/hackathons`)
@@ -45,16 +73,46 @@ export const api = {
   },
 
   // Assignments
-  getAssignments: async (params?: { sessionId?: string; projectId?: string; judgeId?: string; status?: string }) => {
+  getAssignments: async (params?: { sessionId?: string; projectId?: string; projectRoundId?: string; judgeId?: string; status?: string; hackathonId?: string }) => {
     const res = await axios.get<Assignment[]>(`${API_URL}/assignments`, { params })
     return res.data
   },
-  createAssignments: async (assignments: { sessionId: string; projectId: string; judgeId: string }[]) => {
+  createAssignments: async (assignments: { sessionId?: string; projectId?: string; judgeId: string; projectRoundId?: string }[]) => {
     const res = await axios.post<Assignment[]>(`${API_URL}/assignments`, { assignments })
+    return res.data
+  },
+  updateAssignmentStatus: async (assignmentId: string, status: AssignmentStatus) => {
+    const res = await axios.put<Assignment>(`${API_URL}/assignments/${assignmentId}/status`, { status })
     return res.data
   },
   deleteAssignment: async (id: string) => {
     const res = await axios.delete(`${API_URL}/assignments/${id}`)
+    return res.data
+  },
+
+  // Project Rounds / Promotions
+  getProjectRounds: async (params?: { hackathonId?: string; sessionId?: string; projectId?: string; promotionStatus?: PromotionStatus }) => {
+    const res = await axios.get<ProjectRound[]>(`${API_URL}/project-rounds`, { params })
+    return res.data
+  },
+  initializeProjectRounds: async (data: { sessionId: string; sourceSessionId?: string; projectIds?: string[] }) => {
+    const res = await axios.post<{ sessionId: string; initializedCount: number; rounds: ProjectRound[] }>(`${API_URL}/project-rounds/initialize`, data)
+    return res.data
+  },
+  updateProjectRoundPromotion: async (
+    projectRoundId: string,
+    data: { decision: PromotionStatus; nextSessionId?: string; note?: string; decidedById?: string; judgeIds?: string[] }
+  ) => {
+    const res = await axios.put<ProjectRound>(`${API_URL}/project-rounds/${projectRoundId}/promotion`, data)
+    return res.data
+  },
+  bulkUpdateProjectRoundPromotions: async (data: {
+    decisions: { projectRoundId: string; decision: PromotionStatus; nextSessionId?: string; note?: string; decidedById?: string }[];
+    nextSessionId?: string;
+    decidedById?: string;
+    judgeIds?: string[];
+  }) => {
+    const res = await axios.post(`${API_URL}/project-rounds/promotions/bulk`, data)
     return res.data
   },
 
@@ -122,6 +180,37 @@ export const api = {
     }[]>(`${API_URL}/reports/scoring`, { params })
     return res.data
   },
+  getProjectScoringReport: async (params?: { hackathonId?: string; sessionId?: string }) => {
+    const res = await axios.get<{
+      projectRoundId?: string | null;
+      projectId: string;
+      projectTitle: string;
+      submitterName?: string | null;
+      submitterEmail: string;
+      sessionId?: string | null;
+      sessionName?: string | null;
+      promotionStatus?: PromotionStatus;
+      nextSessionId?: string | null;
+      nextSessionName?: string | null;
+      averageScore: number;
+      totalAssignments: number;
+      completedAssignments: number;
+      pendingAssignments: number;
+      inProgressAssignments: number;
+      judges: {
+        assignmentId: string;
+        judgeId: string;
+        judgeName: string;
+        judgeEmail: string;
+        status: AssignmentStatus;
+        totalScore?: number | null;
+        comment?: string | null;
+        scores?: { criterionId: string; score: number }[];
+        scoredAt: string;
+      }[];
+    }[]>(`${API_URL}/reports/projects`, { params })
+    return res.data
+  },
 
   // Users
   getUsers: async (params?: { role?: string }) => {
@@ -138,8 +227,8 @@ export const api = {
   },
 
   // Auth
-  login: async (email: string, password: string): Promise<User> => {
-    const res = await axios.post<User>(`${API_URL}/auth/login`, { email, password })
+  login: async (email: string, password: string): Promise<User & { token?: string }> => {
+    const res = await axios.post<User & { token?: string }>(`${API_URL}/auth/login`, { email, password })
     return res.data
   },
 }

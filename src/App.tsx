@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Layout } from './components/Layout';
 import { AuthProvider } from './lib/auth';
 import { ActiveHackathonProvider } from './lib/active-hackathon';
+import { SiteBrandingProvider } from './lib/site-branding';
 import { DashboardLayout } from './components/DashboardLayout';
 import { JudgeLayout } from './components/JudgeLayout';
 import { RequireRole } from './components/RequireRole';
@@ -13,6 +14,7 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Hackathons } from './pages/Hackathons';
 import { Projects } from './pages/Projects';
+import { ProjectDetail } from './pages/ProjectDetail';
 import { Judging } from './pages/Judging'
 import { JudgingDetail } from './pages/JudgingDetail'
 import { HackathonSettings } from './pages/HackathonSettings'
@@ -21,6 +23,7 @@ import { PublicSubmit } from './pages/PublicSubmit'
 import { SubmitSuccess } from './pages/SubmitSuccess'
 import { AssignmentManager } from './pages/AssignmentManager'
 import { ScoringReport } from './pages/ScoringReport'
+import { PromotionManager } from './pages/PromotionManager'
 import { Landing } from './pages/Landing'
 import { Docs } from './pages/Docs'
 import { Settings } from './pages/Settings';
@@ -30,12 +33,13 @@ const queryClient = new QueryClient();
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <ActiveHackathonProvider>
-          <BrowserRouter>
-          <Toaster position="top-center" richColors />
-          <PoweredByBadge />
-          <Routes>
+      <SiteBrandingProvider>
+        <AuthProvider>
+          <ActiveHackathonProvider>
+            <BrowserRouter>
+            <Toaster position="top-center" richColors />
+            <PoweredByBadge />
+            <Routes>
             {/* Public Routes */}
             <Route element={<Layout />}>
               <Route path="/" element={<Landing />} />
@@ -60,9 +64,11 @@ function App() {
               <Route path="hackathons" element={<Hackathons />} />
               <Route path="hackathons/:id/settings" element={<HackathonSettings />} />
               <Route path="projects" element={<Projects />} />
+              <Route path="projects/:id" element={<ProjectDetail />} />
               <Route path="judging" element={<Judging />} />
               <Route path="judging/:id" element={<JudgingDetail />} />
               <Route path="assignments" element={<AssignmentManager />} />
+              <Route path="promotions" element={<PromotionManager />} />
               <Route path="reports" element={<ScoringReport />} />
               <Route path="leaderboard" element={<Leaderboard />} />
               <Route path="settings" element={<Settings />} />
@@ -82,10 +88,11 @@ function App() {
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </ActiveHackathonProvider>
-    </AuthProvider>
+            </Routes>
+          </BrowserRouter>
+        </ActiveHackathonProvider>
+      </AuthProvider>
+    </SiteBrandingProvider>
     </QueryClientProvider>
   );
 }

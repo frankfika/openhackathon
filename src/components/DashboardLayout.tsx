@@ -14,7 +14,8 @@ import {
   User,
   BarChart3,
   Users,
-  FileText
+  FileText,
+  GitBranch
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -22,13 +23,14 @@ import { toast } from 'sonner';
 import { ThemeLanguageSwitcher } from '@/components/ThemeLanguageSwitcher'
 import { useAuth } from '@/lib/auth';
 import { useActiveHackathon } from '@/lib/active-hackathon';
-import { siteConfig } from '@/lib/site-config';
+import { useSiteBranding } from '@/lib/site-branding';
 import { useTranslation } from 'react-i18next'
 
 export function DashboardLayout() {
   const { t } = useTranslation()
   const { user } = useAuth()
   const { activeHackathon } = useActiveHackathon()
+  const { settings } = useSiteBranding()
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -50,6 +52,7 @@ export function DashboardLayout() {
       { name: t('nav.projects'), href: '/dashboard/projects', icon: FolderGit2, adminOnly: false },
       { name: t('nav.judging'), href: '/dashboard/judging', icon: CheckSquare, judgeOnly: true },
       { name: t('nav.assignments', 'Assignments'), href: '/dashboard/assignments', icon: Users, adminOnly: true },
+      { name: t('nav.promotions', 'Promotions'), href: '/dashboard/promotions', icon: GitBranch, adminOnly: true },
       { name: t('nav.reports', 'Reports'), href: '/dashboard/reports', icon: FileText, adminOnly: true },
       { name: t('nav.leaderboard', 'Leaderboard'), href: '/dashboard/leaderboard', icon: BarChart3, adminOnly: false },
       { name: t('settings.title'), href: '/dashboard/settings', icon: Settings, adminOnly: true },
@@ -81,14 +84,14 @@ export function DashboardLayout() {
       >
         <div className="flex h-14 items-center justify-between border-b bg-background px-6">
             <Link to="/" className="flex items-center gap-3 px-2">
-              {siteConfig.organizerLogo ? (
-                <img src={siteConfig.organizerLogo} alt={siteConfig.organizerName} className="h-8" />
+              {settings.logoUrl ? (
+                <img src={settings.logoUrl} alt={settings.siteName} className="h-8" />
               ) : (
                 <>
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                    <span className="text-lg font-bold">{siteConfig.organizerName.charAt(0)}</span>
+                    <span className="text-lg font-bold">{settings.siteName.charAt(0)}</span>
                   </div>
-                  <span className="font-semibold tracking-tight">{siteConfig.organizerName}</span>
+                  <span className="font-semibold tracking-tight">{settings.siteName}</span>
                 </>
               )}
             </Link>
@@ -163,7 +166,7 @@ export function DashboardLayout() {
           </Button>
 
           <div className="flex items-center gap-2 lg:hidden">
-            <span className="text-lg font-semibold tracking-tight">{siteConfig.organizerName}</span>
+            <span className="text-lg font-semibold tracking-tight">{settings.siteName}</span>
           </div>
 
           <div className="flex flex-1 justify-end items-center gap-4">

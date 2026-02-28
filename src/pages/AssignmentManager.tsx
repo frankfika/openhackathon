@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { Users, CheckSquare, Info, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -16,12 +17,20 @@ export function AssignmentManager() {
   const { activeHackathon } = useActiveHackathon()
   const queryClient = useQueryClient()
   const [expandedJudge, setExpandedJudge] = useState<string | null>(null)
+  const [selectedSessionId, setSelectedSessionId] = useState('')
+
+  useEffect(() => {
+    const firstSessionId = activeHackathon?.sessions?.[0]?.id || ''
+    if (!selectedSessionId || !activeHackathon?.sessions?.some((session) => session.id === selectedSessionId)) {
+      setSelectedSessionId(firstSessionId)
+    }
+  }, [activeHackathon?.sessions, selectedSessionId])
 
   // Fetch projects
   const { data: projects = [], isLoading: isLoadingProjects } = useQuery({
-    queryKey: ['projects', activeHackathon?.id],
-    queryFn: () => api.getProjects({ hackathonId: activeHackathon?.id }),
-    enabled: !!activeHackathon?.id,
+    queryKey: ['projects', activeHackathon?.id, selectedSessionId],
+    queryFn: () => api.getProjects({ hackathonId: activeHackathon?.id, sessionId: selectedSessionId || undefined }),
+    enabled: !!activeHackathon?.id && !!selectedSessionId,
   })
 
   // Fetch judges (users with judge role)
@@ -32,13 +41,12 @@ export function AssignmentManager() {
 
   // Fetch existing assignments
   const { data: assignments = [], isLoading: isLoadingAssignments } = useQuery({
-    queryKey: ['assignments', activeHackathon?.id],
+    queryKey: ['assignments', activeHackathon?.id, selectedSessionId],
     queryFn: async () => {
-      const sessionId = activeHackathon?.sessions?.[0]?.id
-      if (!sessionId) return []
-      return api.getAssignments({ sessionId })
+      if (!selectedSessionId) return []
+      return api.getAssignments({ sessionId: selectedSessionId })
     },
-    enabled: !!activeHackathon?.sessions?.[0]?.id,
+    enabled: !!selectedSessionId,
   })
 
   // Create assignments mutation
@@ -66,13 +74,6 @@ export function AssignmentManager() {
     },
   })
 
-  // Get session info
-  const getSession = (projectId: string) => {
-    const project = projects.find(p => p.id === projectId)
-    if (!project?.sessionId) return null
-    return activeHackathon?.sessions?.find(s => s.id === project.sessionId)
-  }
-
   // Check if a project is assigned to a judge
   const isAssigned = (projectId: string, judgeId: string) => {
     return assignments.some(a => a.projectId === projectId && a.judgeId === judgeId)
@@ -95,7 +96,7 @@ export function AssignmentManager() {
   // Toggle assignment
   const toggleAssignment = (projectId: string, judgeId: string) => {
     const existingId = getAssignmentId(projectId, judgeId)
-    const sessionId = activeHackathon?.sessions?.[0]?.id
+    const sessionId = selectedSessionId
 
     if (existingId) {
       // Remove assignment
@@ -108,7 +109,7 @@ export function AssignmentManager() {
 
   // Assign all projects to a judge
   const assignAllToJudge = (judgeId: string) => {
-    const sessionId = activeHackathon?.sessions?.[0]?.id
+    const sessionId = selectedSessionId
     if (!sessionId) return
 
     const newAssignments = projects
@@ -146,6 +147,20 @@ export function AssignmentManager() {
             {t('assignments.subtitle')}
           </p>
         </div>
+        <div className="w-full md:w-[280px]">
+          <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
+            <SelectTrigger>
+              <SelectValue placeholder={t('reports.session', 'Session')} />
+            </SelectTrigger>
+            <SelectContent>
+              {(activeHackathon?.sessions || []).map((session) => (
+                <SelectItem key={session.id} value={session.id}>
+                  {session.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Alert>
@@ -175,7 +190,6 @@ export function AssignmentManager() {
                 </div>
               )}
               {projects.map(project => {
-                const session = getSession(project.id)
                 const assignedCount = getProjectAssignmentCount(project.id)
 
                 return (
@@ -189,9 +203,9 @@ export function AssignmentManager() {
                         <p className="text-sm text-muted-foreground truncate mt-1">
                           {project.oneLiner}
                         </p>
-                        {session && (
+                        {project.sessionId && (
                           <p className="text-xs text-muted-foreground mt-1">
-                            {session.name}
+                            {activeHackathon?.sessions?.find((s) => s.id === project.sessionId)?.name || '-'}
                           </p>
                         )}
                       </div>
