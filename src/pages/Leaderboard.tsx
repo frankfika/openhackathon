@@ -130,7 +130,7 @@ export function Leaderboard() {
       case 0: return "bg-yellow-500/10 border-yellow-500/20"
       case 1: return "bg-slate-400/10 border-slate-400/20"
       case 2: return "bg-amber-600/10 border-amber-600/20"
-      default: return "bg-card"
+      default: return "bg-white/70 dark:bg-slate-900/55"
     }
   }
 
@@ -213,7 +213,7 @@ export function Leaderboard() {
           {/* Admin editing mode */}
           {isAdmin && editing && (
             <div className="space-y-4">
-              <Card className="border-dashed">
+              <Card className="surface-panel border-dashed border-border/70 shadow-none">
                 <CardContent className="p-4">
                   <p className="text-sm text-muted-foreground mb-3">{t('leaderboard.add_projects')}</p>
                   <div className="flex flex-wrap gap-2 max-h-[200px] overflow-y-auto">
@@ -234,7 +234,7 @@ export function Leaderboard() {
 
               <div className="grid gap-3">
                 {entries.map((entry, index) => (
-                  <Card key={entry.projectId} className={cn("border shadow-sm", getRankColor(index))}>
+                  <Card key={entry.projectId} className={cn("surface-panel border-none shadow-none", getRankColor(index))}>
                     <CardContent className="flex items-center gap-3 p-4">
                       <div className="flex flex-col gap-1">
                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => moveEntry(index, -1)} disabled={index === 0}>
@@ -283,7 +283,7 @@ export function Leaderboard() {
               {rankedProjects.map((project, index) => (
                 <Card
                   key={project.id}
-                  className={cn("border shadow-sm transition-all hover:shadow-md", getRankColor(index))}
+                  className={cn("surface-panel border-none shadow-none transition-all", getRankColor(index))}
                 >
                   <CardContent className="flex items-center gap-3 md:gap-4 p-4 md:p-6">
                     <div className="flex h-10 w-10 md:h-12 md:w-12 items-center justify-center shrink-0">

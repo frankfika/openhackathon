@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { Plus, Trash2, GripVertical, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,7 +23,7 @@ export function ScoringCriteriaBuilder({ initialCriteria = [], onSave }: Scoring
   const addCriterion = () => {
     const newCriterion: ScoringCriterion = {
       id: `sc_${Date.now()}`,
-      name: 'New Criterion',
+      name: t('scoring_builder.new_criterion'),
       maxScore: 0
     }
     setCriteria([...criteria, newCriterion])
@@ -51,14 +51,14 @@ export function ScoringCriteriaBuilder({ initialCriteria = [], onSave }: Scoring
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium">Scoring Criteria Configuration</h3>
+          <h3 className="text-lg font-medium">{t('scoring_builder.config_title')}</h3>
           <p className="text-sm text-muted-foreground mt-1">
-            Define the scoring criteria for judges. Total must equal 100 points.
+            {t('scoring_builder.config_desc')}
           </p>
         </div>
         <Button onClick={addCriterion} size="sm" className="gap-2">
           <Plus className="h-4 w-4" />
-          Add Criterion
+          {t('scoring_builder.add_criterion')}
         </Button>
       </div>
 
@@ -72,16 +72,16 @@ export function ScoringCriteriaBuilder({ initialCriteria = [], onSave }: Scoring
                 </div>
 
                 <div className="md:col-span-7 space-y-2">
-                  <Label>Criterion Name</Label>
+                  <Label>{t('scoring_builder.criterion_name')}</Label>
                   <Input
                     value={criterion.name}
                     onChange={(e) => updateCriterion(index, { name: e.target.value })}
-                    placeholder="e.g., Innovation, Technical Implementation"
+                    placeholder={t('scoring_builder.criterion_name_placeholder')}
                   />
                 </div>
 
                 <div className="md:col-span-3 space-y-2">
-                  <Label>Max Score</Label>
+                  <Label>{t('scoring_builder.max_score')}</Label>
                   <Input
                     type="number"
                     min="0"
@@ -109,7 +109,7 @@ export function ScoringCriteriaBuilder({ initialCriteria = [], onSave }: Scoring
 
         {criteria.length === 0 && (
           <div className="text-center py-10 border border-dashed rounded-lg text-muted-foreground">
-            No scoring criteria configured. Add a criterion to get started.
+            {t('scoring_builder.no_criteria')}
           </div>
         )}
       </div>
@@ -123,12 +123,12 @@ export function ScoringCriteriaBuilder({ initialCriteria = [], onSave }: Scoring
               <AlertCircle className="h-4 w-4" />
             )}
             <AlertDescription>
-              <span className="font-semibold">Total Score: {totalScore} / 100</span>
+              <span className="font-semibold">{t('scoring_builder.total_score', { score: totalScore })}</span>
               {!isValid && (
                 <span className="ml-2">
                   {totalScore < 100
-                    ? `Need ${100 - totalScore} more points`
-                    : `Reduce by ${totalScore - 100} points`}
+                    ? t('scoring_builder.need_more', { count: 100 - totalScore })
+                    : t('scoring_builder.reduce_by', { count: totalScore - 100 })}
                 </span>
               )}
             </AlertDescription>
@@ -138,7 +138,7 @@ export function ScoringCriteriaBuilder({ initialCriteria = [], onSave }: Scoring
 
       <div className="flex justify-end pt-4">
         <Button onClick={handleSave} disabled={!isValid}>
-          {t('common.save_changes', 'Save Changes')}
+          {t('common.save_changes')}
         </Button>
       </div>
     </div>

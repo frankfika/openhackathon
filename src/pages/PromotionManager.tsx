@@ -226,7 +226,7 @@ export function PromotionManager() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="border-0 shadow-sm">
+        <Card className="surface-panel border-none shadow-none">
           <CardHeader>
             <CardTitle>{t('promotions.current_round', 'Current Round')}</CardTitle>
             <CardDescription>{t('promotions.current_round_desc', 'Pick the session you are finalizing')}</CardDescription>
@@ -247,7 +247,7 @@ export function PromotionManager() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm">
+        <Card className="surface-panel border-none shadow-none">
           <CardHeader>
             <CardTitle>{t('promotions.next_round', 'Next Round')}</CardTitle>
             <CardDescription>{t('promotions.next_round_desc', 'Advanced projects will be moved here')}</CardDescription>
@@ -271,7 +271,7 @@ export function PromotionManager() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm">
+        <Card className="surface-panel border-none shadow-none">
           <CardHeader>
             <CardTitle>{t('promotions.reviewers', 'Next-round Reviewers')}</CardTitle>
             <CardDescription>{t('promotions.reviewers_desc', 'Advanced projects will auto-create assignments for selected judges')}</CardDescription>
@@ -289,7 +289,7 @@ export function PromotionManager() {
         </Card>
       </div>
 
-      <Card className="border-0 shadow-sm">
+      <Card className="surface-panel border-none shadow-none">
         <CardHeader>
           <CardTitle>{t('promotions.board', 'Promotion Board')}</CardTitle>
           <CardDescription>
@@ -298,11 +298,11 @@ export function PromotionManager() {
         </CardHeader>
         <CardContent>
           {rounds.length === 0 ? (
-            <div className="rounded-md border p-6 text-sm text-muted-foreground">
+            <div className="surface-inset p-6 text-sm text-muted-foreground">
               {t('promotions.empty', 'No round records found for this session. Click "Initialize Rounds" first.')}
             </div>
           ) : (
-            <div className="rounded-md border overflow-x-auto">
+            <div className="table-shell overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>

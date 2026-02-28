@@ -178,7 +178,7 @@ export function JudgingDetail() {
       <div className="grid gap-4 md:gap-6 lg:grid-cols-3">
         {/* Project Details */}
         <div className="lg:col-span-2 space-y-6">
-          <Card className="border-0 shadow-sm">
+          <Card className="surface-panel border-none shadow-none">
             <CardHeader>
               <CardTitle>{t('projects.details', 'Details')}</CardTitle>
             </CardHeader>
@@ -225,7 +225,7 @@ export function JudgingDetail() {
 
           {/* Submission Data */}
           {project.submissionData && Object.keys(project.submissionData).length > 0 && (
-            <Card className="border-0 shadow-sm">
+            <Card className="surface-panel border-none shadow-none">
               <CardHeader>
                 <CardTitle>{t('projects.submission_data', 'Submission Data')}</CardTitle>
               </CardHeader>
@@ -244,7 +244,7 @@ export function JudgingDetail() {
         {/* Scoring Form - Only visible to judges/admins with an assignment */}
         {!isReadOnly ? (
           <div className="space-y-6">
-            <Card className="border-0 shadow-sm sticky top-6">
+            <Card className="surface-panel border-none shadow-none sticky top-6">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   {t('judging.score_card', 'Score Card')}
@@ -293,7 +293,7 @@ export function JudgingDetail() {
           </div>
         ) : (
           <div className="space-y-6">
-            <Card className="border-0 shadow-sm sticky top-6">
+            <Card className="surface-panel border-none shadow-none sticky top-6">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   {t('projects.score', 'Score')}

@@ -14,25 +14,22 @@ export default {
   			'2xl': '1400px'
   		}
   	},
-  	extend: {
-  		fontFamily: {
-  			sans: [
-  				'-apple-system',
-  				'BlinkMacSystemFont',
-  				'San Francisco',
-  				'Segoe UI',
-  				'Roboto',
-  				'Helvetica Neue',
-  				'sans-serif'
-  			],
-  			display: [
-  				'-apple-system',
-  				'BlinkMacSystemFont',
-  				'San Francisco',
-  				'Helvetica Neue',
-  				'sans-serif'
-  			]
-  		},
+  		extend: {
+  			fontFamily: {
+  				sans: [
+					'"Plus Jakarta Sans"',
+					'"Noto Sans SC"',
+					'"PingFang SC"',
+					'"Microsoft YaHei"',
+					'sans-serif'
+  				],
+  				display: [
+					'"Space Grotesk"',
+					'"Plus Jakarta Sans"',
+					'"Noto Sans SC"',
+					'sans-serif'
+  				]
+  			},
   		colors: {
   			border: 'hsl(var(--border))',
   			input: 'hsl(var(--input))',

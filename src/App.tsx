@@ -9,7 +9,6 @@ import { SiteBrandingProvider } from './lib/site-branding';
 import { DashboardLayout } from './components/DashboardLayout';
 import { JudgeLayout } from './components/JudgeLayout';
 import { RequireRole } from './components/RequireRole';
-import { PoweredByBadge } from './components/PoweredByBadge';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Hackathons } from './pages/Hackathons';
@@ -38,7 +37,6 @@ function App() {
           <ActiveHackathonProvider>
             <BrowserRouter>
             <Toaster position="top-center" richColors />
-            <PoweredByBadge />
             <Routes>
             {/* Public Routes */}
             <Route element={<Layout />}>
@@ -47,7 +45,7 @@ function App() {
               <Route path="/docs" element={<Docs />} />
               <Route path="/submit" element={<PublicSubmit />} />
               <Route path="/submit/success" element={<SubmitSuccess />} />
-              <Route path="/projects" element={<Projects />} />
+              <Route path="/projects" element={<Navigate to="/" replace />} />
               <Route path="/leaderboard" element={<Leaderboard />} />
             </Route>
 

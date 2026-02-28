@@ -73,9 +73,9 @@ export function Hackathons() {
               <Card
                 key={h.id}
                 className={cn(
-                  "border-0 bg-white/60 shadow-sm backdrop-blur transition-all",
-                  isSelected && "ring-2 ring-primary ring-offset-2",
-                  isAdmin && !isSelected && "cursor-pointer hover:shadow-md"
+                  "surface-panel border-none shadow-none transition-all",
+                  isSelected && "ring-2 ring-primary/40 ring-offset-2 ring-offset-transparent",
+                  isAdmin && !isSelected && "cursor-pointer"
                 )}
                 onClick={() => {
                   if (isAdmin && !isSelected) {

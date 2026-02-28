@@ -113,11 +113,11 @@ export function ProjectDetail() {
       queryClient.invalidateQueries({ queryKey: ['project', id] })
       queryClient.invalidateQueries({ queryKey: ['project', id, 'detail'] })
       queryClient.invalidateQueries({ queryKey: ['projects'] })
-      toast.success(t('projects.update_success', 'Project updated successfully'))
+      toast.success(t('projects.update_success'))
       setIsEditing(false)
     },
     onError: () => {
-      toast.error(t('projects.update_error', 'Failed to update project'))
+      toast.error(t('projects.update_error'))
     },
   })
 
@@ -190,7 +190,7 @@ export function ProjectDetail() {
   }
 
   if (!project) {
-    return <div className="p-6">{t('projects.not_found', 'Project not found')}</div>
+    return <div className="p-6">{t('projects.not_found')}</div>
   }
 
   return (
@@ -199,7 +199,7 @@ export function ProjectDetail() {
         <div className="space-y-2">
           <Button variant="ghost" className="px-0" onClick={() => navigate('/dashboard/projects')}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            {t('common.back', 'Back')}
+            {t('common.back')}
           </Button>
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">{project.title}</h1>
           <p className="text-sm text-muted-foreground">
@@ -211,18 +211,18 @@ export function ProjectDetail() {
           {!isEditing ? (
             <Button variant="outline" onClick={() => setIsEditing(true)}>
               <Pencil className="mr-2 h-4 w-4" />
-              {t('common.edit', 'Edit')}
+              {t('common.edit')}
             </Button>
           ) : (
             <>
               <Button variant="outline" onClick={() => setIsEditing(false)}>
                 <X className="mr-2 h-4 w-4" />
-                {t('common.cancel', 'Cancel')}
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleSave} disabled={updateMutation.isPending}>
                 {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 <Save className="mr-2 h-4 w-4" />
-                {t('common.save', 'Save')}
+                {t('common.save')}
               </Button>
             </>
           )}
@@ -235,78 +235,80 @@ export function ProjectDetail() {
           size="sm"
           onClick={() => setActiveTab('overview')}
         >
-          {t('common.overview', 'Overview')}
+          {t('common.overview')}
         </Button>
         <Button
           variant={activeTab === 'scores' ? 'default' : 'outline'}
           size="sm"
           onClick={() => setActiveTab('scores')}
         >
-          {t('projects.view_scores', 'View Scores')}
+          {t('projects.view_scores')}
         </Button>
       </div>
 
       {activeTab === 'overview' && (
         <>
           <div className="grid gap-4 md:grid-cols-4">
-            <Card className="border-0 shadow-sm">
+            <Card className="surface-panel border-none shadow-none">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">{t('projects.status', 'Status')}</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('projects.status')}</CardTitle>
               </CardHeader>
               <CardContent>
-                <Badge variant={form.status === 'submitted' ? 'default' : 'secondary'}>{form.status}</Badge>
+                <Badge variant={form.status === 'submitted' ? 'default' : 'secondary'}>
+                  {t(`projects.status_options.${form.status}`)}
+                </Badge>
               </CardContent>
             </Card>
-            <Card className="border-0 shadow-sm">
+            <Card className="surface-panel border-none shadow-none">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">{t('projects.score', 'Score')}</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('projects.score')}</CardTitle>
               </CardHeader>
               <CardContent className="text-2xl font-bold">{avgScore > 0 ? avgScore.toFixed(1) : '-'}</CardContent>
             </Card>
-            <Card className="border-0 shadow-sm">
+            <Card className="surface-panel border-none shadow-none">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">{t('reports.progress', 'Progress')}</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('reports.progress')}</CardTitle>
               </CardHeader>
               <CardContent className="text-2xl font-bold">
                 {completedAssignments.length}/{assignments.length}
               </CardContent>
             </Card>
-            <Card className="border-0 shadow-sm">
+            <Card className="surface-panel border-none shadow-none">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">{t('reports.judges', 'Judges')}</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('reports.judges')}</CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">
-                {t('reports.pending_short', 'Pending')}: {pendingAssignments.length}
+                {t('reports.pending_short')}: {pendingAssignments.length}
                 <br />
-                {t('reports.in_progress_short', 'In Progress')}: {inProgressAssignments.length}
+                {t('reports.in_progress_short')}: {inProgressAssignments.length}
               </CardContent>
             </Card>
           </div>
 
-          <Card className="border-0 shadow-sm">
+          <Card className="surface-panel border-none shadow-none">
             <CardHeader>
-              <CardTitle>{t('projects.details', 'Details')}</CardTitle>
-              <CardDescription>{t('projects.subtitle', 'Manage and review project submissions')}</CardDescription>
+              <CardTitle>{t('projects.details')}</CardTitle>
+              <CardDescription>{t('projects.subtitle')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {isEditing ? (
                 <>
                   <div className="space-y-2">
-                    <Label>{t('projects.project_name', 'Project Name')}</Label>
+                    <Label>{t('projects.project_name')}</Label>
                     <Input
                       value={form.title}
                       onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{t('projects.one_liner', 'One-liner')}</Label>
+                    <Label>{t('projects.one_liner')}</Label>
                     <Input
                       value={form.oneLiner}
                       onChange={(e) => setForm((prev) => ({ ...prev, oneLiner: e.target.value }))}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{t('projects.description', 'Description')}</Label>
+                    <Label>{t('projects.description')}</Label>
                     <Textarea
                       value={form.description}
                       onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
@@ -314,7 +316,7 @@ export function ProjectDetail() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{t('projects.tags', 'Tags')}</Label>
+                    <Label>{t('projects.tags')}</Label>
                     <Input
                       value={form.tags}
                       onChange={(e) => setForm((prev) => ({ ...prev, tags: e.target.value }))}
@@ -322,14 +324,14 @@ export function ProjectDetail() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label>Demo URL</Label>
+                      <Label>{t('projects.demo_url')}</Label>
                       <Input
                         value={form.demoUrl}
                         onChange={(e) => setForm((prev) => ({ ...prev, demoUrl: e.target.value }))}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Repo URL</Label>
+                      <Label>{t('projects.repo_url')}</Label>
                       <Input
                         value={form.repoUrl}
                         onChange={(e) => setForm((prev) => ({ ...prev, repoUrl: e.target.value }))}
@@ -337,16 +339,16 @@ export function ProjectDetail() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label>{t('projects.status', 'Status')}</Label>
+                    <Label>{t('projects.status')}</Label>
                     <select
                       value={form.status}
                       onChange={(e) =>
                         setForm((prev) => ({ ...prev, status: e.target.value as 'draft' | 'submitted' }))
                       }
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      className="w-full rounded-xl border border-white/80 bg-white/78 px-3 py-2 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-900/58 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                     >
-                      <option value="draft">draft</option>
-                      <option value="submitted">submitted</option>
+                      <option value="draft">{t('projects.status_options.draft')}</option>
+                      <option value="submitted">{t('projects.status_options.submitted')}</option>
                     </select>
                   </div>
                 </>
@@ -364,12 +366,12 @@ export function ProjectDetail() {
                   <div className="flex flex-wrap gap-4 text-sm">
                     {project.demoUrl && (
                       <a className="underline" href={project.demoUrl} target="_blank" rel="noreferrer">
-                        Demo
+                        {t('projects.demo_url')}
                       </a>
                     )}
                     {project.repoUrl && (
                       <a className="underline" href={project.repoUrl} target="_blank" rel="noreferrer">
-                        Repo
+                        {t('projects.repo_url')}
                       </a>
                     )}
                   </div>
@@ -378,23 +380,23 @@ export function ProjectDetail() {
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-sm">
+          <Card className="surface-panel border-none shadow-none">
             <CardHeader>
-              <CardTitle>{t('promotions.round_timeline', 'Round Timeline')}</CardTitle>
-              <CardDescription>{t('promotions.round_timeline_desc', 'Track advancement across rounds')}</CardDescription>
+              <CardTitle>{t('promotions.round_timeline')}</CardTitle>
+              <CardDescription>{t('promotions.round_timeline_desc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {rounds.length === 0 && (
-                <div className="rounded-md border p-4 text-sm text-muted-foreground">
-                  {t('promotions.no_rounds', 'No round records yet')}
+                <div className="surface-inset p-4 text-sm text-muted-foreground">
+                  {t('promotions.no_rounds')}
                 </div>
               )}
               {rounds.map((round) => (
-                <div key={round.id} className="flex items-center justify-between rounded-md border p-3">
+                <div key={round.id} className="flex items-center justify-between surface-inset p-3">
                   <div>
                     <p className="font-medium">{round.session?.name || round.sessionId}</p>
                     <p className="text-xs text-muted-foreground">
-                      {t('promotions.decision', 'Decision')}: {round.promotionStatus || 'pending'}
+                      {t('promotions.decision')}: {round.promotionStatus || 'pending'}
                       {round.nextSession?.name ? ` → ${round.nextSession.name}` : ''}
                     </p>
                   </div>
@@ -407,21 +409,21 @@ export function ProjectDetail() {
       )}
 
       {activeTab === 'scores' && (
-        <Card className="border-0 shadow-sm">
+        <Card className="surface-panel border-none shadow-none">
           <CardHeader>
-            <CardTitle>{t('projects.view_scores', 'View Scores')}</CardTitle>
+            <CardTitle>{t('projects.view_scores')}</CardTitle>
             <CardDescription>
-              {t('reports.scoring_matrix_desc', 'Detailed breakdown of scores by project and judge')}
+              {t('reports.scoring_matrix_desc')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
               <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
                 <SelectTrigger>
-                  <SelectValue placeholder={t('reports.session', 'Session')} />
+                  <SelectValue placeholder={t('reports.session')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t('reports.filter_all', 'All')}</SelectItem>
+                  <SelectItem value="all">{t('reports.filter_all')}</SelectItem>
                   {rounds.map((round) => (
                     <SelectItem key={round.sessionId} value={round.sessionId}>
                       {round.session?.name || round.sessionId}
@@ -431,10 +433,10 @@ export function ProjectDetail() {
               </Select>
               <Select value={selectedRoundId} onValueChange={setSelectedRoundId}>
                 <SelectTrigger>
-                  <SelectValue placeholder={t('promotions.round', 'Round')} />
+                  <SelectValue placeholder={t('promotions.round')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t('reports.filter_all', 'All')}</SelectItem>
+                  <SelectItem value="all">{t('reports.filter_all')}</SelectItem>
                   {rounds.map((round) => (
                     <SelectItem key={round.id} value={round.id}>
                       {round.session?.name || round.id}
@@ -448,7 +450,7 @@ export function ProjectDetail() {
                   variant={statusFilter === 'all' ? 'default' : 'outline'}
                   onClick={() => setStatusFilter('all')}
                 >
-                  {t('reports.filter_all', 'All')}
+                  {t('reports.filter_all')}
                 </Button>
                 {STATUS_OPTIONS.map((status) => (
                   <Button
@@ -457,7 +459,7 @@ export function ProjectDetail() {
                     variant={statusFilter === status ? 'default' : 'outline'}
                     onClick={() => setStatusFilter(status)}
                   >
-                    {t(`judging.status.${status}`, status)}
+                    {t(`judging.status.${status}`)}
                   </Button>
                 ))}
               </div>
@@ -465,25 +467,25 @@ export function ProjectDetail() {
 
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={() => navigate('/dashboard/promotions')}>
-                {t('promotions.manage', 'Manage Promotions')}
+                {t('promotions.manage')}
               </Button>
             </div>
 
             {filteredAssignments.length === 0 ? (
-              <div className="rounded-md border p-6 text-sm text-muted-foreground">
-                {t('judging.no_assignments', 'No assignments found')}
+              <div className="surface-inset p-6 text-sm text-muted-foreground">
+                {t('judging.no_assignments')}
               </div>
             ) : (
-              <div className="rounded-md border overflow-x-auto">
+              <div className="table-shell overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{t('reports.judges', 'Judges')}</TableHead>
-                      <TableHead>{t('reports.session', 'Session')}</TableHead>
-                      <TableHead>{t('projects.status', 'Status')}</TableHead>
-                      <TableHead>{t('projects.score', 'Score')}</TableHead>
-                      <TableHead>{t('reports.scoring_matrix', 'Scoring Matrix')}</TableHead>
-                      <TableHead>{t('judging.comments', 'Comments')}</TableHead>
+                      <TableHead>{t('reports.judges')}</TableHead>
+                      <TableHead>{t('reports.session')}</TableHead>
+                      <TableHead>{t('projects.status')}</TableHead>
+                      <TableHead>{t('projects.score')}</TableHead>
+                      <TableHead>{t('reports.scoring_matrix')}</TableHead>
+                      <TableHead>{t('judging.comments')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -493,7 +495,7 @@ export function ProjectDetail() {
                         <TableCell>{assignment.session?.name || assignment.sessionId}</TableCell>
                         <TableCell>
                           <Badge variant="outline">
-                            {String(t(`judging.status.${assignment.status}`, assignment.status))}
+                            {String(t(`judging.status.${assignment.status}`))}
                           </Badge>
                         </TableCell>
                         <TableCell>

@@ -31,7 +31,7 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
   const addField = () => {
     const newField: SubmissionField = {
       id: `field_${Date.now()}`,
-      label: 'New Field',
+      label: t('submission.new_field'),
       type: 'text',
       required: false,
       placeholder: ''
@@ -55,12 +55,12 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium">{t('submission.config_title', 'Submission Form Configuration')}</h3>
-          <p className="text-sm text-muted-foreground mt-1">{t('submission.config_desc', 'Configure the fields participants see when submitting a project.')}</p>
+          <h3 className="text-lg font-medium">{t('submission.config_title')}</h3>
+          <p className="text-sm text-muted-foreground mt-1">{t('submission.config_desc')}</p>
         </div>
         <Button onClick={addField} size="sm" className="gap-2">
           <Plus className="h-4 w-4" />
-          {t('submission.add_field', 'Add Field')}
+          {t('submission.add_field')}
         </Button>
       </div>
 
@@ -75,16 +75,16 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
                 </div>
 
                 <div className="md:col-span-4 space-y-2">
-                  <Label>{t('submission.field_label', 'Label')}</Label>
+                  <Label>{t('submission.field_label')}</Label>
                   <Input
                     value={field.label}
                     onChange={(e) => updateField(index, { label: e.target.value })}
-                    placeholder="Field Label"
+                    placeholder={t('submission.field_label')}
                   />
                 </div>
 
                 <div className="md:col-span-3 space-y-2">
-                  <Label>{t('submission.field_type', 'Type')}</Label>
+                  <Label>{t('submission.field_type')}</Label>
                   <Select
                     value={field.type}
                     onValueChange={(value) => updateField(index, { type: value as SubmissionField['type'] })}
@@ -93,25 +93,25 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="text">Text Input</SelectItem>
-                      <SelectItem value="textarea">Text Area</SelectItem>
-                      <SelectItem value="url">URL</SelectItem>
+                      <SelectItem value="text">{t('submission.field_types.text')}</SelectItem>
+                      <SelectItem value="textarea">{t('submission.field_types.textarea')}</SelectItem>
+                      <SelectItem value="url">{t('submission.field_types.url')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="md:col-span-3 space-y-2">
-                  <Label>{t('submission.placeholder', 'Placeholder')}</Label>
+                  <Label>{t('submission.placeholder')}</Label>
                   <Input
                     value={field.placeholder || ''}
                     onChange={(e) => updateField(index, { placeholder: e.target.value })}
-                    placeholder="Placeholder text"
+                    placeholder={t('submission.placeholder')}
                   />
                 </div>
 
                 <div className="md:col-span-1 flex flex-col items-center gap-4 pt-1">
                   <div className="flex flex-col items-center gap-1.5">
-                    <Label className="text-xs text-muted-foreground">{t('submission.required', 'Req.')}</Label>
+                    <Label className="text-xs text-muted-foreground">{t('submission.required')}</Label>
                     <Switch
                       checked={field.required}
                       onCheckedChange={(checked) => updateField(index, { required: checked })}
@@ -133,14 +133,14 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
 
         {fields.length === 0 && (
           <div className="text-center py-10 border border-dashed rounded-lg text-muted-foreground">
-            {t('submission.no_fields', 'No fields configured. Add a field to get started.')}
+            {t('submission.no_fields')}
           </div>
         )}
       </div>
 
       <div className="flex justify-end pt-4">
         <Button onClick={() => onSave(fields)}>
-          {t('common.save_changes', 'Save Changes')}
+          {t('common.save_changes')}
         </Button>
       </div>
     </div>

@@ -139,7 +139,7 @@ export function Settings() {
       </div>
 
       {/* Branding & SEO */}
-      <Card className="border-0 shadow-sm">
+      <Card className="surface-panel border-none shadow-none">
         <CardHeader>
           <CardTitle>{t('settings.branding_title', 'Branding & SEO')}</CardTitle>
           <CardDescription>
@@ -226,7 +226,7 @@ export function Settings() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-md border p-3">
+          <div className="flex items-center justify-between surface-inset p-3">
             <div>
               <p className="text-sm font-medium">{t('settings.show_powered_by', 'Show Powered By Badge')}</p>
               <p className="text-xs text-muted-foreground">{t('settings.show_powered_by_desc', 'Display the floating powered-by badge on pages.')}</p>
@@ -248,7 +248,7 @@ export function Settings() {
       </Card>
 
       {/* Judge Management */}
-      <Card className="border-0 shadow-sm">
+      <Card className="surface-panel border-none shadow-none">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -268,7 +268,7 @@ export function Settings() {
         </CardHeader>
         <CardContent className="space-y-4">
           {showCreateForm && (
-            <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
+            <div className="surface-inset space-y-3 p-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label htmlFor="judgeName" className="text-xs">{t('common.name', 'Name')}</Label>
@@ -321,12 +321,12 @@ export function Settings() {
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : judges.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+            <div className="surface-inset border-dashed p-8 text-center text-muted-foreground">
               <Gavel className="h-8 w-8 mx-auto mb-2 opacity-40" />
               <p>{t('settings.no_judges', 'No judges yet. Click "Add Judge" to create one.')}</p>
             </div>
           ) : (
-            <div className="divide-y rounded-lg border">
+            <div className="surface-inset divide-y">
               {judges.map((judge) => (
                 <div key={judge.id} className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-3">
@@ -358,7 +358,7 @@ export function Settings() {
       </Card>
 
       <div className="grid gap-4 md:gap-6 md:grid-cols-2">
-        <Card className="border-0 shadow-sm">
+        <Card className="surface-panel border-none shadow-none">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Cpu className="h-5 w-5 text-primary" />
@@ -426,7 +426,7 @@ export function Settings() {
         </Card>
 
         <div className="space-y-4 md:space-y-6">
-          <Card className="border-0 shadow-sm">
+          <Card className="surface-panel border-none shadow-none">
             <CardHeader>
               <CardTitle>{t('settings.account_security', 'Account & Security')}</CardTitle>
               <CardDescription>
@@ -434,13 +434,13 @@ export function Settings() {
               </CardDescription>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              <div className="rounded-lg border border-dashed p-8 text-center">
+              <div className="surface-inset border-dashed p-8 text-center">
                 <p>{t('settings.account_coming_soon', 'Account management features coming soon.')}</p>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-sm bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20">
+          <Card className="surface-panel border-none shadow-none bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-indigo-500" />
@@ -452,7 +452,7 @@ export function Settings() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-lg border border-dashed border-indigo-200 dark:border-indigo-800 p-8 text-center text-muted-foreground">
+              <div className="surface-inset border-dashed border-indigo-200/70 p-8 text-center text-muted-foreground dark:border-indigo-800/70">
                 <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-40 text-indigo-400" />
                 <p className="font-medium">{t('settings.ai_copilot_coming_soon', 'AI-assisted scoring and project summarization coming soon')}</p>
                 <p className="text-sm mt-1">{t('settings.ai_copilot_coming_soon_desc', 'Auto-generate project summaries, suggest scores based on criteria, and detect scoring anomalies.')}</p>

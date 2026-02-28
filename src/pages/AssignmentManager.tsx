@@ -172,7 +172,7 @@ export function AssignmentManager() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Projects Panel */}
-        <Card className="border-0 shadow-sm">
+        <Card className="surface-panel border-none shadow-none">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
@@ -195,7 +195,7 @@ export function AssignmentManager() {
                 return (
                   <div
                     key={project.id}
-                    className="p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                    className="surface-inset p-4 transition-colors hover:bg-foreground/[0.03]"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
@@ -237,7 +237,7 @@ export function AssignmentManager() {
         </Card>
 
         {/* Judges Panel */}
-        <Card className="border-0 shadow-sm">
+        <Card className="surface-panel border-none shadow-none">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
@@ -261,7 +261,7 @@ export function AssignmentManager() {
                 return (
                   <div
                     key={judge.id}
-                    className="p-4 rounded-lg border bg-card"
+                    className="surface-inset p-4"
                   >
                     <div
                       className="flex items-start justify-between gap-3 cursor-pointer"

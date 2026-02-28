@@ -1,59 +1,116 @@
-import { Outlet, Link, useNavigate } from 'react-router-dom'
+import React, { useState } from 'react'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useAuth } from '../lib/auth'
-import { LogOut, ClipboardList } from 'lucide-react'
+import { ClipboardList, LogOut, Menu, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { useAuth } from '@/lib/auth'
+import { useActiveHackathon } from '@/lib/active-hackathon'
+import { useSiteBranding } from '@/lib/site-branding'
+import { ThemeLanguageSwitcher } from '@/components/ThemeLanguageSwitcher'
 
 export function JudgeLayout() {
   const { t } = useTranslation()
   const { user, logout } = useAuth()
+  const { activeHackathon } = useActiveHackathon()
+  const { settings } = useSiteBranding()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const handleLogout = () => {
     logout()
     navigate('/login')
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center gap-8">
-              <Link to="/judge" className="text-xl font-bold text-gray-900">
-                Open Hackathon
-              </Link>
-              <nav className="flex gap-6">
-                <Link
-                  to="/judge"
-                  className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900"
-                >
-                  <ClipboardList className="w-4 h-4" />
-                  {t('nav.my_tasks')}
-                </Link>
-              </nav>
-            </div>
+  const links = [{ to: '/judge', label: t('nav.my_tasks'), icon: ClipboardList }]
 
-            <div className="flex items-center gap-4">
-              <div className="text-sm">
-                <div className="font-medium text-gray-900">{user?.name}</div>
-                <div className="text-gray-500">{t('auth.judge')}</div>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900"
-              >
-                <LogOut className="w-4 h-4" />
-                {t('nav.logout')}
-              </button>
+  return (
+    <div className="min-h-screen text-foreground premium-grid-bg">
+      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/70 shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur-xl">
+        <div className="container flex h-16 items-center justify-between gap-3">
+          <div className="flex items-center gap-6">
+            <Link to="/judge" className="text-lg font-semibold tracking-tight">
+              {settings.logoUrl ? (
+                <img src={settings.logoUrl} alt={settings.siteName} className="h-8" />
+              ) : (
+                settings.siteName
+              )}
+            </Link>
+
+            <nav className="hidden items-center gap-2 md:flex">
+              {links.map((item) => {
+                const active = location.pathname === item.to
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={cn(
+                      'inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium transition-all',
+                      active
+                        ? 'bg-gradient-to-r from-primary via-sky-500 to-cyan-500 text-white shadow-lg shadow-cyan-500/25'
+                        : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                )
+              })}
+            </nav>
+          </div>
+
+          <div className="hidden items-center gap-3 lg:flex">
+            <span className="grand-chip">
+              {activeHackathon.title}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <ThemeLanguageSwitcher />
+            <div className="hidden text-right md:block">
+              <div className="text-sm font-medium">{user?.name}</div>
+              <div className="text-xs text-muted-foreground">{t('auth.judge')}</div>
             </div>
+            <Button variant="outline" className="hidden rounded-full md:inline-flex" onClick={handleLogout}>
+              <LogOut className="mr-2 h-4 w-4" />
+              {t('nav.logout')}
+            </Button>
+            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMenuOpen((v) => !v)}>
+              {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </Button>
           </div>
         </div>
+
+        {menuOpen && (
+          <div className="border-t border-border/60 bg-background/95 px-4 py-3 md:hidden">
+            <div className="mb-3 rounded-lg border border-border/70 bg-white/80 px-3 py-2 text-xs text-muted-foreground backdrop-blur">
+              {activeHackathon.title}
+            </div>
+            <div className="grid gap-2">
+              {links.map((item) => (
+                <Link
+                  key={`mobile-${item.to}`}
+                  to={item.to}
+                  onClick={() => setMenuOpen(false)}
+                  className="rounded-lg border border-border/70 px-3 py-2 text-sm font-medium"
+                >
+                  {item.label}
+                </Link>
+              ))}
+              <Button variant="outline" className="justify-center" onClick={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                {t('nav.logout')}
+              </Button>
+            </div>
+          </div>
+        )}
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Outlet />
+      <main className="container py-6 md:py-8">
+        <div key={location.pathname} className="route-enter">
+          <Outlet />
+        </div>
       </main>
     </div>
   )

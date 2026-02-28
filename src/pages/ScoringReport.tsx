@@ -206,7 +206,7 @@ export function ScoringReport() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Card className="border-0 shadow-sm">
+        <Card className="surface-panel border-none shadow-none">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{t('reports.total_projects')}</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -219,7 +219,7 @@ export function ScoringReport() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm">
+        <Card className="surface-panel border-none shadow-none">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{t('reports.avg_score')}</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -230,7 +230,7 @@ export function ScoringReport() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm">
+        <Card className="surface-panel border-none shadow-none">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{t('reports.completion_rate')}</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -243,7 +243,7 @@ export function ScoringReport() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-sm">
+        <Card className="surface-panel border-none shadow-none">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{t('reports.judges')}</CardTitle>
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -288,7 +288,7 @@ export function ScoringReport() {
         </Button>
       </div>
 
-      <Card className="border-0 shadow-sm">
+      <Card className="surface-panel border-none shadow-none">
         <CardHeader>
           <CardTitle>{t('reports.scoring_matrix')}</CardTitle>
           <CardDescription>
@@ -296,7 +296,7 @@ export function ScoringReport() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border overflow-x-auto">
+          <div className="table-shell overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
