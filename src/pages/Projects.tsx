@@ -33,6 +33,10 @@ import { Badge } from '@/components/ui/badge'
 import { Search, MoreHorizontal, Pencil, Trash2, Eye, Loader2, BarChart3 } from 'lucide-react'
 import { toast } from 'sonner'
 
+type ProjectWithAssignments = Project & {
+  assignments?: Assignment[]
+}
+
 function calculateProjectScore(projectId: string, assignments: Assignment[] = []) {
   const projectAssignments = assignments.filter((a) => a.projectId === projectId && a.status === 'completed')
   if (projectAssignments.length === 0) return 0
@@ -49,9 +53,9 @@ export function Projects() {
   const [query, setQuery] = useState('')
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
 
-  const { data: projects, isLoading, isError } = useQuery({
+  const { data: projects, isLoading, isError } = useQuery<ProjectWithAssignments[]>({
     queryKey: ['projects', activeHackathon.id],
-    queryFn: () => api.getProjects({ hackathonId: activeHackathon.id }),
+    queryFn: () => api.getProjects({ hackathonId: activeHackathon.id }) as Promise<ProjectWithAssignments[]>,
     enabled: !!activeHackathon.id,
   })
 
@@ -67,7 +71,7 @@ export function Projects() {
     },
   })
 
-  const filteredProjects = projects?.filter((project: any) => {
+  const filteredProjects = projects?.filter((project) => {
     if (!query) return true
     const lowerQuery = query.toLowerCase()
     return (
@@ -138,7 +142,7 @@ export function Projects() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredProjects?.map((project: any) => (
+              filteredProjects?.map((project) => (
                 <TableRow key={project.id}>
                   <TableCell className="font-medium">
                     <div className="flex flex-col">

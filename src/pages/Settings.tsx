@@ -13,6 +13,14 @@ import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSiteBranding } from '@/lib/site-branding'
 
+type MutationApiError = {
+  response?: {
+    data?: {
+      error?: string
+    }
+  }
+}
+
 export function Settings() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -88,8 +96,9 @@ export function Settings() {
       setNewJudge({ name: '', email: '', password: '' })
       setShowCreateForm(false)
     },
-    onError: (error: any) => {
-      const msg = error?.response?.data?.error || t('settings.judge_create_failed', 'Failed to create judge')
+    onError: (error: unknown) => {
+      const mutationError = error as MutationApiError
+      const msg = mutationError?.response?.data?.error || t('settings.judge_create_failed', 'Failed to create judge')
       toast.error(msg)
     },
   })

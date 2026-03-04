@@ -2,6 +2,24 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 import { User } from './types'
 import { api } from './api'
 
+type AuthApiError = {
+  response?: {
+    data?: {
+      error?: string
+    }
+  }
+}
+
+function getLoginErrorMessage(err: unknown): string {
+  if (typeof err === 'object' && err !== null) {
+    const apiError = err as AuthApiError
+    if (apiError.response?.data?.error) {
+      return apiError.response.data.error
+    }
+  }
+  return 'Login failed. Please try again.'
+}
+
 type AuthContextType = {
   user: User | null
   login: (email: string, password: string) => Promise<void>
@@ -45,8 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         localStorage.removeItem(TOKEN_STORAGE_KEY)
       }
-    } catch (err: any) {
-      const message = err.response?.data?.error || 'Login failed. Please try again.'
+    } catch (err: unknown) {
+      const message = getLoginErrorMessage(err)
       setError(message)
       throw new Error(message)
     } finally {
@@ -67,6 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {

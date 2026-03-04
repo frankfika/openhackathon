@@ -67,6 +67,7 @@ export function ActiveHackathonProvider({ children }: { children: React.ReactNod
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useActiveHackathon() {
   const context = useContext(ActiveHackathonContext)
   if (context === undefined) {

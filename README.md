@@ -79,6 +79,34 @@ SUBMISSION_EMAIL_TIMEOUT_MS=10000
 - `SUBMISSION_RECEIPT_SUBJECT` 支持模板变量：`{{hackathonTitle}}`、`{{receiptId}}`、`{{projectTitle}}`。
 - 若 SMTP 短时异常，可在后台调用重发接口补发回执。
 
+## 🔐 安全配置（建议）
+在 `.env` 中补充以下安全变量（完整示例见 `.env.example`）：
+
+```bash
+AUTH_DISABLED=false
+JWT_ISSUER=openhackathon
+JWT_AUDIENCE=openhackathon-clients
+CORS_ORIGINS=http://localhost:5173
+CORS_ALLOW_ALL=false
+TRUST_PROXY=
+JSON_BODY_LIMIT=1mb
+API_RATE_LIMIT_WINDOW_MS=900000
+API_RATE_LIMIT_MAX=1200
+AUTH_RATE_LIMIT_WINDOW_MS=900000
+AUTH_RATE_LIMIT_MAX=20
+SUBMISSION_RATE_LIMIT_WINDOW_MS=600000
+SUBMISSION_RATE_LIMIT_MAX=30
+```
+
+说明：
+- 生产环境务必设置强随机 `JWT_SECRET`，且不要开启 `AUTH_DISABLED`。
+- 推荐在网关/反向代理后设置 `TRUST_PROXY`（如 `1`），确保限流与审计使用真实客户端 IP。
+- JWT 已启用 `issuer/audience` 校验，`JWT_ISSUER` / `JWT_AUDIENCE` 需在签发与校验侧保持一致。
+- `CORS_ORIGINS` 支持逗号分隔多个来源（如 `https://admin.example.com,https://app.example.com`）。
+- 登录接口已启用单独限流，防止暴力破解。
+- 公开提交接口（`POST /api/projects`）已启用独立限流，防止批量刷提交。
+- API 暴露健康检查：`GET /api/health`。
+
 ## 🖼️ 界面截图
 | 首页 | 项目页 | 排行榜 |
 |---|---|---|

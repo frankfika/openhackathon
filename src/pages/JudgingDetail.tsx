@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,18 @@ import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { Assignment } from '@/lib/types'
+
+function scoresToRecord(scores: Assignment['scores']): Record<string, number> {
+  if (!scores) return {}
+  if (Array.isArray(scores)) {
+    return scores.reduce<Record<string, number>>((acc, item) => {
+      acc[item.criterionId] = item.score
+      return acc
+    }, {})
+  }
+  return { ...scores }
+}
 
 export function JudgingDetail() {
   const { id } = useParams()
@@ -57,16 +69,7 @@ export function JudgingDetail() {
   // Initialize scores from existing scores
   const [scores, setScores] = useState<Record<string, number>>(() => {
     if (assignment?.scores) {
-      const existingScores: Record<string, number> = {}
-      // Handle both array format (from API) and Record format (from mock)
-      if (Array.isArray(assignment.scores)) {
-        assignment.scores.forEach((s: any) => {
-          existingScores[s.criterionId] = s.score
-        })
-      } else {
-        Object.assign(existingScores, assignment.scores)
-      }
-      return existingScores
+      return scoresToRecord(assignment.scores)
     }
     const initialScores: Record<string, number> = {}
     scoringCriteria.forEach(criterion => {
@@ -106,16 +109,7 @@ export function JudgingDetail() {
   // Update scores when assignment data loads
   React.useEffect(() => {
     if (assignment?.scores) {
-      const existingScores: Record<string, number> = {}
-      // Handle both array format (from API) and Record format (from mock)
-      if (Array.isArray(assignment.scores)) {
-        assignment.scores.forEach((s: any) => {
-          existingScores[s.criterionId] = s.score
-        })
-      } else {
-        Object.assign(existingScores, assignment.scores)
-      }
-      setScores(existingScores)
+      setScores(scoresToRecord(assignment.scores))
     }
     if (assignment?.comment) {
       setComment(assignment.comment)

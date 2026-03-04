@@ -68,6 +68,7 @@ model Session {
   hackathon   Hackathon @relation(fields: [hackathonId], references: [id])
   name        String
   type        String   // preliminary, semi_final, final
+  region      String?  // optional region tag, e.g. '北京', '上海', 'online'
   status      String   // draft, active, judging, completed
   startAt     DateTime
   endAt       DateTime

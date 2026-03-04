@@ -25,6 +25,35 @@ export default defineConfig({
     }), 
     tsconfigPaths(),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (
+            id.includes('/node_modules/react/')
+            || id.includes('/node_modules/react-dom/')
+            || id.includes('/node_modules/react-router-dom/')
+          ) {
+            return 'react-vendor'
+          }
+          if (id.includes('@tanstack/react-query')) {
+            return 'query-vendor'
+          }
+          if (id.includes('i18next') || id.includes('react-i18next')) {
+            return 'i18n-vendor'
+          }
+          if (id.includes('@radix-ui') || id.includes('lucide-react') || id.includes('framer-motion')) {
+            return 'ui-vendor'
+          }
+          if (id.includes('zod')) {
+            return 'validation-vendor'
+          }
+          return undefined
+        },
+      },
+    },
+  },
   server: {
     host: true,
     https: existsSync('./localhost+1.pem')

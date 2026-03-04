@@ -15,6 +15,8 @@ export default defineConfig({
       TEST_DATABASE_URL: 'postgresql://postgres:postgrespassword@localhost:5432/openhackathon_test?schema=public',
       DATABASE_URL: 'postgresql://postgres:postgrespassword@localhost:5432/openhackathon_test?schema=public',
       AUTH_DISABLED: 'true',
+      SUBMISSION_RATE_LIMIT_WINDOW_MS: '60000',
+      SUBMISSION_RATE_LIMIT_MAX: '8',
     },
     testTimeout: 30000,
   },

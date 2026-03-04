@@ -5,14 +5,35 @@ import jwt from 'jsonwebtoken';
 import { randomBytes } from 'crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
 import nodemailer from 'nodemailer';
+import helmet from 'helmet';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 
 export const prisma = new PrismaClient();
 export const app = express();
 const VALID_ASSIGNMENT_STATUSES = new Set(['pending', 'in_progress', 'completed']);
 const VALID_PROMOTION_STATUSES = new Set(['pending', 'advanced', 'eliminated']);
+const VALID_SESSION_TYPES = new Set(['preliminary', 'semi_final', 'final']);
+const VALID_SESSION_STATUSES = new Set(['draft', 'active', 'judging', 'completed']);
 const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true';
-const JWT_SECRET = process.env.JWT_SECRET || 'openhackathon-change-this-secret';
+const DEFAULT_JWT_SECRET = 'openhackathon-change-this-secret';
+const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
 const JWT_EXPIRES_IN_SECONDS = Number(process.env.JWT_EXPIRES_IN_SECONDS || 60 * 60 * 24 * 7);
+const JWT_ISSUER = asString(process.env.JWT_ISSUER) || 'openhackathon';
+const JWT_AUDIENCE = asString(process.env.JWT_AUDIENCE) || 'openhackathon-clients';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const TRUST_PROXY = parseTrustProxy(process.env.TRUST_PROXY);
+const CORS_ALLOW_ALL = process.env.CORS_ALLOW_ALL === 'true';
+const CORS_ORIGINS = (process.env.CORS_ORIGIN || process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '1mb';
+const API_RATE_LIMIT_WINDOW_MS = readPositiveInteger(process.env.API_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
+const API_RATE_LIMIT_MAX = readPositiveInteger(process.env.API_RATE_LIMIT_MAX, 1200);
+const AUTH_RATE_LIMIT_WINDOW_MS = readPositiveInteger(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
+const AUTH_RATE_LIMIT_MAX = readPositiveInteger(process.env.AUTH_RATE_LIMIT_MAX, 20);
+const SUBMISSION_RATE_LIMIT_WINDOW_MS = readPositiveInteger(process.env.SUBMISSION_RATE_LIMIT_WINDOW_MS, 10 * 60 * 1000);
+const SUBMISSION_RATE_LIMIT_MAX = readPositiveInteger(process.env.SUBMISSION_RATE_LIMIT_MAX, 30);
 const SUBMISSION_RECEIPT_PREFIX = (process.env.SUBMISSION_RECEIPT_PREFIX || 'SUB').trim().toUpperCase() || 'SUB';
 const SUBMISSION_EMAIL_ENABLED = process.env.SUBMISSION_EMAIL_ENABLED === 'true';
 const SUBMISSION_EMAIL_HOST = process.env.SMTP_HOST;
@@ -40,6 +61,8 @@ type JwtPayload = {
   role: UserRole;
   email: string;
   name: string;
+  iss?: string;
+  aud?: string | string[];
   iat?: number;
   exp?: number;
 };
@@ -58,16 +81,134 @@ type SubmissionReceiptEmailResult = {
   messageId?: string;
 };
 
-declare global {
-  namespace Express {
-    interface Request {
-      authUser?: AuthUser;
-    }
+type HackathonSessionPayload = {
+  id?: string;
+  name: string;
+  type: 'preliminary' | 'semi_final' | 'final';
+  region?: string;
+  status?: 'draft' | 'active' | 'judging' | 'completed';
+  startAt: string;
+  endAt: string;
+};
+
+type ScoringCriterionPayload = {
+  name: string;
+  maxScore: number;
+  sortOrder?: number;
+};
+
+type AssignmentScorePayload = {
+  criterionId: string;
+  score: number;
+};
+
+type DashboardStats = {
+  totalProjects?: number;
+  totalJudges?: number;
+  totalAssignments?: number;
+  completedAssignments?: number;
+  pendingReviews?: number;
+  completed?: number;
+  pending?: number;
+};
+
+declare module 'express-serve-static-core' {
+  interface Request {
+    authUser?: AuthUser;
   }
 }
 
-app.use(cors());
-app.use(express.json());
+if (IS_PRODUCTION && AUTH_DISABLED) {
+  throw new Error('AUTH_DISABLED=true is not allowed in production');
+}
+
+if (IS_PRODUCTION && JWT_SECRET === DEFAULT_JWT_SECRET) {
+  throw new Error('JWT_SECRET must be set to a strong value in production');
+}
+
+const allowAllCors = CORS_ALLOW_ALL || (!IS_PRODUCTION && CORS_ORIGINS.length === 0);
+const corsOptions: cors.CorsOptions = allowAllCors
+  ? { origin: true, credentials: true }
+  : { origin: CORS_ORIGINS, credentials: true };
+const apiRateLimiter = rateLimit({
+  windowMs: API_RATE_LIMIT_WINDOW_MS,
+  max: API_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => AUTH_DISABLED,
+});
+const authRateLimiter = rateLimit({
+  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+  max: AUTH_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => AUTH_DISABLED,
+  skipSuccessfulRequests: true,
+  message: { error: 'Too many login attempts. Please try again later.' },
+});
+const submissionRateLimiter = rateLimit({
+  windowMs: SUBMISSION_RATE_LIMIT_WINDOW_MS,
+  max: SUBMISSION_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const email = normalizeEmail(req.body?.submitterEmail);
+    return email || ipKeyGenerator(req.ip);
+  },
+  message: { error: 'Too many submissions. Please try again later.' },
+});
+
+app.disable('x-powered-by');
+if (TRUST_PROXY !== undefined) {
+  app.set('trust proxy', TRUST_PROXY);
+}
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+app.use(cors(corsOptions));
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
+app.use('/api', apiRateLimiter);
+app.use('/api/auth/login', authRateLimiter);
+
+app.get('/api/health', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      database: 'up',
+    });
+  } catch {
+    res.status(503).json({
+      status: 'degraded',
+      timestamp: new Date().toISOString(),
+      database: 'down',
+    });
+  }
+});
+
+function readPositiveInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
+
+function parseTrustProxy(value: string | undefined): boolean | number | string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+
+  const lowered = trimmed.toLowerCase();
+  if (lowered === 'true') return true;
+  if (lowered === 'false') return false;
+
+  const parsedNumber = Number(trimmed);
+  if (Number.isInteger(parsedNumber) && parsedNumber >= 0) {
+    return parsedNumber;
+  }
+
+  return trimmed;
+}
 
 function asString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -75,9 +216,32 @@ function asString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function normalizeEmail(value: unknown): string | undefined {
+  const raw = asString(value);
+  return raw ? raw.toLowerCase() : undefined;
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isValidPassword(password: string): boolean {
+  return password.length >= 8 && password.length <= 72;
+}
+
 function asUserRole(value: unknown): UserRole | null {
   if (value === 'admin' || value === 'judge') return value;
   return null;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) {
+      return message;
+    }
+  }
+  return fallback;
 }
 
 function generateSubmissionReceiptId(): string {
@@ -198,7 +362,11 @@ function signTokenForUser(user: AuthUser): string {
       name: user.name,
     },
     JWT_SECRET,
-    { expiresIn: Number.isFinite(JWT_EXPIRES_IN_SECONDS) ? JWT_EXPIRES_IN_SECONDS : 60 * 60 * 24 * 7 }
+    {
+      expiresIn: Number.isFinite(JWT_EXPIRES_IN_SECONDS) ? JWT_EXPIRES_IN_SECONDS : 60 * 60 * 24 * 7,
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    }
   );
 }
 
@@ -222,7 +390,10 @@ function getAuthUserFromRequest(req: express.Request): AuthUser | null {
   if (!token) return null;
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const decoded = jwt.verify(token, JWT_SECRET, {
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    }) as JwtPayload;
     const role = asUserRole(decoded.role);
     if (!role || !decoded.sub || !decoded.email || !decoded.name) {
       return null;
@@ -471,7 +642,7 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
   const poweredByText = typeof body.poweredByText === 'string' ? body.poweredByText.trim() : undefined;
   const poweredByUrl = typeof body.poweredByUrl === 'string' ? body.poweredByUrl.trim() : undefined;
 
-  const data: any = {
+  const data: Prisma.SiteSettingUpdateInput = {
     ...(siteName !== undefined ? { siteName: siteName || DEFAULT_SITE_SETTINGS.siteName } : {}),
     ...(tabTitle !== undefined ? { tabTitle: tabTitle || siteName || DEFAULT_SITE_SETTINGS.tabTitle } : {}),
     ...(seoTitle !== undefined ? { seoTitle: seoTitle || siteName || DEFAULT_SITE_SETTINGS.seoTitle } : {}),
@@ -484,15 +655,23 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
     ...(poweredByText !== undefined ? { poweredByText: poweredByText || DEFAULT_SITE_SETTINGS.poweredByText } : {}),
     ...(poweredByUrl !== undefined ? { poweredByUrl: poweredByUrl || DEFAULT_SITE_SETTINGS.poweredByUrl } : {}),
   };
+  const createData: Prisma.SiteSettingCreateInput = {
+    key: 'default',
+    siteName: siteName || DEFAULT_SITE_SETTINGS.siteName,
+    tabTitle: tabTitle || siteName || DEFAULT_SITE_SETTINGS.tabTitle,
+    seoTitle: seoTitle || siteName || DEFAULT_SITE_SETTINGS.seoTitle,
+    seoDescription: seoDescription || DEFAULT_SITE_SETTINGS.seoDescription,
+    faviconUrl: faviconUrl || DEFAULT_SITE_SETTINGS.faviconUrl,
+    showPoweredBy: typeof body.showPoweredBy === 'boolean' ? body.showPoweredBy : DEFAULT_SITE_SETTINGS.showPoweredBy,
+    poweredByText: poweredByText || DEFAULT_SITE_SETTINGS.poweredByText,
+    poweredByUrl: poweredByUrl || DEFAULT_SITE_SETTINGS.poweredByUrl,
+    ...(body.logoUrl !== undefined ? { logoUrl: logoUrl || null } : {}),
+  };
 
   const settings = await prisma.siteSetting.upsert({
     where: { key: 'default' },
     update: data,
-    create: {
-      key: 'default',
-      ...DEFAULT_SITE_SETTINGS,
-      ...data,
-    },
+    create: createData,
   });
 
   res.json(settings);
@@ -535,6 +714,12 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
     rulesUrl,
     detailsUrl,
   } = req.body;
+  const hasSessionsInput = Array.isArray(sessions);
+  const sessionInputs: HackathonSessionPayload[] = hasSessionsInput ? sessions as HackathonSessionPayload[] : [];
+  const hasScoringCriteriaInput = Array.isArray(scoringCriteria);
+  const scoringCriteriaInputs: ScoringCriterionPayload[] = hasScoringCriteriaInput
+    ? scoringCriteria as ScoringCriterionPayload[]
+    : [];
 
   const hackathon = await prisma.hackathon.create({
     data: {
@@ -550,17 +735,18 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
       rulesUrl: rulesUrl || null,
       detailsUrl: detailsUrl || null,
       submissionSchema: submissionSchema || {},
-      sessions: sessions ? {
-        create: sessions.map((s: any) => ({
+      sessions: hasSessionsInput ? {
+        create: sessionInputs.map((s) => ({
           name: s.name,
           type: s.type,
+          region: s.region || null,
           status: s.status || 'draft',
           startAt: new Date(s.startAt),
           endAt: new Date(s.endAt),
         }))
       } : undefined,
-      scoringCriteria: scoringCriteria ? {
-        create: scoringCriteria.map((c: any) => ({
+      scoringCriteria: hasScoringCriteriaInput ? {
+        create: scoringCriteriaInputs.map((c) => ({
           name: c.name,
           maxScore: c.maxScore,
           sortOrder: c.sortOrder || 0,
@@ -589,9 +775,15 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
     rulesUrl,
     detailsUrl,
   } = req.body;
+  const hasSessionsInput = Array.isArray(sessions);
+  const sessionInputs: HackathonSessionPayload[] = hasSessionsInput ? sessions as HackathonSessionPayload[] : [];
+  const hasScoringCriteriaInput = Array.isArray(scoringCriteria);
+  const scoringCriteriaInputs: ScoringCriterionPayload[] = hasScoringCriteriaInput
+    ? scoringCriteria as ScoringCriterionPayload[]
+    : [];
 
   // Update hackathon basic info
-  const hackathon = await prisma.hackathon.update({
+  await prisma.hackathon.update({
     where: { id: req.params.id },
     data: {
       title,
@@ -610,27 +802,30 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
   });
 
   // Update scoring criteria if provided
-  if (scoringCriteria) {
+  if (hasScoringCriteriaInput) {
     await prisma.scoringCriterion.deleteMany({ where: { hackathonId: req.params.id } });
-    await prisma.scoringCriterion.createMany({
-      data: scoringCriteria.map((c: any) => ({
-        hackathonId: req.params.id,
-        name: c.name,
-        maxScore: c.maxScore,
-        sortOrder: c.sortOrder || 0,
-      }))
-    });
+    if (scoringCriteriaInputs.length > 0) {
+      await prisma.scoringCriterion.createMany({
+        data: scoringCriteriaInputs.map((c) => ({
+          hackathonId: req.params.id,
+          name: c.name,
+          maxScore: c.maxScore,
+          sortOrder: c.sortOrder || 0,
+        }))
+      });
+    }
   }
 
   // Update sessions if provided
-  if (sessions) {
-    for (const session of sessions) {
+  if (hasSessionsInput) {
+    for (const session of sessionInputs) {
       if (session.id) {
         await prisma.session.update({
           where: { id: session.id },
           data: {
             name: session.name,
             type: session.type,
+            region: session.region !== undefined ? (session.region || null) : undefined,
             status: session.status,
             startAt: new Date(session.startAt),
             endAt: new Date(session.endAt),
@@ -642,6 +837,7 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
             hackathonId: req.params.id,
             name: session.name,
             type: session.type,
+            region: session.region || null,
             status: session.status || 'draft',
             startAt: new Date(session.startAt),
             endAt: new Date(session.endAt),
@@ -726,11 +922,11 @@ app.get('/api/projects/:id', async (req, res) => {
   res.json(project);
 });
 
-app.post('/api/projects', async (req, res) => {
+app.post('/api/projects', submissionRateLimiter, async (req, res) => {
   const { hackathonId, sessionId, title, oneLiner, description, tags, demoUrl, repoUrl, submitterEmail, submitterName, submissionData } = req.body;
 
   const hackathonIdValue = asString(hackathonId);
-  const submitterEmailValue = asString(submitterEmail);
+  const submitterEmailValue = normalizeEmail(submitterEmail);
   const submitterNameValue = asString(submitterName);
 
   if (!hackathonIdValue) {
@@ -739,6 +935,10 @@ app.post('/api/projects', async (req, res) => {
 
   if (!submitterEmailValue) {
     return res.status(400).json({ error: 'submitterEmail is required' });
+  }
+
+  if (!isValidEmail(submitterEmailValue)) {
+    return res.status(400).json({ error: 'submitterEmail must be a valid email' });
   }
 
   const relatedHackathon = await prisma.hackathon.findUnique({
@@ -895,7 +1095,7 @@ app.put('/api/projects/:id', requireAdmin, async (req, res) => {
     }
 
     res.json(project);
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Failed to update project' });
   }
 });
@@ -1145,8 +1345,8 @@ app.post('/api/assignments', requireAdmin, async (req, res) => {
     });
 
     res.json(created);
-  } catch (error: any) {
-    res.status(400).json({ error: error?.message || 'Failed to create assignments' });
+  } catch (error: unknown) {
+    res.status(400).json({ error: getErrorMessage(error, 'Failed to create assignments') });
   }
 });
 
@@ -1156,7 +1356,7 @@ app.delete('/api/assignments/:id', requireAdmin, async (req, res) => {
       where: { id: req.params.id }
     });
     res.json({ success: true });
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Failed to delete assignment' });
   }
 });
@@ -1384,8 +1584,8 @@ app.put('/api/project-rounds/:id/promotion', requireAdmin, async (req, res) => {
     });
 
     res.json(updatedRound);
-  } catch (error: any) {
-    const message = error?.message || 'Failed to apply promotion decision';
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Failed to apply promotion decision');
     if (
       message.includes('Invalid promotion decision')
       || message.includes('required')
@@ -1437,11 +1637,11 @@ app.post('/api/project-rounds/promotions/bulk', requireAdmin, async (req, res) =
         success: true,
         round: updatedRound,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       results.push({
         projectRoundId,
         success: false,
-        error: error?.message || 'Failed to apply promotion decision',
+        error: getErrorMessage(error, 'Failed to apply promotion decision'),
       });
     }
   }
@@ -1475,9 +1675,26 @@ app.post('/api/assignments/:id/scores', requireAuth, async (req, res) => {
   if (!Array.isArray(scores) || scores.length === 0) {
     return res.status(400).json({ error: 'Scores payload is required' });
   }
+  const parsedScores = scores
+    .map((row: unknown): AssignmentScorePayload | null => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+      const criterionId = asString((row as { criterionId?: unknown }).criterionId);
+      const scoreValue = Number((row as { score?: unknown }).score);
+      if (!criterionId || !Number.isFinite(scoreValue)) {
+        return null;
+      }
+      return {
+        criterionId,
+        score: scoreValue,
+      };
+    })
+    .filter((row): row is AssignmentScorePayload => row !== null);
+  if (parsedScores.length !== scores.length) {
+    return res.status(400).json({ error: 'Scores payload contains invalid entries' });
+  }
 
   // Calculate total score
-  const totalScore = scores.reduce((sum: number, s: any) => sum + s.score, 0);
+  const totalScore = parsedScores.reduce((sum, scoreItem) => sum + scoreItem.score, 0);
 
   // Delete existing scores for this assignment
   await prisma.score.deleteMany({
@@ -1486,10 +1703,10 @@ app.post('/api/assignments/:id/scores', requireAuth, async (req, res) => {
 
   // Create new scores
   await prisma.score.createMany({
-    data: scores.map((s: any) => ({
+    data: parsedScores.map((scoreItem) => ({
       assignmentId,
-      criterionId: s.criterionId,
-      score: s.score,
+      criterionId: scoreItem.criterionId,
+      score: scoreItem.score,
     }))
   });
 
@@ -1521,7 +1738,7 @@ app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
   const effectiveRole = viewer.role === 'judge' ? 'judge' : (role ? String(role) : 'admin');
   const effectiveUserId = viewer.role === 'judge' ? viewer.id : (userId ? String(userId) : undefined);
 
-  const stats: any = {};
+  const stats: DashboardStats = {};
 
   if (effectiveRole === 'admin') {
     const totalProjects = await prisma.project.count({
@@ -1603,7 +1820,20 @@ app.get('/api/leaderboard', async (req, res) => {
       }
     });
 
-    const result = entries.map(entry => {
+    type CuratedLeaderboardItem = {
+      id: string;
+      title: string;
+      oneLiner: string;
+      tags: string[];
+      avgScore: number;
+      maxPossible: number;
+      judgeCount: number;
+      submitterName: string | null;
+      rank: number;
+      award: string;
+    };
+
+    const result = entries.map((entry): CuratedLeaderboardItem | null => {
       const p = projects.find(p => p.id === entry.projectId);
       if (!p) return null;
       const scores = p.assignments.map(a => a.totalScore || 0);
@@ -1615,9 +1845,9 @@ app.get('/api/leaderboard', async (req, res) => {
         judgeCount: scores.length, submitterName: p.submitterName,
         rank: entry.rank, award: entry.award,
       };
-    }).filter(Boolean);
+    }).filter((item): item is CuratedLeaderboardItem => item !== null);
 
-    result.sort((a: any, b: any) => a.rank - b.rank);
+    result.sort((a, b) => a.rank - b.rank);
     return res.json(result);
   }
 
@@ -1684,6 +1914,97 @@ app.get('/api/hackathons/:id/leaderboard', requireAdmin, async (req, res) => {
     select: { leaderboardData: true, leaderboardPublished: true }
   });
   res.json(hackathon);
+});
+
+// ===== Session CRUD =====
+
+app.post('/api/hackathons/:hackathonId/sessions', requireAdmin, async (req, res) => {
+  const { hackathonId } = req.params;
+  const { name, type, region, status, startAt, endAt } = req.body;
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+  if (!type || !VALID_SESSION_TYPES.has(type)) {
+    return res.status(400).json({ error: 'type must be one of: preliminary, semi_final, final' });
+  }
+  if (status !== undefined && !VALID_SESSION_STATUSES.has(status)) {
+    return res.status(400).json({ error: 'status must be one of: draft, active, judging, completed' });
+  }
+  if (!startAt || !endAt) {
+    return res.status(400).json({ error: 'startAt and endAt are required' });
+  }
+
+  const hackathon = await prisma.hackathon.findUnique({ where: { id: hackathonId }, select: { id: true } });
+  if (!hackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  const session = await prisma.session.create({
+    data: {
+      hackathonId,
+      name: name.trim(),
+      type,
+      region: (typeof region === 'string' && region.trim()) ? region.trim() : null,
+      status: status || 'draft',
+      startAt: new Date(startAt),
+      endAt: new Date(endAt),
+    },
+  });
+  res.json(session);
+});
+
+app.put('/api/hackathons/:hackathonId/sessions/:sessionId', requireAdmin, async (req, res) => {
+  const { hackathonId, sessionId } = req.params;
+  const { name, type, region, status, startAt, endAt } = req.body;
+
+  const existing = await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true, hackathonId: true } });
+  if (!existing || existing.hackathonId !== hackathonId) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+
+  if (type !== undefined && !VALID_SESSION_TYPES.has(type)) {
+    return res.status(400).json({ error: 'type must be one of: preliminary, semi_final, final' });
+  }
+  if (status !== undefined && !VALID_SESSION_STATUSES.has(status)) {
+    return res.status(400).json({ error: 'status must be one of: draft, active, judging, completed' });
+  }
+
+  const updateData: Record<string, unknown> = {};
+  if (name !== undefined) updateData.name = String(name).trim();
+  if (type !== undefined) updateData.type = type;
+  if (region !== undefined) updateData.region = (typeof region === 'string' && region.trim()) ? region.trim() : null;
+  if (status !== undefined) updateData.status = status;
+  if (startAt !== undefined) updateData.startAt = new Date(startAt);
+  if (endAt !== undefined) updateData.endAt = new Date(endAt);
+
+  const session = await prisma.session.update({ where: { id: sessionId }, data: updateData });
+  res.json(session);
+});
+
+app.delete('/api/hackathons/:hackathonId/sessions/:sessionId', requireAdmin, async (req, res) => {
+  const { hackathonId, sessionId } = req.params;
+
+  const existing = await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true, hackathonId: true } });
+  if (!existing || existing.hackathonId !== hackathonId) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+
+  const [projectCount, assignmentCount, projectRoundCount] = await Promise.all([
+    prisma.project.count({ where: { sessionId } }),
+    prisma.assignment.count({ where: { sessionId } }),
+    prisma.projectRound.count({ where: { sessionId } }),
+  ]);
+
+  if (projectCount > 0 || assignmentCount > 0 || projectRoundCount > 0) {
+    return res.status(409).json({
+      error: 'Cannot delete session with existing projects, assignments, or project rounds',
+      details: { projectCount, assignmentCount, projectRoundCount },
+    });
+  }
+
+  await prisma.session.delete({ where: { id: sessionId } });
+  res.json({ success: true });
 });
 
 // ===== Scoring Report =====
@@ -1909,21 +2230,35 @@ app.get('/api/users', requireAdmin, async (req, res) => {
 app.post('/api/users', requireAdmin, async (req, res) => {
   try {
     const { email, name, password, role } = req.body;
-    if (!email || !name || !password) {
+    const emailValue = normalizeEmail(email);
+    const nameValue = asString(name);
+    const passwordValue = asString(password);
+    const roleValue = role === undefined ? 'judge' : asUserRole(role);
+
+    if (!emailValue || !nameValue || !passwordValue) {
       return res.status(400).json({ error: 'Email, name, and password are required' });
     }
+    if (!isValidEmail(emailValue)) {
+      return res.status(400).json({ error: 'Email must be a valid email' });
+    }
+    if (!isValidPassword(passwordValue)) {
+      return res.status(400).json({ error: 'Password must be between 8 and 72 characters' });
+    }
+    if (!roleValue) {
+      return res.status(400).json({ error: 'role must be admin or judge' });
+    }
     // Check if user already exists
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await prisma.user.findUnique({ where: { email: emailValue } });
     if (existing) {
       return res.status(409).json({ error: 'A user with this email already exists' });
     }
-    const hashedPassword = bcrypt.hashSync(password, 10);
+    const hashedPassword = bcrypt.hashSync(passwordValue, 10);
     const user = await prisma.user.create({
       data: {
-        email,
-        name,
+        email: emailValue,
+        name: nameValue,
         password: hashedPassword,
-        role: role || 'judge',
+        role: roleValue,
       },
       select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true }
     });
@@ -1958,16 +2293,21 @@ app.delete('/api/users/:id', requireAdmin, async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
+    const emailValue = normalizeEmail(email);
+    const passwordValue = asString(password);
+    if (!emailValue || !passwordValue) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
+    if (!isValidEmail(emailValue)) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { email: emailValue } });
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const valid = bcrypt.compareSync(password, user.password);
+    const valid = bcrypt.compareSync(passwordValue, user.password);
     if (!valid) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
@@ -1994,4 +2334,16 @@ app.post('/api/auth/login', async (req, res) => {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
   }
+});
+
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'API route not found' });
+});
+
+app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('[api-error]', error);
+  if (res.headersSent) {
+    return next(error);
+  }
+  res.status(500).json({ error: 'Internal server error' });
 });

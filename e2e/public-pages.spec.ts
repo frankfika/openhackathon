@@ -39,7 +39,7 @@ test.describe('Public Pages', () => {
 
     // Check docs page loaded - check URL and basic content
     await expect(page).toHaveURL(/.*docs/);
-    await expect(page.locator('body')).toContainText('Docs');
+    await expect(page.locator('body')).toContainText(/GitBook|Open in new tab|No docs available|Event Details/i);
   });
 
   test('submit project page loads correctly', async ({ page }) => {

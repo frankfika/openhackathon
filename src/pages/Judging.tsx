@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { CheckCircle2, ChevronRight, Sparkles } from 'lucide-react'
+import { CheckCircle2, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'

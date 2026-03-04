@@ -49,6 +49,7 @@ export type Session = {
   hackathonId: string
   name: string
   type: SessionType
+  region?: string | null
   status: SessionStatus
   startAt: string
   endAt: string
@@ -82,7 +83,7 @@ export type Project = {
   demoUrl?: string
   repoUrl?: string
   status: 'draft' | 'submitted'
-  submissionData?: Record<string, any>
+  submissionData?: Record<string, unknown>
   projectRounds?: ProjectRound[]
 }
 

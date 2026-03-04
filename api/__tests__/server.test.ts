@@ -1,9 +1,16 @@
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { app, prisma } from '../server';
 
 const DEFAULT_PASSWORD = 'secret123';
+type BulkPromotionResponseItem = {
+  success: boolean;
+};
+type ProjectReportJudge = {
+  status: 'pending' | 'in_progress' | 'completed';
+};
 
 async function seedHackathon() {
   const hackathon = await prisma.hackathon.create({
@@ -21,6 +28,7 @@ async function seedHackathon() {
           {
             name: 'Preliminary',
             type: 'preliminary',
+            region: '北京',
             status: 'active',
             startAt: new Date('2026-01-10T10:00:00.000Z'),
             endAt: new Date('2026-01-10T18:00:00.000Z'),
@@ -100,6 +108,28 @@ afterAll(async () => {
 });
 
 describe('API integration tests (real database)', () => {
+  describe('Security and health', () => {
+    it('returns API health status with database state', async () => {
+      const res = await request(app).get('/api/health').expect(200);
+      expect(res.body.status).toBe('ok');
+      expect(res.body.database).toBe('up');
+      expect(typeof res.body.timestamp).toBe('string');
+    });
+
+    it('applies core security headers on API responses', async () => {
+      const res = await request(app).get('/api/site-settings').expect(200);
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+      expect(String(res.headers['x-frame-options']).toUpperCase()).toBe('SAMEORIGIN');
+      expect(res.headers['x-dns-prefetch-control']).toBe('off');
+      expect(res.headers['x-powered-by']).toBeUndefined();
+    });
+
+    it('returns JSON 404 for unknown API routes', async () => {
+      const res = await request(app).get('/api/not-found-endpoint').expect(404);
+      expect(res.body.error).toBe('API route not found');
+    });
+  });
+
   describe('Site Settings', () => {
     it('returns default site settings when none exist', async () => {
       const res = await request(app).get('/api/site-settings').expect(200);
@@ -363,6 +393,56 @@ describe('API integration tests (real database)', () => {
 
       expect(res.body.error).toBe('submitterEmail is required');
     });
+
+    it('validates submitterEmail format for public submission', async () => {
+      const { hackathon, session } = await seedHackathon();
+      const res = await request(app)
+        .post('/api/projects')
+        .send({
+          hackathonId: hackathon.id,
+          sessionId: session.id,
+          title: 'Invalid Email Project',
+          submitterEmail: 'invalid-email',
+        })
+        .expect(400);
+
+      expect(res.body.error).toBe('submitterEmail must be a valid email');
+    });
+
+    it('rate limits repeated public submissions from the same submitter email', async () => {
+      const { hackathon, session } = await seedHackathon();
+      const maxSubmissions = Number(process.env.SUBMISSION_RATE_LIMIT_MAX || 30);
+      const allowedSubmissions = Number.isFinite(maxSubmissions) && maxSubmissions > 0
+        ? Math.min(Math.floor(maxSubmissions), 20)
+        : 20;
+      const submitterEmail = 'submission-limit-test@example.com';
+
+      for (let i = 0; i < allowedSubmissions; i += 1) {
+        await request(app)
+          .post('/api/projects')
+          .send({
+            hackathonId: hackathon.id,
+            sessionId: session.id,
+            title: `Rate Limit Project ${i + 1}`,
+            submitterEmail,
+            submitterName: 'Rate Limit Tester',
+          })
+          .expect(200);
+      }
+
+      const limited = await request(app)
+        .post('/api/projects')
+        .send({
+          hackathonId: hackathon.id,
+          sessionId: session.id,
+          title: 'Rate Limit Project Blocked',
+          submitterEmail,
+          submitterName: 'Rate Limit Tester',
+        })
+        .expect(429);
+
+      expect(limited.body.error).toBe('Too many submissions. Please try again later.');
+    });
   });
 
   describe('Users and Auth', () => {
@@ -430,6 +510,18 @@ describe('API integration tests (real database)', () => {
 
       expect(loginOk.body.email).toBe('auth.user@example.com');
       expect(loginOk.body.password).toBeUndefined();
+      expect(typeof loginOk.body.token).toBe('string');
+
+      const verified = jwt.verify(
+        loginOk.body.token as string,
+        process.env.JWT_SECRET || 'openhackathon-change-this-secret',
+        {
+          issuer: process.env.JWT_ISSUER || 'openhackathon',
+          audience: process.env.JWT_AUDIENCE || 'openhackathon-clients',
+        }
+      ) as jwt.JwtPayload;
+      expect(verified.sub).toBeTruthy();
+      expect(verified.iss).toBe(process.env.JWT_ISSUER || 'openhackathon');
 
       await request(app)
         .post('/api/auth/login')
@@ -440,6 +532,28 @@ describe('API integration tests (real database)', () => {
         .expect(401);
 
       await request(app).post('/api/auth/login').send({ email: 'auth.user@example.com' }).expect(400);
+    });
+
+    it('rejects invalid email and weak password on user creation', async () => {
+      await request(app)
+        .post('/api/users')
+        .send({
+          email: 'invalid-email',
+          name: 'Bad Email User',
+          password: 'good-password',
+          role: 'judge',
+        })
+        .expect(400);
+
+      await request(app)
+        .post('/api/users')
+        .send({
+          email: 'weak.password@example.com',
+          name: 'Weak Password User',
+          password: '123',
+          role: 'judge',
+        })
+        .expect(400);
     });
 
     it('deletes user and cascades assignment + score cleanup', async () => {
@@ -767,7 +881,7 @@ describe('API integration tests (real database)', () => {
         .expect(200);
 
       expect(bulkRes.body).toHaveLength(2);
-      expect(bulkRes.body.every((item: any) => item.success)).toBe(true);
+      expect((bulkRes.body as BulkPromotionResponseItem[]).every((item) => item.success)).toBe(true);
 
       const updatedA = await prisma.projectRound.findUnique({ where: { id: roundA!.id } });
       const updatedB = await prisma.projectRound.findUnique({ where: { id: roundB!.id } });
@@ -1025,8 +1139,144 @@ describe('API integration tests (real database)', () => {
         averageScore: 84,
       });
       expect(reportRes.body[0].judges).toHaveLength(2);
-      expect(reportRes.body[0].judges.some((j: any) => j.status === 'completed')).toBe(true);
-      expect(reportRes.body[0].judges.some((j: any) => j.status === 'in_progress')).toBe(true);
+      const judges = reportRes.body[0].judges as ProjectReportJudge[];
+      expect(judges.some((judge) => judge.status === 'completed')).toBe(true);
+      expect(judges.some((judge) => judge.status === 'in_progress')).toBe(true);
+    });
+  });
+
+  describe('Session CRUD endpoints', () => {
+    it('creates a session with region', async () => {
+      const { hackathon } = await seedHackathon();
+      const res = await request(app)
+        .post(`/api/hackathons/${hackathon.id}/sessions`)
+        .send({
+          name: 'Shanghai Preliminary',
+          type: 'preliminary',
+          region: '上海',
+          status: 'draft',
+          startAt: '2026-02-01T00:00:00.000Z',
+          endAt: '2026-02-02T00:00:00.000Z',
+        })
+        .expect(200);
+      expect(res.body.name).toBe('Shanghai Preliminary');
+      expect(res.body.type).toBe('preliminary');
+      expect(res.body.region).toBe('上海');
+      expect(res.body.hackathonId).toBe(hackathon.id);
+    });
+
+    it('creates a session without region (region is null)', async () => {
+      const { hackathon } = await seedHackathon();
+      const res = await request(app)
+        .post(`/api/hackathons/${hackathon.id}/sessions`)
+        .send({
+          name: 'National Final',
+          type: 'final',
+          startAt: '2026-03-01T00:00:00.000Z',
+          endAt: '2026-03-02T00:00:00.000Z',
+        })
+        .expect(200);
+      expect(res.body.name).toBe('National Final');
+      expect(res.body.region).toBeNull();
+    });
+
+    it('rejects invalid session type on create', async () => {
+      const { hackathon } = await seedHackathon();
+      const res = await request(app)
+        .post(`/api/hackathons/${hackathon.id}/sessions`)
+        .send({
+          name: 'Bad Session',
+          type: 'invalid_type',
+          startAt: '2026-02-01T00:00:00.000Z',
+          endAt: '2026-02-02T00:00:00.000Z',
+        })
+        .expect(400);
+      expect(res.body.error).toMatch(/type/i);
+    });
+
+    it('updates session region', async () => {
+      const { hackathon, session } = await seedHackathon();
+      const res = await request(app)
+        .put(`/api/hackathons/${hackathon.id}/sessions/${session.id}`)
+        .send({ region: '广州' })
+        .expect(200);
+      expect(res.body.region).toBe('广州');
+    });
+
+    it('clears region when empty string is sent', async () => {
+      const { hackathon, session } = await seedHackathon();
+      const res = await request(app)
+        .put(`/api/hackathons/${hackathon.id}/sessions/${session.id}`)
+        .send({ region: '' })
+        .expect(200);
+      expect(res.body.region).toBeNull();
+    });
+
+    it('returns 404 when updating session in wrong hackathon', async () => {
+      const { hackathon: h1 } = await seedHackathon();
+      const { session: s2 } = await seedHackathon();
+      await request(app)
+        .put(`/api/hackathons/${h1.id}/sessions/${s2.id}`)
+        .send({ name: 'Cross hackathon' })
+        .expect(404);
+    });
+
+    it('deletes an empty session successfully', async () => {
+      const { hackathon } = await seedHackathon();
+      const newSession = await prisma.session.create({
+        data: {
+          hackathonId: hackathon.id,
+          name: 'Empty Session',
+          type: 'final',
+          status: 'draft',
+          startAt: new Date('2026-04-01'),
+          endAt: new Date('2026-04-02'),
+        },
+      });
+      const res = await request(app)
+        .delete(`/api/hackathons/${hackathon.id}/sessions/${newSession.id}`)
+        .expect(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('returns 409 when deleting a session with projects', async () => {
+      const { hackathon, session } = await seedHackathon();
+      await createProject({ hackathonId: hackathon.id, sessionId: session.id, title: 'Blocked Project' });
+      const res = await request(app)
+        .delete(`/api/hackathons/${hackathon.id}/sessions/${session.id}`)
+        .expect(409);
+      expect(res.body.error).toBeTruthy();
+      expect(res.body.details.projectCount).toBeGreaterThan(0);
+    });
+
+    it('returns 404 when deleting a non-existent session', async () => {
+      const { hackathon } = await seedHackathon();
+      await request(app)
+        .delete(`/api/hackathons/${hackathon.id}/sessions/non-existent-session-id`)
+        .expect(404);
+    });
+
+    it('existing PUT /api/hackathons/:id propagates region in sessions', async () => {
+      const { hackathon } = await seedHackathon();
+      const res = await request(app)
+        .put(`/api/hackathons/${hackathon.id}`)
+        .send({
+          sessions: [
+            {
+              name: 'Beijing Semi Final',
+              type: 'semi_final',
+              region: '北京',
+              status: 'draft',
+              startAt: '2026-05-01T00:00:00.000Z',
+              endAt: '2026-05-02T00:00:00.000Z',
+            },
+          ],
+        })
+        .expect(200);
+      const sessions = res.body.sessions as { name: string; region: string | null }[];
+      const newSession = sessions.find((s) => s.name === 'Beijing Semi Final');
+      expect(newSession).toBeTruthy();
+      expect(newSession?.region).toBe('北京');
     });
   });
 });

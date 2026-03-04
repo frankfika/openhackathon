@@ -1,5 +1,8 @@
 import { Assignment } from './types'
 
+type ScorableProject = { id: string } & Record<string, unknown>
+type ProjectWithScore<T extends ScorableProject> = T & { score: number }
+
 /**
  * Calculate the average score for a project from all completed assignments
  */
@@ -27,9 +30,9 @@ export function calculateProjectScore(
  * Get all projects with their calculated scores
  */
 export function getProjectsWithScores(
-  projects: { id: string; [key: string]: any }[],
+  projects: ScorableProject[],
   assignments: Assignment[]
-): Array<{ id: string; score: number; [key: string]: any }> {
+): Array<ProjectWithScore<ScorableProject>> {
   return projects.map((project) => ({
     ...project,
     score: calculateProjectScore(project.id, assignments),

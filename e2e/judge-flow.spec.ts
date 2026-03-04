@@ -84,9 +84,9 @@ test.describe('Judge Workflow', () => {
     await page.goto('/judge');
 
     // Check status filter buttons
-    await expect(page.locator('text=Pending')).toBeVisible();
-    await expect(page.locator('text=In Progress')).toBeVisible();
-    await expect(page.locator('text=Completed')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Pending$/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^In Progress$/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Completed$/i })).toBeVisible();
 
     // Click on different status filters
     await page.locator('button', { hasText: 'Completed' }).click();

@@ -49,6 +49,14 @@ type RoundBoardItem = {
   } | null
 }
 
+type MutationApiError = {
+  response?: {
+    data?: {
+      error?: string
+    }
+  }
+}
+
 const DECISIONS: PromotionStatus[] = ['pending', 'advanced', 'eliminated']
 
 export function PromotionManager() {
@@ -152,8 +160,9 @@ export function PromotionManager() {
       queryClient.invalidateQueries({ queryKey: ['project-scoring-report'] })
       toast.success(t('promotions.updated', 'Promotion decision updated'))
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.error || t('promotions.update_failed', 'Failed to update promotion decision')
+    onError: (error: unknown) => {
+      const mutationError = error as MutationApiError
+      const message = mutationError?.response?.data?.error || t('promotions.update_failed', 'Failed to update promotion decision')
       toast.error(message)
     },
   })
@@ -239,7 +248,14 @@ export function PromotionManager() {
               <SelectContent>
                 {orderedSessions.map((session) => (
                   <SelectItem key={session.id} value={session.id}>
-                    {session.name}
+                    <span className="flex items-center gap-1.5">
+                      {session.name}
+                      {session.region && (
+                        <Badge variant="outline" className="text-xs px-1.5 py-0">
+                          {session.region}
+                        </Badge>
+                      )}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -263,7 +279,14 @@ export function PromotionManager() {
                   .filter((session) => session.id !== fromSessionId)
                   .map((session) => (
                     <SelectItem key={session.id} value={session.id}>
-                      {session.name}
+                      <span className="flex items-center gap-1.5">
+                        {session.name}
+                        {session.region && (
+                          <Badge variant="outline" className="text-xs px-1.5 py-0">
+                            {session.region}
+                          </Badge>
+                        )}
+                      </span>
                     </SelectItem>
                   ))}
               </SelectContent>

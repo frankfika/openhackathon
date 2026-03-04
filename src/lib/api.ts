@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { Hackathon, Project, Assignment, User, AssignmentStatus, ProjectRound, PromotionStatus, SiteSettings } from './types'
+import { Hackathon, Project, Assignment, User, AssignmentStatus, ProjectRound, PromotionStatus, SiteSettings, Session, SessionType, SessionStatus } from './types'
 
 const API_URL = '/api'
 const AUTH_TOKEN_KEY = 'openhackathon_token'
@@ -47,6 +47,25 @@ export const api = {
   },
   updateHackathon: async (id: string, data: Partial<Hackathon>) => {
     const res = await axios.put<Hackathon>(`${API_URL}/hackathons/${id}`, data)
+    return res.data
+  },
+
+  createSession: async (hackathonId: string, data: {
+    name: string; type: SessionType; region?: string;
+    status?: SessionStatus; startAt: string; endAt: string;
+  }) => {
+    const res = await axios.post<Session>(`${API_URL}/hackathons/${hackathonId}/sessions`, data)
+    return res.data
+  },
+  updateSession: async (hackathonId: string, sessionId: string, data: {
+    name?: string; type?: SessionType; region?: string;
+    status?: SessionStatus; startAt?: string; endAt?: string;
+  }) => {
+    const res = await axios.put<Session>(`${API_URL}/hackathons/${hackathonId}/sessions/${sessionId}`, data)
+    return res.data
+  },
+  deleteSession: async (hackathonId: string, sessionId: string) => {
+    const res = await axios.delete(`${API_URL}/hackathons/${hackathonId}/sessions/${sessionId}`)
     return res.data
   },
 

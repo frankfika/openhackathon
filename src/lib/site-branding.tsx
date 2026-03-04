@@ -71,6 +71,7 @@ export function SiteBrandingProvider({ children }: { children: React.ReactNode }
   return <SiteBrandingContext.Provider value={value}>{children}</SiteBrandingContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useSiteBranding() {
   const context = useContext(SiteBrandingContext)
   if (!context) {

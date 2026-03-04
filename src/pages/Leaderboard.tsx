@@ -6,18 +6,21 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { useAuth } from '@/lib/auth'
-import { Trophy, Medal, Award, Star, Loader2, Pencil, Save, Eye, EyeOff, GripVertical, Plus, X } from 'lucide-react'
+import { Trophy, Medal, Award, Star, Loader2, Pencil, Save, Eye, EyeOff, Plus, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import type { Project } from '@/lib/types'
 
 type LeaderboardEntry = {
   projectId: string
   rank: number
   award: string
 }
+
+type RankedProject = Awaited<ReturnType<typeof api.getLeaderboard>>[number]
 
 export function Leaderboard() {
   const { t } = useTranslation()
@@ -35,7 +38,7 @@ export function Leaderboard() {
   const [published, setPublished] = useState(false)
 
   // Fetch leaderboard (public view)
-  const { data: rankedProjects = [], isLoading } = useQuery({
+  const { data: rankedProjects = [], isLoading } = useQuery<RankedProject[]>({
     queryKey: ['leaderboard', activeHackathon?.id],
     queryFn: () => api.getLeaderboard({ hackathonId: activeHackathon?.id }),
     enabled: !!activeHackathon?.id,
@@ -49,7 +52,7 @@ export function Leaderboard() {
   })
 
   // Fetch all projects for admin to pick from
-  const { data: allProjects = [] } = useQuery({
+  const { data: allProjects = [] } = useQuery<Project[]>({
     queryKey: ['projects', activeHackathon?.id],
     queryFn: () => api.getProjects({ hackathonId: activeHackathon?.id }),
     enabled: !!activeHackathon?.id && isAdmin && editing,
@@ -105,14 +108,14 @@ export function Leaderboard() {
   const getProjectTitle = (projectId: string) => {
     const fromRanked = rankedProjects.find(p => p.id === projectId)
     if (fromRanked) return fromRanked.title
-    const fromAll = allProjects.find((p: any) => p.id === projectId)
+    const fromAll = allProjects.find((p) => p.id === projectId)
     return fromAll?.title || projectId
   }
 
   const getProjectOneLiner = (projectId: string) => {
     const fromRanked = rankedProjects.find(p => p.id === projectId)
     if (fromRanked) return fromRanked.oneLiner
-    const fromAll = allProjects.find((p: any) => p.id === projectId)
+    const fromAll = allProjects.find((p) => p.id === projectId)
     return fromAll?.oneLiner || ''
   }
 
@@ -218,14 +221,14 @@ export function Leaderboard() {
                   <p className="text-sm text-muted-foreground mb-3">{t('leaderboard.add_projects')}</p>
                   <div className="flex flex-wrap gap-2 max-h-[200px] overflow-y-auto">
                     {allProjects
-                      .filter((p: any) => !entries.some(e => e.projectId === p.id))
-                      .map((p: any) => (
+                      .filter((p) => !entries.some(e => e.projectId === p.id))
+                      .map((p) => (
                         <Button key={p.id} variant="outline" size="sm" onClick={() => addEntry(p.id)}>
                           <Plus className="h-3 w-3 mr-1" />
                           {p.title}
                         </Button>
                       ))}
-                    {allProjects.filter((p: any) => !entries.some(e => e.projectId === p.id)).length === 0 && (
+                    {allProjects.filter((p) => !entries.some(e => e.projectId === p.id)).length === 0 && (
                       <p className="text-xs text-muted-foreground">{t('leaderboard.all_added')}</p>
                     )}
                   </div>
@@ -292,8 +295,8 @@ export function Leaderboard() {
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 mb-1">
                         <h3 className="text-base md:text-lg font-semibold truncate">{project.title}</h3>
-                        {(project as any).award && (
-                          <Badge variant="default" className="w-fit">{(project as any).award}</Badge>
+                        {project.award && (
+                          <Badge variant="default" className="w-fit">{project.award}</Badge>
                         )}
                         <div className="flex flex-wrap gap-1">
                           {project.tags?.slice(0, 3).map(tag => (

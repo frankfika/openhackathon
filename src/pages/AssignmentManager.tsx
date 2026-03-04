@@ -5,7 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { toast } from 'sonner'
-import { Users, CheckSquare, Info, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Users, Info, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -155,7 +155,14 @@ export function AssignmentManager() {
             <SelectContent>
               {(activeHackathon?.sessions || []).map((session) => (
                 <SelectItem key={session.id} value={session.id}>
-                  {session.name}
+                  <span className="flex items-center gap-1.5">
+                    {session.name}
+                    {session.region && (
+                      <Badge variant="outline" className="text-xs px-1.5 py-0">
+                        {session.region}
+                      </Badge>
+                    )}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>

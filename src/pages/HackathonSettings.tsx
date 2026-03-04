@@ -11,9 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { SubmissionConfigBuilder } from '@/components/SubmissionConfigBuilder'
 import { ScoringCriteriaBuilder } from '@/components/ScoringCriteriaBuilder'
+import { SessionsTab } from '@/components/SessionsTab'
 import { SubmissionField, ScoringCriterion } from '@/lib/types'
 import { toast } from 'sonner'
-import { ArrowLeft, Loader2, Check, Bell, Puzzle } from 'lucide-react'
+import { ArrowLeft, Loader2, Check, Bell, Puzzle, CalendarClock } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -200,6 +201,10 @@ export function HackathonSettings() {
           <TabsTrigger value="general" className="flex-1 min-w-[100px]">{t('settings.general')}</TabsTrigger>
           <TabsTrigger value="submission" className="flex-1 min-w-[100px]">{t('settings.submission')}</TabsTrigger>
           <TabsTrigger value="scoring" className="flex-1 min-w-[100px]">{t('settings.scoring')}</TabsTrigger>
+          <TabsTrigger value="sessions" className="flex-1 min-w-[100px] gap-1">
+            <CalendarClock className="h-3.5 w-3.5" />
+            {t('settings.sessions')}
+          </TabsTrigger>
           <TabsTrigger value="notifications" className="flex-1 min-w-[100px] gap-1">
             <Bell className="h-3.5 w-3.5" />
             {t('settings.notifications')}
@@ -331,6 +336,10 @@ export function HackathonSettings() {
               onSaveScoringCriteria(criteria)
             }}
           />
+        </TabsContent>
+
+        <TabsContent value="sessions">
+          <SessionsTab hackathonId={id!} sessions={hackathon.sessions || []} />
         </TabsContent>
 
         <TabsContent value="notifications">

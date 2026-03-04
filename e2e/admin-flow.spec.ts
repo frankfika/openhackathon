@@ -17,7 +17,7 @@ test.describe('Admin Workflow', () => {
     await expect(page.locator('body')).toContainText(/Judges|评委/i);
 
     // Stats should have numbers
-    const statValues = page.locator('.text-2xl');
+    const statValues = page.locator('.tabular-nums');
     await expect(statValues.first()).toBeVisible();
   });
 
@@ -49,9 +49,9 @@ test.describe('Admin Workflow', () => {
   });
 
   test('admin can view leaderboard', async ({ page }) => {
-    await page.locator('text=Leaderboard').click();
+    await page.getByRole('link', { name: /^Leaderboard$/i }).click();
     await expect(page).toHaveURL(/.*dashboard\/leaderboard/);
-    await expect(page.locator('text=Leaderboard')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Leaderboard|榜单/i })).toBeVisible();
   });
 
   test('admin can view scoring reports', async ({ page }) => {
@@ -63,7 +63,7 @@ test.describe('Admin Workflow', () => {
   test('admin can access hackathon settings', async ({ page }) => {
     await page.locator('text=Hackathon Settings').click();
     await expect(page).toHaveURL(/.*dashboard\/hackathons\/.*\/settings/);
-    await expect(page.locator('text=Settings')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Hackathon Settings|黑客松设置/i })).toBeVisible();
   });
 
   test('admin can assign project to judge', async ({ page }) => {
@@ -89,12 +89,12 @@ test.describe('Admin Workflow', () => {
 
   test('admin can view judging page', async ({ page }) => {
     await page.goto('/dashboard/judging');
-    await expect(page.locator('text=Judging')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Judging|评审/i })).toBeVisible();
 
     // Should show status filters
-    await expect(page.locator('text=Pending')).toBeVisible();
-    await expect(page.locator('text=In Progress')).toBeVisible();
-    await expect(page.locator('text=Completed')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Pending$/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^In Progress$/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Completed$/i })).toBeVisible();
   });
 
   test('admin can filter assignments by status', async ({ page }) => {
@@ -105,5 +105,33 @@ test.describe('Admin Workflow', () => {
 
     // Should render completed list or empty state
     await expect(page.locator('body')).toContainText(/Completed|No assignments found|Open review/i);
+  });
+
+  test('admin can navigate to hackathon settings sessions tab', async ({ page }) => {
+    await page.locator('text=Hackathon Settings').click();
+    await expect(page).toHaveURL(/.*dashboard\/hackathons\/.*\/settings/);
+
+    // Click the Sessions tab
+    await page.getByRole('tab', { name: /Sessions|赛程/i }).click();
+    await expect(page.locator('body')).toContainText(/Session Management|赛程管理/i);
+  });
+
+  test('admin can create a session with region in sessions tab', async ({ page }) => {
+    await page.locator('text=Hackathon Settings').click();
+    await expect(page).toHaveURL(/.*dashboard\/hackathons\/.*\/settings/);
+
+    await page.getByRole('tab', { name: /Sessions|赛程/i }).click();
+    await page.getByRole('button', { name: /Add Session|添加赛程/i }).click();
+
+    // Fill in the session form
+    await page.getByPlaceholder(/e\.g\. Beijing|北京初赛/i).fill('Shenzhen Preliminary');
+    await page.locator('input[type="date"]').first().fill('2026-06-01');
+    await page.locator('input[type="date"]').last().fill('2026-06-02');
+
+    // Save
+    await page.getByRole('button', { name: /^Save$|^保存$/i }).last().click();
+
+    // Session should appear in the list
+    await expect(page.locator('body')).toContainText(/Shenzhen Preliminary/i);
   });
 });
