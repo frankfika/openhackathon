@@ -5,7 +5,7 @@
 
 ![OpenHackathon Home](./docs/assets/home.png)
 
-![Version](https://img.shields.io/badge/Version-1.1.0-blue?style=flat-square)
+![Version](https://img.shields.io/badge/Version-1.2.0-blue?style=flat-square)
 ![Stack](https://img.shields.io/badge/Stack-React%20%7C%20Express%20%7C%20PostgreSQL-1f6feb?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
@@ -25,6 +25,7 @@ OpenHackathon 是一个面向黑客松主办方、评委与参赛团队的全流
 ## ✨ 核心能力
 ### 1. 活动与赛程管理
 - 支持多活动（Hackathon）与多轮赛程（初赛/复赛/决赛）。
+- **赛程管理**：独立标签页管理各轮次，支持设置赛区（region）进行多地区并行举办。
 - 可配置评分标准、提交字段、活动状态。
 
 ![Dashboard](./docs/assets/dashboard.png)
