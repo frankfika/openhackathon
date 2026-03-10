@@ -4,9 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "prisma migrate deploy && tsx api/index.ts",
     "start:api": "tsx api/index.ts",
     "client:dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "prisma generate && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "postinstall": "prisma generate",

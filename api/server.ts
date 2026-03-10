@@ -7,6 +7,8 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import nodemailer from 'nodemailer';
 import helmet from 'helmet';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 export const prisma = new PrismaClient();
 export const app = express();
@@ -2339,6 +2341,16 @@ app.post('/api/auth/login', async (req, res) => {
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: 'API route not found' });
 });
+
+// In production, serve Vite-built static files and SPA fallback
+if (IS_PRODUCTION) {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const distPath = path.resolve(__dirname, '..', 'dist');
+  app.use(express.static(distPath));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
 
 app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('[api-error]', error);
