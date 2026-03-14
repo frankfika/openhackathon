@@ -225,6 +225,7 @@ function sanitizePathSegment(value: string): string {
 }
 
 function sanitizeFileStem(value: string): string {
+  // eslint-disable-next-line no-control-regex
   return value.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
 }
 
