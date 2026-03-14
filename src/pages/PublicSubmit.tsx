@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { SubmissionField } from '@/lib/types'
+import { SubmissionField, formatDateRange } from '@/lib/types'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { toast } from 'sonner'
 import { CalendarDays, ClipboardList, Loader2, Mail, Sparkles, User } from 'lucide-react'
@@ -205,7 +205,7 @@ export function PublicSubmit() {
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <CalendarDays className="h-3.5 w-3.5" />
                 <span>
-                  {hackathon.startAt} - {hackathon.endAt}
+                  {formatDateRange(hackathon.startAt, hackathon.endAt)}
                 </span>
               </div>
               <Badge variant="outline" className="w-fit">

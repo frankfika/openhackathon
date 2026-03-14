@@ -144,10 +144,26 @@ export type ProjectRound = {
   assignments?: Assignment[]
 }
 
-export function formatDateRange(startAt: string, endAt: string) {
-  const fmt = (d: string) => {
-    const date = new Date(d)
-    return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+const ISO_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})/
+
+export function formatCalendarDate(value: string) {
+  if (!value) return ''
+
+  const isoMatch = value.match(ISO_DATE_PREFIX)
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch
+    return `${year}/${month}/${day}`
   }
-  return `${fmt(startAt)} – ${fmt(endAt)}`
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  return `${year}/${month}/${day}`
+}
+
+export function formatDateRange(startAt: string, endAt: string) {
+  return `${formatCalendarDate(startAt)} – ${formatCalendarDate(endAt)}`
 }

@@ -12,6 +12,7 @@ import {
   MapPin,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { formatDateRange } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { api } from '@/lib/api'
@@ -141,7 +142,7 @@ function HeroSection() {
             )}
             <span className="inline-flex items-center gap-2 rounded-full bg-foreground/5 px-4 py-1.5 text-sm text-muted-foreground dark:bg-foreground/10">
               <Calendar className="h-4 w-4" />
-              {h.startAt} – {h.endAt}
+              {formatDateRange(h.startAt, h.endAt)}
             </span>
           </motion.div>
 
