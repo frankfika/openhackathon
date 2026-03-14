@@ -265,6 +265,38 @@ describe('API integration tests (real database)', () => {
       expect(sessions.some((s) => s.name === 'Final Round')).toBe(true);
     });
 
+    it('stores, reads, and deletes local markdown documents for a hackathon', async () => {
+      const { hackathon } = await seedHackathon();
+
+      const uploadRes = await request(app)
+        .put(`/api/hackathons/${hackathon.id}/markdown-doc`)
+        .send({
+          fileName: 'guide.md',
+          content: '# Event Guide\n\n- Check in\n- Demo day',
+        })
+        .expect(200);
+
+      expect(uploadRes.body.fileName).toBe('guide.md');
+      expect(uploadRes.body.content).toContain('# Event Guide');
+
+      const docRes = await request(app)
+        .get(`/api/hackathons/${hackathon.id}/markdown-doc`)
+        .expect(200);
+
+      expect(docRes.body.fileName).toBe('guide.md');
+      expect(docRes.body.content).toContain('Demo day');
+
+      const deleteRes = await request(app)
+        .delete(`/api/hackathons/${hackathon.id}/markdown-doc`)
+        .expect(200);
+
+      expect(deleteRes.body.success).toBe(true);
+
+      await request(app)
+        .get(`/api/hackathons/${hackathon.id}/markdown-doc`)
+        .expect(404);
+    });
+
     it('returns 404 for a non-existing hackathon', async () => {
       await request(app).get('/api/hackathons/non-existent-id').expect(404);
     });

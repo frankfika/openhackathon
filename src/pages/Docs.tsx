@@ -2,10 +2,13 @@ import React, { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { BookOpenText, ExternalLink, FileText, Link2, ScrollText, Settings2 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { MarkdownDocument } from '@/components/MarkdownDocument'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { useAuth } from '@/lib/auth'
+import { api } from '@/lib/api'
 
 function normalizeUrl(url?: string | null) {
   if (!url) return ''
@@ -19,24 +22,83 @@ export function Docs() {
   const { user } = useAuth()
   const { activeHackathon: h } = useActiveHackathon()
   const [iframeError, setIframeError] = useState(false)
+  const { data: localDoc, isLoading: isLoadingLocalDoc } = useQuery({
+    queryKey: ['hackathon-markdown-doc', h.id],
+    queryFn: async () => {
+      if (!h.id) return null
+      try {
+        return await api.getHackathonMarkdownDoc(h.id)
+      } catch {
+        return null
+      }
+    },
+    enabled: !!h.id,
+  })
 
   const source = useMemo(() => {
-    const gitbookUrl = normalizeUrl(h.gitbookUrl)
-    const rulesUrl = normalizeUrl(h.rulesUrl)
     const detailsUrl = normalizeUrl(h.detailsUrl)
+    const rulesUrl = normalizeUrl(h.rulesUrl)
+    const gitbookUrl = normalizeUrl(h.gitbookUrl)
 
-    if (gitbookUrl) {
-      return { url: gitbookUrl, label: 'GitBook', icon: BookOpenText }
+    if (detailsUrl) {
+      return { url: detailsUrl, label: t('nav.docs'), icon: Link2 }
     }
     if (rulesUrl) {
       return { url: rulesUrl, label: t('landing.footer.rules'), icon: ScrollText }
     }
-    if (detailsUrl) {
-      return { url: detailsUrl, label: t('nav.docs'), icon: Link2 }
+    if (gitbookUrl) {
+      return { url: gitbookUrl, label: 'GitBook', icon: BookOpenText }
     }
 
     return null
   }, [h.detailsUrl, h.gitbookUrl, h.rulesUrl, t])
+
+  if (isLoadingLocalDoc) {
+    return (
+      <div className="container py-10 md:py-16">
+        <div className="surface-panel-strong mx-auto flex min-h-[60vh] max-w-3xl items-center justify-center px-6">
+          <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (localDoc) {
+    return (
+      <div className="container py-6 md:py-8">
+        <div className="surface-panel-strong mb-4 flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-5">
+          <div className="flex items-center gap-3">
+            <FileText className="h-4 w-4 text-primary" />
+            <div>
+              <h1 className="text-sm font-semibold">{t('landing.gitbook.title')}</h1>
+              <p className="text-xs text-muted-foreground">{h.title}</p>
+            </div>
+            <Badge variant="outline" className="rounded-full text-[10px] uppercase tracking-wide">
+              Markdown
+            </Badge>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span>{localDoc.fileName}</span>
+            {source ? (
+              <a
+                href={source.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors"
+              >
+                {t('landing.gitbook.open_external')}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="surface-panel-strong px-5 py-6 md:px-8 md:py-8">
+          <MarkdownDocument content={localDoc.content} />
+        </div>
+      </div>
+    )
+  }
 
   if (!source) {
     return (

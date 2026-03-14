@@ -147,12 +147,22 @@
     "saved": "AI configuration saved",
     "saved_desc": "Settings will be used for all AI features in this browser.",
     "hackathon_not_found": "Hackathon not found",
-    "gitbook_url": "Event Details URL",
-    "gitbook_url_desc": "Set one event details URL (GitBook or rules page) and it will be shown in Event Details.",
+    "gitbook_url": "GitBook URL",
+    "gitbook_url_desc": "Optional GitBook source. When no local Markdown or details URL is available, Event Details falls back to this link.",
     "rules_url": "Rules URL",
-    "rules_url_desc": "Optional rules page URL used as a fallback source for Event Details.",
+    "rules_url_desc": "Optional rules page URL. Event Details falls back here when no local Markdown or details URL is available.",
     "details_url": "Additional Details URL",
-    "details_url_desc": "Used when GitBook and rules URLs are not configured.",
+    "details_url_desc": "Optional external event details URL. When no local Markdown exists, Event Details prefers this source first.",
+    "markdown_doc": "Local Markdown Document",
+    "markdown_doc_desc": "Upload a `.md` document and it will be stored under this hackathon's local content directory. Event Details prefers this local document, with external links used only as fallback.",
+    "markdown_empty": "No document uploaded",
+    "markdown_updated_at": "Last updated: {{updatedAt}}",
+    "markdown_delete": "Delete Markdown Document",
+    "markdown_empty_desc": "No local Markdown document has been uploaded for this hackathon yet.",
+    "markdown_uploaded": "Markdown document uploaded",
+    "markdown_upload_failed": "Failed to upload Markdown document",
+    "markdown_deleted": "Markdown document deleted",
+    "markdown_delete_failed": "Failed to delete Markdown document",
     "cover_gradient": "Cover Gradient",
     "cover_gradient_desc": "Choose a gradient theme for your hackathon cover.",
     "notifications": "Notifications",
@@ -187,7 +197,92 @@
     "basic_info": "Basic Information",
     "basic_info_desc": "Manage the core details of your hackathon.",
     "save_error": "Failed to save settings",
-    "sessions": "Sessions"
+    "sessions": "Sessions",
+    "setup_wizard": {
+      "open": "Setup Wizard",
+      "title": "Quick Hackathon Setup",
+      "description": "Answer a few questions and the system will generate a sensible default for sessions, submission fields, and scoring criteria. You can fine-tune everything afterward.",
+      "apply_hint": "The wizard replaces the current submission form and scoring criteria with a fresh default. If the hackathon has zero or one session, it also fills in the default round structure.",
+      "format_title": "Competition Format",
+      "format_desc": "Define only the round structure here. Region, class, and category stay as optional form fields and filters.",
+      "formats": {
+        "single_round": {
+          "title": "Single Round",
+          "desc": "Best for smaller events that go straight into one judging round."
+        },
+        "prelim_final": {
+          "title": "Preliminary + Final",
+          "desc": "The most flexible default: screen projects first, then run a final round."
+        },
+        "three_stage": {
+          "title": "Preliminary + Semi + Final",
+          "desc": "Useful for larger events with multiple promotion steps."
+        }
+      },
+      "session_generation_note": "The current hackathon has little or no round structure yet, so the wizard will generate the default sessions for you.",
+      "session_preserve_note": "Multiple sessions already exist. To avoid overwriting live structure, the wizard will leave sessions untouched. Edit them manually in the Sessions tab if needed.",
+      "dimensions_title": "Filter Dimensions",
+      "dimensions_desc": "These fields appear in the submission form and become reusable filters in project views, assignment management, and reports.",
+      "dimensions": {
+        "region": {
+          "title": "Region",
+          "desc": "Useful for city stops, regional tracks, or hybrid online/offline events."
+        },
+        "class_name": {
+          "title": "Class",
+          "desc": "Useful for courses, bootcamps, departments, or internal cohorts."
+        },
+        "category": {
+          "title": "Category",
+          "desc": "Useful for tracks, themes, business lines, or project types."
+        }
+      },
+      "submission_title": "Submission Depth",
+      "submission_desc": "Choose how much project detail participants should provide by default.",
+      "styles": {
+        "lean": {
+          "title": "Lean",
+          "desc": "Keep only the project name and links for the fastest launch."
+        },
+        "standard": {
+          "title": "Standard",
+          "desc": "Balanced and easy to use. Best default for most hackathons."
+        },
+        "detailed": {
+          "title": "Detailed",
+          "desc": "Require a fuller project write-up for more complex evaluation."
+        }
+      },
+      "preview_title": "Generated Default",
+      "preview_desc": "This is the starting structure. You can keep editing it below after applying.",
+      "preview_badges": {
+        "generated_sessions": "Generate Sessions",
+        "keep_sessions": "Keep Existing Sessions"
+      },
+      "preview_sections": {
+        "sessions": "Sessions",
+        "submission": "Submission Fields",
+        "scoring": "Scoring Criteria"
+      },
+      "no_dimensions": "No extra filter dimensions selected yet. You can add them later if needed.",
+      "apply": "Apply This Setup",
+      "session_names": {
+        "main": "Main Round",
+        "preliminary": "Preliminary",
+        "semi_final": "Semi Final",
+        "final": "Final"
+      },
+      "field_labels": {
+        "region": "Region",
+        "className": "Class",
+        "category": "Category"
+      },
+      "criteria": {
+        "innovation": "Innovation",
+        "execution": "Execution",
+        "impact": "Impact"
+      }
+    }
   },
   "sessions": {
     "title": "Session Management",
@@ -306,6 +401,23 @@
     "title": "Project Assignments",
     "subtitle": "Assign projects to judges for evaluation",
     "help": "Check the boxes to assign projects to judges. Each project can be assigned to multiple judges.",
+    "auto_title": "Auto Assignment",
+    "auto_desc": "Designed for larger events. Filter down to the current project scope first, then pick judges and fill the current session's missing review tasks without overwriting existing assignments.",
+    "auto_judges": "Judges included in auto assignment",
+    "clear_selection": "Clear",
+    "judges_per_project": "Judges per project",
+    "judges_per_project_desc": "Used by balanced random assignment only. The system spreads new tasks across the selected judges as evenly as possible.",
+    "selected_judges": "{{count}} judges selected",
+    "existing_count": "{{count}} existing assignments",
+    "filters_title": "Project Filters",
+    "filters_desc": "Use submission fields marked as filterable to narrow the current project scope. All batch actions apply only to the filtered result.",
+    "search_projects": "Search projects",
+    "search_projects_placeholder": "Search by title, summary, submitter, or tags",
+    "all_filter_values": "All",
+    "filtered_projects_count": "{{count}} of {{total}} projects",
+    "current_scope_count": "{{count}} assignments in scope",
+    "clear_filters": "Clear filters",
+    "judge_total_assigned": "{{count}} projects assigned in this session",
     "projects_count": "Projects ({{count}})",
     "projects_desc": "Select projects to assign to judges",
     "judges_count": "Judges ({{count}})",
@@ -317,7 +429,19 @@
     "create_failed": "Failed to create assignment",
     "removed": "Assignment removed",
     "remove_failed": "Failed to remove assignment",
+    "no_changes": "No new assignments needed",
     "assigned_count": "Assigned {{count}} projects to {{name}}",
+    "bulk_created": "Created {{count}} assignments for the selected judges",
+    "random_created": "Created {{count}} balanced assignments toward {{judgesPerProject}} judges per project",
+    "random_mode_title": "Balanced Random Assignment",
+    "recommended": "Recommended",
+    "random_mode_desc": "Best for larger review queues. Each filtered project is filled toward {{judgesPerProject}} judges, with {{count}} new assignments planned.",
+    "bulk_mode_title": "Assign Everything",
+    "bulk_mode_desc": "Assign every filtered project to the {{judges}} selected judges. Best for smaller events or full re-review. {{count}} new assignments are planned.",
+    "bulk_assign_button": "Fill All {{count}}",
+    "random_assign_button": "Balanced Fill {{count}}",
+    "auto_hint": "Balanced random assignment is the safest default. It fills the {{count}} filtered projects toward {{judgesPerProject}} judges without removing or overwriting existing assignments.",
+    "assign_all_for_judge": "Assign filtered projects",
     "judge_count": "{{count}} judge",
     "judges_count_label": "{{count}} judges",
     "click_to_add": "Click projects above to add them to the leaderboard",
@@ -427,7 +551,7 @@
       "open_external": "Open in new tab",
       "no_docs": "No event details configured yet.",
       "no_docs_title": "No event details yet",
-      "no_docs_desc": "The organizer has not configured an event details URL yet. You can use a GitBook or rules page link.",
+      "no_docs_desc": "The organizer has not uploaded a local Markdown document or configured any external event details yet. Upload Markdown first, or add a details, rules, or GitBook link.",
       "go_gitbook": "Create on GitBook",
       "embed_blocked": "This documentation site cannot be embedded."
     },
@@ -457,6 +581,11 @@
     "add_field": "Add Field",
     "field_label": "Label",
     "field_type": "Type",
+    "field_options": "Options",
+    "field_options_placeholder": "One option per line, for example:\nNorth Region\nEast Region\nAI Agent",
+    "field_options_help": "Useful for region, class, track, or category style fields.",
+    "filterable": "Filterable in admin views",
+    "filterable_desc": "When enabled, this field can be used as a filter in project and assignment screens.",
     "no_fields": "No fields configured. Add a field to get started.",
     "placeholder": "Placeholder",
     "required": "Required",
@@ -482,12 +611,14 @@
     "step_contact": "Fill in contact information",
     "step_project": "Optionally complete project details",
     "step_review": "Receive your submission receipt",
-    "submit_tip": "Only email is required. The backend will automatically issue a receipt number.",
+    "submit_tip": "Email is always required. Other fields follow the organizer's configuration and validation rules.",
     "optional": "Optional",
     "contact_email_label": "Email Address",
     "contact_name_label": "Your Name",
     "contact_email_placeholder": "your@email.com",
     "contact_name_placeholder": "John Doe",
+    "select_placeholder": "Please select",
+    "clear_choice": "Clear selection",
     "receipt_number_label": "Receipt Number",
     "receipt_email_label": "Receipt Sent To",
     "receipt_status_sent": "The receipt email has been sent.",
@@ -495,12 +626,14 @@
     "field_types": {
       "text": "Text Input",
       "textarea": "Text Area",
-      "url": "URL"
+      "url": "URL",
+      "select": "Single Select"
     },
     "validation": {
       "email_invalid": "Please enter a valid email address",
       "name_required": "Name is required",
       "url_invalid": "Must be a valid URL",
+      "option_invalid": "Please choose a valid option",
       "field_required": "{{field}} is required",
       "project_exists": "Project name already exists in this hackathon"
     },

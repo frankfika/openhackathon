@@ -3,6 +3,7 @@ import { Plus, Trash2, GripVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import {
   Select,
@@ -47,9 +48,19 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
 
   const updateField = (index: number, updates: Partial<SubmissionField>) => {
     const newFields = [...fields]
-    newFields[index] = { ...newFields[index], ...updates }
+    const nextField = { ...newFields[index], ...updates }
+    if (updates.type && updates.type !== 'select') {
+      nextField.options = []
+    }
+    if (updates.type && updates.type !== 'text' && updates.type !== 'select') {
+      nextField.filterable = false
+    }
+    newFields[index] = nextField
     setFields(newFields)
   }
+
+  const optionsToText = (field: SubmissionField) => (field.options || []).join('\n')
+  const parseOptions = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean)
 
   return (
     <div className="space-y-6">
@@ -96,6 +107,7 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
                       <SelectItem value="text">{t('submission.field_types.text')}</SelectItem>
                       <SelectItem value="textarea">{t('submission.field_types.textarea')}</SelectItem>
                       <SelectItem value="url">{t('submission.field_types.url')}</SelectItem>
+                      <SelectItem value="select">{t('submission.field_types.select')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -126,6 +138,34 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
+
+                {field.type === 'select' && (
+                  <div className="md:col-span-6 space-y-2">
+                    <Label>{t('submission.field_options')}</Label>
+                    <Textarea
+                      value={optionsToText(field)}
+                      onChange={(e) => updateField(index, { options: parseOptions(e.target.value) })}
+                      placeholder={t('submission.field_options_placeholder')}
+                      className="min-h-[120px]"
+                    />
+                    <p className="text-xs text-muted-foreground">{t('submission.field_options_help')}</p>
+                  </div>
+                )}
+
+                {(field.type === 'text' || field.type === 'select') && (
+                  <div className="md:col-span-6 space-y-2">
+                    <div className="flex items-center justify-between rounded-xl border border-border/60 bg-background/60 px-4 py-3">
+                      <div>
+                        <Label className="text-sm">{t('submission.filterable')}</Label>
+                        <p className="mt-1 text-xs text-muted-foreground">{t('submission.filterable_desc')}</p>
+                      </div>
+                      <Switch
+                        checked={Boolean(field.filterable)}
+                        onCheckedChange={(checked) => updateField(index, { filterable: checked })}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

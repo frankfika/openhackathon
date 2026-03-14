@@ -6,18 +6,21 @@ import * as z from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { SubmissionConfigBuilder } from '@/components/SubmissionConfigBuilder'
 import { ScoringCriteriaBuilder } from '@/components/ScoringCriteriaBuilder'
 import { SessionsTab } from '@/components/SessionsTab'
-import { SubmissionField, ScoringCriterion } from '@/lib/types'
+import { SetupWizardDialog } from '@/components/SetupWizardDialog'
+import { HackathonSessionInput, SubmissionField, ScoringCriterion } from '@/lib/types'
 import { toast } from 'sonner'
-import { ArrowLeft, Loader2, Check, Bell, Puzzle, CalendarClock } from 'lucide-react'
+import { ArrowLeft, Loader2, Check, Bell, Puzzle, CalendarClock, FileText, Trash2, Wand2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { shouldSuggestSetupWizard } from '@/lib/setup-wizard'
 
 const GRADIENT_PRESETS = [
   { name: 'Violet Fusion', value: 'from-violet-600/20 via-fuchsia-500/10 to-indigo-600/20' },
@@ -45,8 +48,10 @@ type HackathonFormValues = {
 }
 
 type HackathonUpdateValues = Partial<HackathonFormValues> & {
+  coverGradient?: string
   submissionSchema?: { fields: SubmissionField[] }
   scoringCriteria?: ScoringCriterion[]
+  sessions?: HackathonSessionInput[]
 }
 
 export function HackathonSettings() {
@@ -77,9 +82,24 @@ export function HackathonSettings() {
     enabled: !!id,
   })
 
+  const { data: markdownDoc } = useQuery({
+    queryKey: ['hackathon-markdown-doc', id],
+    queryFn: async () => {
+      if (!id) return null
+      try {
+        return await api.getHackathonMarkdownDoc(id)
+      } catch {
+        return null
+      }
+    },
+    enabled: !!id,
+  })
+
   const [submissionSchema, setSubmissionSchema] = useState<SubmissionField[]>([])
   const [scoringCriteria, setScoringCriteria] = useState<ScoringCriterion[]>([])
   const [coverGradient, setCoverGradient] = useState('')
+  const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false)
+  const [hasAutoOpenedSetupWizard, setHasAutoOpenedSetupWizard] = useState(false)
 
   // Update local state when hackathon data loads — no defaults, use backend data as-is
   useEffect(() => {
@@ -98,6 +118,7 @@ export function HackathonSettings() {
     handleSubmit,
     formState: { errors },
     reset,
+    watch,
   } = useForm({
     resolver: zodResolver(hackathonSchema),
     defaultValues: {
@@ -112,6 +133,24 @@ export function HackathonSettings() {
       detailsUrl: '',
     }
   })
+
+  const watchedStartAt = watch('startAt')
+  const watchedEndAt = watch('endAt')
+
+  const shouldSuggestWizard = useMemo(() => {
+    if (!hackathon) return false
+    return shouldSuggestSetupWizard({
+      sessionCount: hackathon.sessions?.length || 0,
+      submissionFieldCount: submissionSchema.length,
+      scoringCriteriaCount: scoringCriteria.length,
+    })
+  }, [hackathon, submissionSchema.length, scoringCriteria.length])
+
+  useEffect(() => {
+    if (!hackathon || hasAutoOpenedSetupWizard || !shouldSuggestWizard) return
+    setIsSetupWizardOpen(true)
+    setHasAutoOpenedSetupWizard(true)
+  }, [hackathon, hasAutoOpenedSetupWizard, shouldSuggestWizard])
 
   // Update form values when hackathon data loads
   useEffect(() => {
@@ -134,11 +173,22 @@ export function HackathonSettings() {
   const updateMutation = useMutation({
     mutationFn: (data: HackathonUpdateValues) => {
       if (!id) throw new Error('No hackathon ID')
+
+      const nextSubmissionSchema = 'submissionSchema' in data
+        ? data.submissionSchema
+        : { fields: submissionSchema }
+      const nextScoringCriteria = 'scoringCriteria' in data
+        ? data.scoringCriteria
+        : scoringCriteria
+      const nextCoverGradient = 'coverGradient' in data
+        ? data.coverGradient
+        : coverGradient
+
       return api.updateHackathon(id, {
         ...data,
-        coverGradient,
-        submissionSchema: { fields: submissionSchema },
-        scoringCriteria,
+        coverGradient: nextCoverGradient,
+        submissionSchema: nextSubmissionSchema,
+        scoringCriteria: nextScoringCriteria,
       })
     },
     onSuccess: () => {
@@ -148,6 +198,34 @@ export function HackathonSettings() {
     },
     onError: () => {
       toast.error(t('settings.save_error'))
+    },
+  })
+
+  const uploadMarkdownMutation = useMutation({
+    mutationFn: async (payload: { fileName?: string; content: string }) => {
+      if (!id) throw new Error('No hackathon ID')
+      return api.saveHackathonMarkdownDoc(id, payload)
+    },
+    onSuccess: () => {
+      toast.success(t('settings.markdown_uploaded'))
+      queryClient.invalidateQueries({ queryKey: ['hackathon-markdown-doc', id] })
+    },
+    onError: () => {
+      toast.error(t('settings.markdown_upload_failed'))
+    },
+  })
+
+  const deleteMarkdownMutation = useMutation({
+    mutationFn: async () => {
+      if (!id) throw new Error('No hackathon ID')
+      return api.deleteHackathonMarkdownDoc(id)
+    },
+    onSuccess: () => {
+      toast.success(t('settings.markdown_deleted'))
+      queryClient.invalidateQueries({ queryKey: ['hackathon-markdown-doc', id] })
+    },
+    onError: () => {
+      toast.error(t('settings.markdown_delete_failed'))
     },
   })
 
@@ -171,6 +249,34 @@ export function HackathonSettings() {
     })
   }
 
+  const onApplySetupWizard = async (data: {
+    startAt?: string
+    endAt?: string
+    submissionSchema: { fields: SubmissionField[] }
+    scoringCriteria: ScoringCriterion[]
+    sessions?: HackathonSessionInput[]
+  }) => {
+    await updateMutation.mutateAsync(data)
+    setSubmissionSchema(data.submissionSchema.fields)
+    setScoringCriteria(data.scoringCriteria)
+    setIsSetupWizardOpen(false)
+  }
+
+  const handleMarkdownUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      const content = await file.text()
+      await uploadMarkdownMutation.mutateAsync({
+        fileName: file.name,
+        content,
+      })
+    } finally {
+      event.target.value = ''
+    }
+  }
+
   if (isLoadingHackathon) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -192,8 +298,12 @@ export function HackathonSettings() {
         </Button>
       </div>
 
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex items-center justify-between gap-3 mb-6">
         <h1 className="text-3xl font-bold tracking-tight">{t('settings.hackathon_settings')}</h1>
+        <Button type="button" variant="outline" className="gap-2" onClick={() => setIsSetupWizardOpen(true)}>
+          <Wand2 className="h-4 w-4" />
+          {t('settings.setup_wizard.open')}
+        </Button>
       </div>
 
       <Tabs defaultValue="general">
@@ -276,6 +386,56 @@ export function HackathonSettings() {
                   <Input id="detailsUrl" type="url" placeholder="https://example.com/event-details" {...register('detailsUrl')} />
                   <p className="text-xs text-muted-foreground">{t('settings.details_url_desc')}</p>
                   {errors.detailsUrl && <p className="text-sm text-destructive">{errors.detailsUrl.message as string}</p>}
+                </div>
+
+                <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-primary" />
+                        <Label htmlFor="markdownDoc">{t('settings.markdown_doc')}</Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{t('settings.markdown_doc_desc')}</p>
+                    </div>
+                    <Badge variant={markdownDoc ? 'secondary' : 'outline'}>
+                      {markdownDoc?.fileName || t('settings.markdown_empty')}
+                    </Badge>
+                  </div>
+
+                  <Input
+                    id="markdownDoc"
+                    type="file"
+                    accept=".md,.markdown"
+                    onChange={handleMarkdownUpload}
+                    disabled={uploadMarkdownMutation.isPending || deleteMarkdownMutation.isPending}
+                  />
+
+                  {markdownDoc ? (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        {t('settings.markdown_updated_at', { updatedAt: new Date(markdownDoc.updatedAt).toLocaleString() })}
+                      </p>
+                      <Textarea
+                        readOnly
+                        value={markdownDoc.content}
+                        className="min-h-[220px] resize-y bg-background/80 font-mono text-xs"
+                      />
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="gap-2 text-destructive hover:text-destructive"
+                          onClick={() => deleteMarkdownMutation.mutate()}
+                          disabled={uploadMarkdownMutation.isPending || deleteMarkdownMutation.isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {t('settings.markdown_delete')}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{t('settings.markdown_empty_desc')}</p>
+                  )}
                 </div>
 
                 <div className="space-y-3">
@@ -382,6 +542,17 @@ export function HackathonSettings() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <SetupWizardDialog
+        open={isSetupWizardOpen}
+        onOpenChange={setIsSetupWizardOpen}
+        startAt={watchedStartAt || hackathon.startAt}
+        endAt={watchedEndAt || hackathon.endAt}
+        existingSessions={hackathon.sessions || []}
+        existingSubmissionFields={submissionSchema}
+        isApplying={updateMutation.isPending}
+        onApply={onApplySetupWizard}
+      />
     </div>
   )
 }

@@ -2,8 +2,10 @@ import React, { useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { useActiveHackathon } from '@/lib/active-hackathon'
-import { Download, BarChart3, TrendingUp, Loader2 } from 'lucide-react'
+import { Download, BarChart3, TrendingUp, Loader2, Search, SlidersHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   Table,
@@ -15,9 +17,10 @@ import {
 } from '@/components/ui/table'
 import { api } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
-import { AssignmentStatus } from '@/lib/types'
+import { AssignmentStatus, Project } from '@/lib/types'
 import { useNavigate } from 'react-router-dom'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { getFilterableSubmissionFields, getProjectSubmissionFieldValue, getSubmissionFieldFilterOptions } from '@/lib/submission-fields'
 
 type ProjectScoringReportItem = {
   projectRoundId?: string | null
@@ -50,6 +53,8 @@ export function ScoringReport() {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'in_progress' | 'completed'>('all')
   const [selectedSessionId, setSelectedSessionId] = useState('all')
+  const [projectQuery, setProjectQuery] = useState('')
+  const [submissionFilters, setSubmissionFilters] = useState<Record<string, string>>({})
 
   const { data: reportData = [], isLoading: isLoadingReport } = useQuery({
     queryKey: ['project-scoring-report', activeHackathon?.id, selectedSessionId],
@@ -60,20 +65,72 @@ export function ScoringReport() {
     enabled: !!activeHackathon?.id,
   })
 
+  const { data: allProjects = [] } = useQuery<Project[]>({
+    queryKey: ['projects', activeHackathon?.id, 'report-filters'],
+    queryFn: () => api.getProjects({ hackathonId: activeHackathon?.id }) as Promise<Project[]>,
+    enabled: !!activeHackathon?.id,
+  })
+
   const { data: judges = [] } = useQuery({
     queryKey: ['users', 'judges'],
     queryFn: () => api.getUsers({ role: 'judge' }),
   })
 
-  const stats = useMemo(() => {
-    const totalProjects = reportData.length
-    const scoredProjects = reportData.filter((project) => project.completedAssignments > 0).length
-    const totalAssignments = reportData.reduce((sum, project) => sum + project.totalAssignments, 0)
-    const completedAssignments = reportData.reduce((sum, project) => sum + project.completedAssignments, 0)
-    const inProgressAssignments = reportData.reduce((sum, project) => sum + project.inProgressAssignments, 0)
-    const pendingAssignments = reportData.reduce((sum, project) => sum + project.pendingAssignments, 0)
+  const filterableFields = useMemo(
+    () => getFilterableSubmissionFields(activeHackathon?.submissionSchema),
+    [activeHackathon?.submissionSchema]
+  )
 
-    const totalCompletedScore = reportData.reduce(
+  const projectLookup = useMemo(
+    () => new Map(allProjects.map((project) => [project.id, project])),
+    [allProjects]
+  )
+
+  const scopedReportData = useMemo(() => {
+    const normalizedQuery = projectQuery.trim().toLowerCase()
+
+    return reportData.filter((item) => {
+      const project = projectLookup.get(item.projectId)
+
+      if (normalizedQuery) {
+        const searchableText = [
+          item.projectTitle,
+          item.submitterName,
+          item.submitterEmail,
+          project?.oneLiner,
+          ...(project?.tags || []),
+          ...filterableFields.map((field) => (project ? getProjectSubmissionFieldValue(project, field.id) : '')),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+
+        if (!searchableText.includes(normalizedQuery)) {
+          return false
+        }
+      }
+
+      for (const [fieldId, selectedValue] of Object.entries(submissionFilters)) {
+        if (!selectedValue) continue
+        const projectValue = project ? getProjectSubmissionFieldValue(project, fieldId) : ''
+        if (projectValue !== selectedValue) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [reportData, projectLookup, projectQuery, submissionFilters, filterableFields])
+
+  const stats = useMemo(() => {
+    const totalProjects = scopedReportData.length
+    const scoredProjects = scopedReportData.filter((project) => project.completedAssignments > 0).length
+    const totalAssignments = scopedReportData.reduce((sum, project) => sum + project.totalAssignments, 0)
+    const completedAssignments = scopedReportData.reduce((sum, project) => sum + project.completedAssignments, 0)
+    const inProgressAssignments = scopedReportData.reduce((sum, project) => sum + project.inProgressAssignments, 0)
+    const pendingAssignments = scopedReportData.reduce((sum, project) => sum + project.pendingAssignments, 0)
+
+    const totalCompletedScore = scopedReportData.reduce(
       (sum, project) =>
         sum +
         project.judges.reduce((projectSum, judge) => {
@@ -96,31 +153,31 @@ export function ScoringReport() {
       inProgressAssignments,
       pendingAssignments,
     }
-  }, [reportData])
+  }, [scopedReportData])
 
   const filteredReportData = useMemo(() => {
-    if (statusFilter === 'all') return reportData
+    if (statusFilter === 'all') return scopedReportData
     if (statusFilter === 'pending') {
-      return reportData.filter((project) => project.pendingAssignments > 0)
+      return scopedReportData.filter((project) => project.pendingAssignments > 0)
     }
     if (statusFilter === 'in_progress') {
-      return reportData.filter((project) => project.inProgressAssignments > 0)
+      return scopedReportData.filter((project) => project.inProgressAssignments > 0)
     }
-    return reportData.filter(
+    return scopedReportData.filter(
       (project) => project.totalAssignments > 0 && project.completedAssignments === project.totalAssignments
     )
-  }, [reportData, statusFilter])
+  }, [scopedReportData, statusFilter])
 
   const filterCounts = useMemo(
     () => ({
-      all: reportData.length,
-      pending: reportData.filter((project) => project.pendingAssignments > 0).length,
-      in_progress: reportData.filter((project) => project.inProgressAssignments > 0).length,
-      completed: reportData.filter(
+      all: scopedReportData.length,
+      pending: scopedReportData.filter((project) => project.pendingAssignments > 0).length,
+      in_progress: scopedReportData.filter((project) => project.inProgressAssignments > 0).length,
+      completed: scopedReportData.filter(
         (project) => project.totalAssignments > 0 && project.completedAssignments === project.totalAssignments
       ).length,
     }),
-    [reportData]
+    [scopedReportData]
   )
 
   const getJudgeAssignment = (project: ProjectScoringReportItem, judgeId: string) =>
@@ -129,7 +186,7 @@ export function ScoringReport() {
   const downloadCSV = () => {
     const headers = ['Rank', 'Project', 'Submitter', 'Session', 'Promotion', ...judges.map((j) => j.name), 'Average Score', 'Progress']
 
-    const rows = reportData.map((project, index) => {
+    const rows = filteredReportData.map((project, index) => {
       const judgeCells = judges.map((judge) => {
         const assignment = getJudgeAssignment(project, judge.id)
         if (!assignment) return 'unassigned'
@@ -171,6 +228,24 @@ export function ScoringReport() {
     )
   }
 
+  const updateSubmissionFilter = (fieldId: string, value: string) => {
+    setSubmissionFilters((previous) => {
+      if (!value) {
+        const next = { ...previous }
+        delete next[fieldId]
+        return next
+      }
+      return { ...previous, [fieldId]: value }
+    })
+  }
+
+  const clearFilters = () => {
+    setProjectQuery('')
+    setSubmissionFilters({})
+  }
+
+  const activeFilterCount = (projectQuery.trim() ? 1 : 0) + Object.values(submissionFilters).filter(Boolean).length
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -204,6 +279,73 @@ export function ScoringReport() {
           </Button>
         </div>
       </div>
+
+      <Card className="surface-panel border-none shadow-none">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <SlidersHorizontal className="h-5 w-5" />
+            {t('assignments.filters_title')}
+          </CardTitle>
+          <CardDescription>{t('assignments.filters_desc')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_repeat(auto-fit,minmax(180px,1fr))]">
+            <div className="space-y-2">
+              <Label htmlFor="reportProjectQuery">{t('assignments.search_projects')}</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="reportProjectQuery"
+                  value={projectQuery}
+                  onChange={(event) => setProjectQuery(event.target.value)}
+                  placeholder={t('assignments.search_projects_placeholder')}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+
+            {filterableFields.map((field) => {
+              const sourceProjects = scopedReportData
+                .map((item) => projectLookup.get(item.projectId))
+                .filter((project): project is Project => Boolean(project))
+              const options = getSubmissionFieldFilterOptions(field, sourceProjects)
+
+              return (
+                <div key={field.id} className="space-y-2">
+                  <Label>{field.label}</Label>
+                  <Select
+                    value={submissionFilters[field.id] || '__all__'}
+                    onValueChange={(value) => updateSubmissionFilter(field.id, value === '__all__' ? '' : value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={t('assignments.all_filter_values')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">{t('assignments.all_filter_values')}</SelectItem>
+                      {options.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">
+              {t('assignments.filtered_projects_count', { count: scopedReportData.length, total: reportData.length })}
+            </Badge>
+            {activeFilterCount > 0 ? (
+              <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={clearFilters}>
+                {t('assignments.clear_filters')}
+              </Button>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="surface-panel border-none shadow-none">

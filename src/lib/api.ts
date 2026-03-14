@@ -1,5 +1,19 @@
 import axios from 'axios'
-import { Hackathon, Project, Assignment, User, AssignmentStatus, ProjectRound, PromotionStatus, SiteSettings, Session, SessionType, SessionStatus } from './types'
+import {
+  Hackathon,
+  Project,
+  Assignment,
+  User,
+  AssignmentStatus,
+  ProjectRound,
+  PromotionStatus,
+  SiteSettings,
+  Session,
+  SessionType,
+  SessionStatus,
+  HackathonMarkdownDoc,
+  HackathonUpsertInput,
+} from './types'
 
 const API_URL = '/api'
 const AUTH_TOKEN_KEY = 'openhackathon_token'
@@ -41,12 +55,24 @@ export const api = {
     const res = await axios.get<Hackathon>(`${API_URL}/hackathons/${id}`)
     return res.data
   },
-  createHackathon: async (data: Partial<Hackathon>) => {
+  createHackathon: async (data: HackathonUpsertInput) => {
     const res = await axios.post<Hackathon>(`${API_URL}/hackathons`, data)
     return res.data
   },
-  updateHackathon: async (id: string, data: Partial<Hackathon>) => {
+  updateHackathon: async (id: string, data: HackathonUpsertInput) => {
     const res = await axios.put<Hackathon>(`${API_URL}/hackathons/${id}`, data)
+    return res.data
+  },
+  getHackathonMarkdownDoc: async (id: string) => {
+    const res = await axios.get<HackathonMarkdownDoc>(`${API_URL}/hackathons/${id}/markdown-doc`)
+    return res.data
+  },
+  saveHackathonMarkdownDoc: async (id: string, data: { fileName?: string; content: string }) => {
+    const res = await axios.put<HackathonMarkdownDoc>(`${API_URL}/hackathons/${id}/markdown-doc`, data)
+    return res.data
+  },
+  deleteHackathonMarkdownDoc: async (id: string) => {
+    const res = await axios.delete(`${API_URL}/hackathons/${id}/markdown-doc`)
     return res.data
   },
 

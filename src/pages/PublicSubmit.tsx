@@ -1,15 +1,17 @@
 import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { SubmissionField, formatDateRange } from '@/lib/types'
+import { getSubmissionFields } from '@/lib/submission-fields'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { toast } from 'sonner'
 import { CalendarDays, ClipboardList, Loader2, Mail, Sparkles, User } from 'lucide-react'
@@ -30,10 +32,7 @@ export function PublicSubmit() {
 
   // Use backend data as-is — no defaults
   const schema: SubmissionField[] = useMemo(
-    () =>
-      Array.isArray(hackathon.submissionSchema)
-        ? hackathon.submissionSchema
-        : hackathon.submissionSchema?.fields || [],
+    () => getSubmissionFields(hackathon.submissionSchema),
     [hackathon.submissionSchema]
   )
 
@@ -44,18 +43,39 @@ export function PublicSubmit() {
           submitterEmail: z.string().email(t('submission.validation.email_invalid')),
           submitterName: z.string().optional(),
           ...schema.reduce((acc, field) => {
+            const requiredMessage = t('submission.validation.field_required', { field: field.label })
             let validator: z.ZodTypeAny
 
             if (field.type === 'url') {
-              validator = z
-                .string()
-                .optional()
-                .refine(
-                  (value) => !value || z.string().url().safeParse(value).success,
-                  t('submission.validation.url_invalid')
-                )
+              validator = field.required
+                ? z
+                    .string()
+                    .trim()
+                    .min(1, requiredMessage)
+                    .refine((value) => z.string().url().safeParse(value).success, t('submission.validation.url_invalid'))
+                : z
+                    .string()
+                    .optional()
+                    .refine(
+                      (value) => !value || z.string().url().safeParse(value).success,
+                      t('submission.validation.url_invalid')
+                    )
+            } else if (field.type === 'select') {
+              const options = field.options || []
+              validator = field.required
+                ? z
+                    .string()
+                    .trim()
+                    .min(1, requiredMessage)
+                    .refine((value) => options.length === 0 || options.includes(value), t('submission.validation.option_invalid'))
+                : z
+                    .string()
+                    .optional()
+                    .refine((value) => !value || options.length === 0 || options.includes(value), t('submission.validation.option_invalid'))
             } else {
-              validator = z.string().optional()
+              validator = field.required
+                ? z.string().trim().min(1, requiredMessage)
+                : z.string().optional()
             }
 
             acc[field.id] = validator
@@ -69,13 +89,15 @@ export function PublicSubmit() {
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(formSchema),
   })
 
-  const requiredFieldCount = 1
+  const customRequiredFieldCount = schema.filter((field) => field.required).length
+  const requiredFieldCount = 1 + customRequiredFieldCount
   const hasCustomFields = schema.length > 0
 
   // Fields that map directly to Project model columns
@@ -301,7 +323,7 @@ export function PublicSubmit() {
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-sm font-semibold text-foreground">{t('submission.sections.project_details')}</h3>
                     <Badge variant="outline">
-                      {t('submission.required_fields_hint', { count: 0 })}
+                      {t('submission.required_fields_hint', { count: customRequiredFieldCount })}
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
@@ -324,7 +346,11 @@ export function PublicSubmit() {
                         >
                           <Label htmlFor={field.id}>
                             {field.label}
-                            <span className="text-muted-foreground ml-1">({t('submission.optional')})</span>
+                            {field.required ? (
+                              <span className="ml-1 text-destructive">*</span>
+                            ) : (
+                              <span className="ml-1 text-muted-foreground">({t('submission.optional')})</span>
+                            )}
                           </Label>
 
                           {field.type === 'textarea' ? (
@@ -333,6 +359,41 @@ export function PublicSubmit() {
                               placeholder={field.placeholder}
                               className={errors[field.id] ? 'border-destructive' : ''}
                               {...register(field.id as keyof FormData)}
+                            />
+                          ) : field.type === 'select' ? (
+                            <Controller
+                              control={control}
+                              name={field.id as keyof FormData}
+                              render={({ field: controlledField }) => (
+                                <div className="space-y-2">
+                                  <Select
+                                    value={typeof controlledField.value === 'string' ? controlledField.value : ''}
+                                    onValueChange={controlledField.onChange}
+                                  >
+                                    <SelectTrigger className={errors[field.id] ? 'border-destructive' : ''}>
+                                      <SelectValue placeholder={field.placeholder || t('submission.select_placeholder')} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {(field.options || []).map((option) => (
+                                        <SelectItem key={option} value={option}>
+                                          {option}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  {!field.required && controlledField.value ? (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 px-0 text-xs"
+                                      onClick={() => controlledField.onChange('')}
+                                    >
+                                      {t('submission.clear_choice')}
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              )}
                             />
                           ) : (
                             <Input

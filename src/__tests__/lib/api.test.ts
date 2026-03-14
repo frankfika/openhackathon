@@ -67,6 +67,31 @@ describe('api client', () => {
       expect(mockedAxios.put).toHaveBeenCalledWith('/api/hackathons/h1', payload)
       expect(result).toEqual(data)
     })
+
+    it('getHackathonMarkdownDoc calls GET /api/hackathons/:id/markdown-doc', async () => {
+      const data = { fileName: 'README.md', content: '# Doc', updatedAt: '2026-03-14T00:00:00.000Z' }
+      mockedAxios.get.mockResolvedValue({ data })
+
+      const result = await api.getHackathonMarkdownDoc('h1')
+      expect(mockedAxios.get).toHaveBeenCalledWith('/api/hackathons/h1/markdown-doc')
+      expect(result).toEqual(data)
+    })
+
+    it('saveHackathonMarkdownDoc calls PUT /api/hackathons/:id/markdown-doc', async () => {
+      const payload = { fileName: 'guide.md', content: '# Guide' }
+      mockedAxios.put.mockResolvedValue({ data: payload })
+
+      const result = await api.saveHackathonMarkdownDoc('h1', payload)
+      expect(mockedAxios.put).toHaveBeenCalledWith('/api/hackathons/h1/markdown-doc', payload)
+      expect(result).toEqual(payload)
+    })
+
+    it('deleteHackathonMarkdownDoc calls DELETE /api/hackathons/:id/markdown-doc', async () => {
+      mockedAxios.delete.mockResolvedValue({ data: { success: true } })
+
+      await api.deleteHackathonMarkdownDoc('h1')
+      expect(mockedAxios.delete).toHaveBeenCalledWith('/api/hackathons/h1/markdown-doc')
+    })
   })
 
   describe('projects', () => {

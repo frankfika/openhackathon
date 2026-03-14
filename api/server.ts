@@ -3,6 +3,7 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { randomBytes } from 'crypto';
+import { promises as fs } from 'fs';
 import { Prisma, PrismaClient } from '@prisma/client';
 import nodemailer from 'nodemailer';
 import helmet from 'helmet';
@@ -47,6 +48,7 @@ const SUBMISSION_EMAIL_FROM = process.env.SUBMISSION_RECEIPT_FROM || 'OpenHackat
 const SUBMISSION_EMAIL_REPLY_TO = process.env.SUBMISSION_RECEIPT_REPLY_TO;
 const SUBMISSION_EMAIL_SUBJECT_TEMPLATE = process.env.SUBMISSION_RECEIPT_SUBJECT || '[{{hackathonTitle}}] Submission Receipt {{receiptId}}';
 const SUBMISSION_EMAIL_TIMEOUT_MS = Number(process.env.SUBMISSION_EMAIL_TIMEOUT_MS || 10000);
+const HACKATHON_DOCS_ROOT = path.resolve(process.cwd(), process.env.HACKATHON_DOCS_DIR || 'content/hackathons');
 
 let submissionEmailTransporter: nodemailer.Transporter | null = null;
 
@@ -216,6 +218,111 @@ function asString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function sanitizePathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function sanitizeFileStem(value: string): string {
+  return value.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
+}
+
+function isMarkdownFileName(value: string): boolean {
+  const ext = path.extname(value).toLowerCase();
+  return ext === '.md' || ext === '.markdown';
+}
+
+function normalizeMarkdownFileName(value: string | undefined): string {
+  const fileName = path.basename(value?.trim() || 'README.md');
+  const parsed = path.parse(fileName);
+  const baseName = sanitizeFileStem(parsed.name) || 'README';
+  const extension = isMarkdownFileName(fileName) ? parsed.ext.toLowerCase() : '.md';
+  return `${baseName}${extension}`
+}
+
+function getHackathonDocsDir(hackathonId: string): string {
+  return path.join(HACKATHON_DOCS_ROOT, sanitizePathSegment(hackathonId));
+}
+
+async function listHackathonMarkdownFiles(hackathonId: string): Promise<string[]> {
+  try {
+    const entries = await fs.readdir(getHackathonDocsDir(hackathonId), { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && isMarkdownFileName(entry.name))
+      .map((entry) => entry.name);
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+}
+
+function compareMarkdownFilePriority(fileA: string, fileB: string): number {
+  const priority = (fileName: string) => {
+    const lower = fileName.toLowerCase();
+    if (lower === 'readme.md' || lower === 'readme.markdown') return 0;
+    if (lower === 'index.md' || lower === 'index.markdown') return 1;
+    return 2;
+  };
+
+  return priority(fileA) - priority(fileB) || fileA.localeCompare(fileB);
+}
+
+async function readHackathonMarkdownDoc(hackathonId: string) {
+  const files = await listHackathonMarkdownFiles(hackathonId);
+  if (files.length === 0) return null;
+
+  const fileName = [...files].sort(compareMarkdownFilePriority)[0];
+  const filePath = path.join(getHackathonDocsDir(hackathonId), fileName);
+  const [content, stats] = await Promise.all([
+    fs.readFile(filePath, 'utf8'),
+    fs.stat(filePath),
+  ]);
+
+  return {
+    fileName,
+    content,
+    updatedAt: stats.mtime.toISOString(),
+  };
+}
+
+async function saveHackathonMarkdownDoc(hackathonId: string, fileName: string | undefined, content: string) {
+  const docsDir = getHackathonDocsDir(hackathonId);
+  const normalizedFileName = normalizeMarkdownFileName(fileName);
+  const existingFiles = await listHackathonMarkdownFiles(hackathonId);
+
+  await fs.mkdir(docsDir, { recursive: true });
+  await Promise.all(
+    existingFiles.map((existingFile) => fs.unlink(path.join(docsDir, existingFile)))
+  );
+
+  const filePath = path.join(docsDir, normalizedFileName);
+  await fs.writeFile(filePath, content, 'utf8');
+
+  const stats = await fs.stat(filePath);
+  return {
+    fileName: normalizedFileName,
+    content,
+    updatedAt: stats.mtime.toISOString(),
+  };
+}
+
+async function deleteHackathonMarkdownDoc(hackathonId: string) {
+  const docsDir = getHackathonDocsDir(hackathonId);
+  const files = await listHackathonMarkdownFiles(hackathonId);
+  if (files.length === 0) return false;
+
+  await Promise.all(files.map((fileName) => fs.unlink(path.join(docsDir, fileName))));
+
+  try {
+    await fs.rmdir(docsDir);
+  } catch {
+    // Ignore non-empty or already removed directories.
+  }
+
+  return true;
 }
 
 function normalizeEmail(value: unknown): string | undefined {
@@ -854,6 +961,70 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
     include: { sessions: true, scoringCriteria: true }
   });
   res.json(updated);
+});
+
+app.get('/api/hackathons/:id/markdown-doc', async (req, res) => {
+  const hackathon = await prisma.hackathon.findUnique({
+    where: { id: req.params.id },
+    select: { id: true },
+  });
+
+  if (!hackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  const doc = await readHackathonMarkdownDoc(req.params.id);
+  if (!doc) {
+    return res.status(404).json({ error: 'Markdown document not found' });
+  }
+
+  res.json(doc);
+});
+
+app.put('/api/hackathons/:id/markdown-doc', requireAdmin, async (req, res) => {
+  const hackathon = await prisma.hackathon.findUnique({
+    where: { id: req.params.id },
+    select: { id: true },
+  });
+
+  if (!hackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  const content = typeof req.body?.content === 'string' ? req.body.content : '';
+  const fileName = asString(req.body?.fileName);
+
+  if (!content.trim()) {
+    return res.status(400).json({ error: 'Markdown content is required' });
+  }
+
+  try {
+    const doc = await saveHackathonMarkdownDoc(req.params.id, fileName, content);
+    res.json(doc);
+  } catch (error: unknown) {
+    res.status(500).json({ error: getErrorMessage(error, 'Failed to save markdown document') });
+  }
+});
+
+app.delete('/api/hackathons/:id/markdown-doc', requireAdmin, async (req, res) => {
+  const hackathon = await prisma.hackathon.findUnique({
+    where: { id: req.params.id },
+    select: { id: true },
+  });
+
+  if (!hackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  try {
+    const deleted = await deleteHackathonMarkdownDoc(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Markdown document not found' });
+    }
+    res.json({ success: true });
+  } catch (error: unknown) {
+    res.status(500).json({ error: getErrorMessage(error, 'Failed to delete markdown document') });
+  }
 });
 
 // ===== Projects =====

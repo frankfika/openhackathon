@@ -21,9 +21,11 @@ export type User = {
 export type SubmissionField = {
   id: string
   label: string
-  type: 'text' | 'textarea' | 'url'
+  type: 'text' | 'textarea' | 'url' | 'select'
   required: boolean
   placeholder?: string
+  options?: string[]
+  filterable?: boolean
 }
 
 export type Hackathon = {
@@ -42,6 +44,22 @@ export type Hackathon = {
   gitbookUrl?: string
   prizePool?: string
   sessions?: Session[]
+}
+
+export type HackathonSessionInput = {
+  id?: string
+  name: string
+  type: SessionType
+  region?: string | null
+  status?: SessionStatus
+  startAt: string
+  endAt: string
+}
+
+export type HackathonUpsertInput = Partial<Omit<Hackathon, 'submissionSchema' | 'sessions' | 'scoringCriteria'>> & {
+  submissionSchema?: { fields: SubmissionField[] }
+  scoringCriteria?: ScoringCriterion[]
+  sessions?: HackathonSessionInput[]
 }
 
 export type Session = {
@@ -67,6 +85,12 @@ export type SiteSettings = {
   showPoweredBy: boolean
   poweredByText: string
   poweredByUrl: string
+}
+
+export type HackathonMarkdownDoc = {
+  fileName: string
+  content: string
+  updatedAt: string
 }
 
 export type Project = {
