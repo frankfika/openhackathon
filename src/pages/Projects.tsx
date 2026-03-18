@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -16,11 +16,12 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -30,28 +31,48 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Search, MoreHorizontal, Pencil, Trash2, Eye, Loader2, BarChart3 } from 'lucide-react'
+import { Search, Pencil, Trash2, Eye, Loader2, BarChart3 } from 'lucide-react'
 import { toast } from 'sonner'
+import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
+import { getFilterableSubmissionFields, getProjectSubmissionFieldValue, getSubmissionFieldFilterOptions } from '@/lib/submission-fields'
 
 type ProjectWithAssignments = Project & {
   assignments?: Assignment[]
 }
 
 function calculateProjectScore(projectId: string, assignments: Assignment[] = []) {
-  const projectAssignments = assignments.filter((a) => a.projectId === projectId && a.status === 'completed')
-  if (projectAssignments.length === 0) return 0
-  const totalScore = projectAssignments.reduce((sum, a) => sum + (a.totalScore || 0), 0)
-  return totalScore / projectAssignments.length
+  const done = assignments.filter((a) => a.projectId === projectId && a.status === 'completed')
+  if (done.length === 0) return null
+  return done.reduce((sum, a) => sum + (a.totalScore || 0), 0) / done.length
 }
 
 export function Projects() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { adminBasePath } = useAdminRoutes()
   const { activeHackathon } = useActiveHackathon()
   const queryClient = useQueryClient()
 
   const [query, setQuery] = useState('')
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
+  const [submissionFilters, setSubmissionFilters] = useState<Record<string, string>>({})
+
+  const filterableFields = useMemo(
+    () => getFilterableSubmissionFields(activeHackathon?.submissionSchema),
+    [activeHackathon?.submissionSchema]
+  )
+
+  useEffect(() => {
+    const allowed = new Set(filterableFields.map((f) => f.id))
+    setSubmissionFilters((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([k, v]) => allowed.has(k) && v))
+    )
+  }, [filterableFields])
+
+  const updateFilter = (fieldId: string, value: string) =>
+    setSubmissionFilters((prev) =>
+      value ? { ...prev, [fieldId]: value } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== fieldId))
+    )
 
   const { data: projects, isLoading, isError } = useQuery<ProjectWithAssignments[]>({
     queryKey: ['projects', activeHackathon.id],
@@ -63,51 +84,66 @@ export function Projects() {
     mutationFn: (id: string) => api.deleteProject(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects', activeHackathon.id] })
-      toast.success(t('projects.delete_success', 'Project deleted successfully'))
+      toast.success(t('projects.delete_success'))
       setProjectToDelete(null)
     },
-    onError: () => {
-      toast.error(t('projects.delete_error', 'Failed to delete project'))
-    },
+    onError: () => toast.error(t('projects.delete_error')),
   })
 
-  const filteredProjects = projects?.filter((project) => {
-    if (!query) return true
-    const lowerQuery = query.toLowerCase()
-    return (
-      project.title.toLowerCase().includes(lowerQuery) ||
-      project.oneLiner.toLowerCase().includes(lowerQuery) ||
-      (project.tags && project.tags.some((tag: string) => tag.toLowerCase().includes(lowerQuery)))
-    )
-  })
-
-  const handleDelete = () => {
-    if (!projectToDelete) return
-    deleteMutation.mutate(projectToDelete.id)
-  }
+  const filteredProjects = useMemo(() => projects?.filter((project) => {
+    if (query) {
+      const q = query.toLowerCase()
+      const hit =
+        project.title.toLowerCase().includes(q) ||
+        project.oneLiner?.toLowerCase().includes(q) ||
+        project.tags?.some((tag: string) => tag.toLowerCase().includes(q))
+      if (!hit) return false
+    }
+    for (const [fieldId, val] of Object.entries(submissionFilters)) {
+      if (val && getProjectSubmissionFieldValue(project, fieldId) !== val) return false
+    }
+    return true
+  }), [projects, query, submissionFilters])
 
   return (
-    <div className="flex-1 space-y-6">
-      <div className="surface-panel-strong p-5 md:p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">{t('projects.title', 'Projects')}</h2>
-            <p className="text-muted-foreground">
-              {t('projects.subtitle', 'Manage and review project submissions')}
-            </p>
-          </div>
-          <div className="relative w-full md:w-80">
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{t('projects.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('projects.subtitle')}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder={t('projects.search_placeholder', 'Search projects...')}
+              placeholder={t('projects.search_placeholder')}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="pl-9"
+              className="pl-9 w-60"
             />
           </div>
+          {filterableFields.map((field) => (
+            <Select
+              key={field.id}
+              value={submissionFilters[field.id] || '__all__'}
+              onValueChange={(v) => updateFilter(field.id, v === '__all__' ? '' : v)}
+            >
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder={field.label} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">{t('assignments.all_filter_values')}</SelectItem>
+                {getSubmissionFieldFilterOptions(field, projects || []).map((opt) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ))}
         </div>
       </div>
 
+      {/* Table */}
       <div className="table-shell">
         <Table>
           <TableHeader>
@@ -115,97 +151,107 @@ export function Projects() {
               <TableHead>{t('projects.project_name')}</TableHead>
               <TableHead>{t('projects.submitter')}</TableHead>
               <TableHead>{t('projects.status')}</TableHead>
-              <TableHead>{t('projects.score')}</TableHead>
               <TableHead className="text-right">{t('projects.actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center">
-                  <div className="flex justify-center items-center">
-                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                <TableCell colSpan={4} className="h-24 text-center">
+                  <div className="flex justify-center items-center gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin" />
                     {t('projects.loading')}
                   </div>
                 </TableCell>
               </TableRow>
             ) : isError ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center text-red-500">
+                <TableCell colSpan={4} className="h-24 text-center text-red-500">
                   {t('projects.load_error')}
                 </TableCell>
               </TableRow>
             ) : filteredProjects?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center">
+                <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
                   {t('projects.no_projects')}
                 </TableCell>
               </TableRow>
             ) : (
-              filteredProjects?.map((project) => (
-                <TableRow key={project.id}>
-                  <TableCell className="font-medium">
-                    <div className="flex flex-col">
-                      <span>{project.title}</span>
-                      <span className="text-xs text-muted-foreground truncate max-w-[220px]">
-                        {project.oneLiner}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span>{project.submitterName || t('common.anonymous')}</span>
-                      <span className="text-xs text-muted-foreground">{project.submitterEmail}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={project.status === 'submitted' ? 'default' : 'secondary'}>
-                      {project.status || t('hackathons.status.draft')}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {(() => {
-                      const score = calculateProjectScore(project.id, project.assignments || [])
-                      return score > 0 ? score.toFixed(1) : '-'
-                    })()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">{t('common.open_menu')}</span>
-                          <MoreHorizontal className="h-4 w-4" />
+              filteredProjects?.map((project) => {
+                const score = calculateProjectScore(project.id, project.assignments || [])
+                return (
+                  <TableRow
+                    key={project.id}
+                    className="cursor-pointer"
+                    onClick={() => navigate(buildAdminPath(adminBasePath, `projects/${project.id}`))}
+                  >
+                    <TableCell className="font-medium">
+                      <div>
+                        <span>{project.title}</span>
+                        {project.oneLiner && (
+                          <p className="text-xs text-muted-foreground truncate max-w-[260px]">{project.oneLiner}</p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <span>{project.submitterName || t('common.anonymous')}</span>
+                        <p className="text-xs text-muted-foreground">{project.submitterEmail}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={project.status === 'submitted' ? 'default' : 'secondary'}>
+                          {project.status === 'submitted' ? t('projects.status_options.submitted') : t('projects.status_options.draft')}
+                        </Badge>
+                        {score !== null && (
+                          <span className="text-xs text-muted-foreground font-mono">{score.toFixed(1)} pts</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title={t('common.view_details')}
+                          onClick={() => navigate(buildAdminPath(adminBasePath, `projects/${project.id}`))}
+                        >
+                          <Eye className="h-4 w-4" />
                         </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => navigate(`/dashboard/projects/${project.id}`)}>
-                          <Eye className="mr-2 h-4 w-4" />
-                          {t('common.view_details')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => navigate(`/dashboard/projects/${project.id}?tab=scores`)}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title={t('projects.view_scores')}
+                          onClick={() => navigate(`${buildAdminPath(adminBasePath, `projects/${project.id}`)}?tab=scores`)}
                         >
-                          <BarChart3 className="mr-2 h-4 w-4" />
-                          {t('projects.view_scores', 'View Scores')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => navigate(`/dashboard/projects/${project.id}?edit=1`)}
+                          <BarChart3 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title={t('common.edit')}
+                          onClick={() => navigate(`${buildAdminPath(adminBasePath, `projects/${project.id}`)}?edit=1`)}
                         >
-                          <Pencil className="mr-2 h-4 w-4" />
-                          {t('common.edit', 'Edit')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-500 hover:text-red-600"
+                          title={t('common.delete')}
                           onClick={() => setProjectToDelete(project)}
-                          className="text-red-600 focus:text-red-600"
                         >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {t('common.delete')}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>
@@ -223,7 +269,7 @@ export function Projects() {
             <Button variant="outline" onClick={() => setProjectToDelete(null)}>
               {t('common.cancel')}
             </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
+            <Button variant="destructive" onClick={() => projectToDelete && deleteMutation.mutate(projectToDelete.id)} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('projects.delete_project')}
             </Button>
