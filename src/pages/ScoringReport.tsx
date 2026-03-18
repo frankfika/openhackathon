@@ -21,17 +21,13 @@ import { AssignmentStatus, Project } from '@/lib/types'
 import { useNavigate } from 'react-router-dom'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getFilterableSubmissionFields, getProjectSubmissionFieldValue, getSubmissionFieldFilterOptions } from '@/lib/submission-fields'
+import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
 
 type ProjectScoringReportItem = {
-  projectRoundId?: string | null
   projectId: string
   projectTitle: string
   submitterName?: string | null
   submitterEmail: string
-  sessionId?: string | null
-  sessionName?: string | null
-  promotionStatus?: 'pending' | 'advanced' | 'eliminated'
-  nextSessionName?: string | null
   averageScore: number
   totalAssignments: number
   completedAssignments: number
@@ -51,16 +47,15 @@ export function ScoringReport() {
   const { t } = useTranslation()
   const { activeHackathon } = useActiveHackathon()
   const navigate = useNavigate()
+  const { adminBasePath } = useAdminRoutes()
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'in_progress' | 'completed'>('all')
-  const [selectedSessionId, setSelectedSessionId] = useState('all')
   const [projectQuery, setProjectQuery] = useState('')
   const [submissionFilters, setSubmissionFilters] = useState<Record<string, string>>({})
 
   const { data: reportData = [], isLoading: isLoadingReport } = useQuery({
-    queryKey: ['project-scoring-report', activeHackathon?.id, selectedSessionId],
+    queryKey: ['project-scoring-report', activeHackathon?.id],
     queryFn: () => api.getProjectScoringReport({
       hackathonId: activeHackathon?.id,
-      sessionId: selectedSessionId === 'all' ? undefined : selectedSessionId,
     }),
     enabled: !!activeHackathon?.id,
   })
@@ -72,8 +67,9 @@ export function ScoringReport() {
   })
 
   const { data: judges = [] } = useQuery({
-    queryKey: ['users', 'judges'],
-    queryFn: () => api.getUsers({ role: 'judge' }),
+    queryKey: ['hackathon-judges', activeHackathon?.id],
+    queryFn: () => api.getHackathonJudges(activeHackathon.id),
+    enabled: !!activeHackathon?.id,
   })
 
   const filterableFields = useMemo(
@@ -184,7 +180,7 @@ export function ScoringReport() {
     project.judges.find((judge) => judge.judgeId === judgeId)
 
   const downloadCSV = () => {
-    const headers = ['Rank', 'Project', 'Submitter', 'Session', 'Promotion', ...judges.map((j) => j.name), 'Average Score', 'Progress']
+    const headers = ['Rank', 'Project', 'Submitter', ...judges.map((j) => j.name), 'Average Score', 'Progress']
 
     const rows = filteredReportData.map((project, index) => {
       const judgeCells = judges.map((judge) => {
@@ -200,8 +196,6 @@ export function ScoringReport() {
         index + 1,
         `"${project.projectTitle}"`,
         `"${project.submitterName || project.submitterEmail}"`,
-        `"${project.sessionName || '-'}"`,
-        `"${project.promotionStatus || 'pending'}"`,
         ...judgeCells,
         project.averageScore > 0 ? project.averageScore.toFixed(1) : '-',
         `${project.completedAssignments}/${project.totalAssignments}`,
@@ -258,21 +252,6 @@ export function ScoringReport() {
           </p>
         </div>
         <div className="flex w-full items-center gap-2 md:w-auto">
-          <div className="w-full md:w-[240px]">
-            <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
-              <SelectTrigger>
-                <SelectValue placeholder={t('reports.session', 'Session')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('reports.filter_all', 'All')}</SelectItem>
-                {(activeHackathon?.sessions || []).map((session) => (
-                  <SelectItem key={session.id} value={session.id}>
-                    {session.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
           <Button onClick={downloadCSV}>
             <Download className="mr-2 h-4 w-4" />
             {t('reports.download_csv')}
@@ -445,8 +424,6 @@ export function ScoringReport() {
                   <TableHead className="w-12">{t('reports.rank')}</TableHead>
                   <TableHead className="min-w-[220px]">{t('reports.project')}</TableHead>
                   <TableHead className="min-w-[140px]">{t('reports.submitter')}</TableHead>
-                  <TableHead className="min-w-[120px]">{t('reports.session', 'Session')}</TableHead>
-                  <TableHead className="min-w-[120px]">{t('promotions.decision', 'Decision')}</TableHead>
                   {judges.map((judge) => (
                     <TableHead key={judge.id} className="text-center min-w-[130px]">
                       {judge.name}
@@ -467,9 +444,7 @@ export function ScoringReport() {
                         type="button"
                         onClick={() => {
                           const params = new URLSearchParams({ tab: 'scores' })
-                          if (project.sessionId) params.set('sessionId', project.sessionId)
-                          if (project.projectRoundId) params.set('roundId', project.projectRoundId)
-                          navigate(`/dashboard/projects/${project.projectId}?${params.toString()}`)
+                          navigate(`${buildAdminPath(adminBasePath, `projects/${project.projectId}`)}?${params.toString()}`)
                         }}
                         className="font-medium text-left hover:underline"
                       >
@@ -478,14 +453,6 @@ export function ScoringReport() {
                     </TableCell>
                     <TableCell className="text-sm">
                       {project.submitterName || project.submitterEmail}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {project.sessionName || '-'}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      <Badge variant="outline">
-                        {project.promotionStatus || 'pending'}
-                      </Badge>
                     </TableCell>
                     {judges.map((judge) => {
                       const assignment = getJudgeAssignment(project, judge.id)

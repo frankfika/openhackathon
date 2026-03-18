@@ -14,9 +14,6 @@ import { fileURLToPath } from 'url';
 export const prisma = new PrismaClient();
 export const app = express();
 const VALID_ASSIGNMENT_STATUSES = new Set(['pending', 'in_progress', 'completed']);
-const VALID_PROMOTION_STATUSES = new Set(['pending', 'advanced', 'eliminated']);
-const VALID_SESSION_TYPES = new Set(['preliminary', 'semi_final', 'final']);
-const VALID_SESSION_STATUSES = new Set(['draft', 'active', 'judging', 'completed']);
 const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true';
 const DEFAULT_JWT_SECRET = 'openhackathon-change-this-secret';
 const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
@@ -49,6 +46,15 @@ const SUBMISSION_EMAIL_REPLY_TO = process.env.SUBMISSION_RECEIPT_REPLY_TO;
 const SUBMISSION_EMAIL_SUBJECT_TEMPLATE = process.env.SUBMISSION_RECEIPT_SUBJECT || '[{{hackathonTitle}}] Submission Receipt {{receiptId}}';
 const SUBMISSION_EMAIL_TIMEOUT_MS = Number(process.env.SUBMISSION_EMAIL_TIMEOUT_MS || 10000);
 const HACKATHON_DOCS_ROOT = path.resolve(process.cwd(), process.env.HACKATHON_DOCS_DIR || 'content/hackathons');
+const SINGLE_HACKATHON_MODE = process.env.SINGLE_HACKATHON_MODE !== 'false';
+const HACKATHON_STATUS_PRIORITY: Record<string, number> = {
+  active: 0,
+  judging: 1,
+  upcoming: 2,
+  draft: 3,
+  completed: 4,
+  published: 5,
+};
 
 let submissionEmailTransporter: nodemailer.Transporter | null = null;
 
@@ -83,16 +89,6 @@ type SubmissionReceiptEmailResult = {
   sent: boolean;
   reason?: 'disabled' | 'missing_config' | 'send_failed';
   messageId?: string;
-};
-
-type HackathonSessionPayload = {
-  id?: string;
-  name: string;
-  type: 'preliminary' | 'semi_final' | 'final';
-  region?: string;
-  status?: 'draft' | 'active' | 'judging' | 'completed';
-  startAt: string;
-  endAt: string;
 };
 
 type ScoringCriterionPayload = {
@@ -540,8 +536,62 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   next();
 }
 
+function normalizeAdminBasePath(value?: string | null) {
+  const fallback = '/admin';
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (!trimmed) return fallback;
+
+  const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  const collapsed = withLeadingSlash.replace(/\/+/g, '/');
+  const normalized = collapsed.length > 1 ? collapsed.replace(/\/$/, '') : collapsed;
+
+  return normalized === '/' ? fallback : normalized;
+}
+
+function dedupeIds(ids: string[]): string[] {
+  return Array.from(new Set(ids.filter(Boolean)));
+}
+
+type PrismaLikeClient = PrismaClient | Prisma.TransactionClient;
+type HackathonWithRelations = Prisma.HackathonGetPayload<{
+  include: { scoringCriteria: true }
+}>;
+
+function compareHackathonsByPriority(a: HackathonWithRelations, b: HackathonWithRelations): number {
+  const aPriority = HACKATHON_STATUS_PRIORITY[a.status] ?? Number.MAX_SAFE_INTEGER;
+  const bPriority = HACKATHON_STATUS_PRIORITY[b.status] ?? Number.MAX_SAFE_INTEGER;
+  if (aPriority !== bPriority) return aPriority - bPriority;
+
+  const byStartDate = b.startAt.getTime() - a.startAt.getTime();
+  if (byStartDate !== 0) return byStartDate;
+
+  return a.id.localeCompare(b.id);
+}
+
+async function listHackathonsWithRelations(client: PrismaLikeClient = prisma): Promise<HackathonWithRelations[]> {
+  const hackathons = await client.hackathon.findMany({
+    include: { scoringCriteria: true },
+  });
+  return hackathons.sort(compareHackathonsByPriority);
+}
+
+async function getCurrentHackathon(client: PrismaLikeClient = prisma): Promise<HackathonWithRelations | null> {
+  const hackathons = await listHackathonsWithRelations(client);
+  return hackathons[0] || null;
+}
+
+async function getScopedHackathonId(input: unknown): Promise<string | undefined> {
+  const requested = asString(input);
+  if (requested) return requested;
+  if (!SINGLE_HACKATHON_MODE) return undefined;
+
+  const current = await getCurrentHackathon();
+  return current?.id;
+}
+
 const DEFAULT_SITE_SETTINGS = {
   siteName: 'OpenHackathon',
+  adminBasePath: normalizeAdminBasePath(process.env.ADMIN_BASE_PATH || process.env.VITE_ADMIN_BASE_PATH || '/admin'),
   tabTitle: 'OpenHackathon',
   seoTitle: 'OpenHackathon',
   seoDescription: 'OpenHackathon - Open source hackathon management platform',
@@ -550,181 +600,6 @@ const DEFAULT_SITE_SETTINGS = {
   poweredByText: 'Powered by OpenHackathon',
   poweredByUrl: 'https://openhackathon.dev',
 } as const;
-
-async function ensureProjectRound(projectId: string, sessionId: string) {
-  return prisma.projectRound.upsert({
-    where: {
-      projectId_sessionId: {
-        projectId,
-        sessionId,
-      },
-    },
-    update: {},
-    create: {
-      projectId,
-      sessionId,
-      promotionStatus: 'pending',
-    },
-  });
-}
-
-async function applyPromotionDecision(params: {
-  projectRoundId: string;
-  decision: string;
-  nextSessionId?: string;
-  note?: string;
-  decidedById?: string;
-  judgeIds?: string[];
-}) {
-  const {
-    projectRoundId,
-    decision,
-    nextSessionId,
-    note,
-    decidedById,
-    judgeIds = [],
-  } = params;
-
-  if (!VALID_PROMOTION_STATUSES.has(decision)) {
-    throw new Error('Invalid promotion decision');
-  }
-
-  const round = await prisma.projectRound.findUnique({
-    where: { id: projectRoundId },
-    include: {
-      session: true,
-      project: {
-        select: {
-          id: true,
-          hackathonId: true,
-        },
-      },
-    },
-  });
-
-  if (!round) {
-    throw new Error('Project round not found');
-  }
-
-  if (decision === 'advanced' && !nextSessionId) {
-    throw new Error('nextSessionId is required when decision is advanced');
-  }
-
-  const resolvedJudgeIds = judgeIds.length > 0
-    ? judgeIds
-    : (await prisma.user.findMany({
-      where: { role: 'judge' },
-      select: { id: true },
-    })).map((judge) => judge.id);
-
-  const updatedRound = await prisma.$transaction(async (tx) => {
-    let resolvedNextSessionId: string | null = null;
-
-    if (decision === 'advanced' && nextSessionId) {
-      const nextSession = await tx.session.findUnique({
-        where: { id: nextSessionId },
-        select: { id: true, hackathonId: true },
-      });
-
-      if (!nextSession) {
-        throw new Error('Next session not found');
-      }
-
-      if (nextSession.hackathonId !== round.session.hackathonId) {
-        throw new Error('Next session must belong to the same hackathon');
-      }
-
-      resolvedNextSessionId = nextSession.id;
-
-      const nextRound = await tx.projectRound.upsert({
-        where: {
-          projectId_sessionId: {
-            projectId: round.projectId,
-            sessionId: nextSession.id,
-          },
-        },
-        update: {
-          sourceRoundId: round.id,
-        },
-        create: {
-          projectId: round.projectId,
-          sessionId: nextSession.id,
-          sourceRoundId: round.id,
-          promotionStatus: 'pending',
-        },
-        select: { id: true },
-      });
-
-      for (const judgeId of resolvedJudgeIds) {
-        await tx.assignment.upsert({
-          where: {
-            sessionId_projectId_judgeId: {
-              sessionId: nextSession.id,
-              projectId: round.projectId,
-              judgeId,
-            },
-          },
-          update: {
-            projectRoundId: nextRound.id,
-            isLocked: false,
-          },
-          create: {
-            sessionId: nextSession.id,
-            projectId: round.projectId,
-            projectRoundId: nextRound.id,
-            judgeId,
-            status: 'pending',
-          },
-        });
-      }
-    }
-
-    await tx.assignment.updateMany({
-      where: {
-        OR: [
-          { projectRoundId: round.id },
-          { sessionId: round.sessionId, projectId: round.projectId },
-        ],
-      },
-      data: { isLocked: decision !== 'pending' },
-    });
-
-    await tx.projectRound.update({
-      where: { id: round.id },
-      data: {
-        promotionStatus: decision,
-        nextSessionId: resolvedNextSessionId,
-        decisionNote: note ?? null,
-        decidedById: decidedById ?? null,
-        decidedAt: new Date(),
-      },
-    });
-
-    return tx.projectRound.findUnique({
-      where: { id: round.id },
-      include: {
-        project: true,
-        session: true,
-        nextSession: true,
-        sourceRound: {
-          include: {
-            session: true,
-          },
-        },
-        assignments: {
-          include: {
-            judge: {
-              select: { id: true, name: true, email: true },
-            },
-            scores: true,
-          },
-        },
-      },
-    });
-  });
-
-  return updatedRound;
-}
 
 // ===== Site Settings =====
 
@@ -744,6 +619,9 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
   const body = req.body || {};
 
   const siteName = typeof body.siteName === 'string' ? body.siteName.trim() : undefined;
+  const adminBasePath = typeof body.adminBasePath === 'string'
+    ? normalizeAdminBasePath(body.adminBasePath)
+    : undefined;
   const tabTitle = typeof body.tabTitle === 'string' ? body.tabTitle.trim() : undefined;
   const seoTitle = typeof body.seoTitle === 'string' ? body.seoTitle.trim() : undefined;
   const seoDescription = typeof body.seoDescription === 'string' ? body.seoDescription.trim() : undefined;
@@ -754,6 +632,7 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
 
   const data: Prisma.SiteSettingUpdateInput = {
     ...(siteName !== undefined ? { siteName: siteName || DEFAULT_SITE_SETTINGS.siteName } : {}),
+    ...(adminBasePath !== undefined ? { adminBasePath } : {}),
     ...(tabTitle !== undefined ? { tabTitle: tabTitle || siteName || DEFAULT_SITE_SETTINGS.tabTitle } : {}),
     ...(seoTitle !== undefined ? { seoTitle: seoTitle || siteName || DEFAULT_SITE_SETTINGS.seoTitle } : {}),
     ...(seoDescription !== undefined ? { seoDescription: seoDescription || DEFAULT_SITE_SETTINGS.seoDescription } : {}),
@@ -768,6 +647,7 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
   const createData: Prisma.SiteSettingCreateInput = {
     key: 'default',
     siteName: siteName || DEFAULT_SITE_SETTINGS.siteName,
+    adminBasePath: adminBasePath || DEFAULT_SITE_SETTINGS.adminBasePath,
     tabTitle: tabTitle || siteName || DEFAULT_SITE_SETTINGS.tabTitle,
     seoTitle: seoTitle || siteName || DEFAULT_SITE_SETTINGS.seoTitle,
     seoDescription: seoDescription || DEFAULT_SITE_SETTINGS.seoDescription,
@@ -789,17 +669,23 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
 
 // ===== Hackathons =====
 
-app.get('/api/hackathons', async (req, res) => {
-  const hackathons = await prisma.hackathon.findMany({
-    include: { sessions: true, scoringCriteria: true }
-  });
+app.get('/api/hackathon', async (_req, res) => {
+  const hackathon = await getCurrentHackathon();
+  res.json(hackathon);
+});
+
+app.get('/api/hackathons', async (_req, res) => {
+  const hackathons = await listHackathonsWithRelations();
+  if (SINGLE_HACKATHON_MODE) {
+    return res.json(hackathons.length > 0 ? [hackathons[0]] : []);
+  }
   res.json(hackathons);
 });
 
 app.get('/api/hackathons/:id', async (req, res) => {
   const hackathon = await prisma.hackathon.findUnique({
     where: { id: req.params.id },
-    include: { sessions: true, scoringCriteria: true }
+    include: { scoringCriteria: true }
   });
   if (!hackathon) {
     return res.status(404).json({ error: 'Hackathon not found' });
@@ -817,27 +703,42 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
     status,
     coverGradient,
     submissionSchema,
-    sessions,
     scoringCriteria,
     prizePool,
     gitbookUrl,
     rulesUrl,
     detailsUrl,
   } = req.body;
-  const hasSessionsInput = Array.isArray(sessions);
-  const sessionInputs: HackathonSessionPayload[] = hasSessionsInput ? sessions as HackathonSessionPayload[] : [];
   const hasScoringCriteriaInput = Array.isArray(scoringCriteria);
   const scoringCriteriaInputs: ScoringCriterionPayload[] = hasScoringCriteriaInput
     ? scoringCriteria as ScoringCriterionPayload[]
     : [];
+  if (SINGLE_HACKATHON_MODE) {
+    const existingHackathonCount = await prisma.hackathon.count();
+    if (existingHackathonCount > 0) {
+      return res.status(409).json({
+        error: 'Single-hackathon mode is enabled. Update the current hackathon instead of creating a new one.',
+      });
+    }
+  }
+
+  const hackathonStartAt = new Date(startAt);
+  const hackathonEndAt = new Date(endAt);
+
+  if (Number.isNaN(hackathonStartAt.getTime()) || Number.isNaN(hackathonEndAt.getTime())) {
+    return res.status(400).json({ error: 'startAt and endAt must be valid dates' });
+  }
+  if (hackathonStartAt.getTime() > hackathonEndAt.getTime()) {
+    return res.status(400).json({ error: 'startAt must be earlier than or equal to endAt' });
+  }
 
   const hackathon = await prisma.hackathon.create({
     data: {
       title,
       tagline,
       city,
-      startAt: new Date(startAt),
-      endAt: new Date(endAt),
+      startAt: hackathonStartAt,
+      endAt: hackathonEndAt,
       status,
       coverGradient,
       prizePool: prizePool || null,
@@ -845,16 +746,6 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
       rulesUrl: rulesUrl || null,
       detailsUrl: detailsUrl || null,
       submissionSchema: submissionSchema || {},
-      sessions: hasSessionsInput ? {
-        create: sessionInputs.map((s) => ({
-          name: s.name,
-          type: s.type,
-          region: s.region || null,
-          status: s.status || 'draft',
-          startAt: new Date(s.startAt),
-          endAt: new Date(s.endAt),
-        }))
-      } : undefined,
       scoringCriteria: hasScoringCriteriaInput ? {
         create: scoringCriteriaInputs.map((c) => ({
           name: c.name,
@@ -863,7 +754,7 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
         }))
       } : undefined,
     },
-    include: { sessions: true, scoringCriteria: true }
+    include: { scoringCriteria: true }
   });
   res.json(hackathon);
 });
@@ -878,90 +769,140 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
     status,
     coverGradient,
     submissionSchema,
-    sessions,
     scoringCriteria,
     prizePool,
     gitbookUrl,
     rulesUrl,
     detailsUrl,
   } = req.body;
-  const hasSessionsInput = Array.isArray(sessions);
-  const sessionInputs: HackathonSessionPayload[] = hasSessionsInput ? sessions as HackathonSessionPayload[] : [];
   const hasScoringCriteriaInput = Array.isArray(scoringCriteria);
   const scoringCriteriaInputs: ScoringCriterionPayload[] = hasScoringCriteriaInput
     ? scoringCriteria as ScoringCriterionPayload[]
     : [];
-
-  // Update hackathon basic info
-  await prisma.hackathon.update({
-    where: { id: req.params.id },
-    data: {
-      title,
-      tagline,
-      city,
-      startAt: startAt ? new Date(startAt) : undefined,
-      endAt: endAt ? new Date(endAt) : undefined,
-      status,
-      coverGradient,
-      prizePool: prizePool !== undefined ? (prizePool || null) : undefined,
-      gitbookUrl: gitbookUrl !== undefined ? (gitbookUrl || null) : undefined,
-      rulesUrl: rulesUrl !== undefined ? (rulesUrl || null) : undefined,
-      detailsUrl: detailsUrl !== undefined ? (detailsUrl || null) : undefined,
-      submissionSchema: submissionSchema !== undefined ? submissionSchema : undefined,
-    }
-  });
-
-  // Update scoring criteria if provided
-  if (hasScoringCriteriaInput) {
-    await prisma.scoringCriterion.deleteMany({ where: { hackathonId: req.params.id } });
-    if (scoringCriteriaInputs.length > 0) {
-      await prisma.scoringCriterion.createMany({
-        data: scoringCriteriaInputs.map((c) => ({
-          hackathonId: req.params.id,
-          name: c.name,
-          maxScore: c.maxScore,
-          sortOrder: c.sortOrder || 0,
-        }))
+  if (SINGLE_HACKATHON_MODE) {
+    const currentHackathon = await getCurrentHackathon();
+    if (currentHackathon && currentHackathon.id !== req.params.id) {
+      return res.status(409).json({
+        error: 'Single-hackathon mode is enabled. Only the current hackathon can be updated.',
       });
     }
   }
+  const existingHackathon = await prisma.hackathon.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true,
+      startAt: true,
+      endAt: true,
+    },
+  });
 
-  // Update sessions if provided
-  if (hasSessionsInput) {
-    for (const session of sessionInputs) {
-      if (session.id) {
-        await prisma.session.update({
-          where: { id: session.id },
-          data: {
-            name: session.name,
-            type: session.type,
-            region: session.region !== undefined ? (session.region || null) : undefined,
-            status: session.status,
-            startAt: new Date(session.startAt),
-            endAt: new Date(session.endAt),
-          }
-        });
-      } else {
-        await prisma.session.create({
-          data: {
+  if (!existingHackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  const nextStartAt = startAt !== undefined ? new Date(startAt) : existingHackathon.startAt;
+  const nextEndAt = endAt !== undefined ? new Date(endAt) : existingHackathon.endAt;
+  if (Number.isNaN(nextStartAt.getTime()) || Number.isNaN(nextEndAt.getTime())) {
+    return res.status(400).json({ error: 'startAt and endAt must be valid dates' });
+  }
+  if (nextStartAt.getTime() > nextEndAt.getTime()) {
+    return res.status(400).json({ error: 'startAt must be earlier than or equal to endAt' });
+  }
+
+  // Use a transaction to update hackathon and scoring criteria atomically,
+  // then return the result in a single round trip.
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.hackathon.update({
+      where: { id: req.params.id },
+      data: {
+        title,
+        tagline,
+        city,
+        startAt: startAt ? new Date(startAt) : undefined,
+        endAt: endAt ? new Date(endAt) : undefined,
+        status,
+        coverGradient,
+        prizePool: prizePool !== undefined ? (prizePool || null) : undefined,
+        gitbookUrl: gitbookUrl !== undefined ? (gitbookUrl || null) : undefined,
+        rulesUrl: rulesUrl !== undefined ? (rulesUrl || null) : undefined,
+        detailsUrl: detailsUrl !== undefined ? (detailsUrl || null) : undefined,
+        submissionSchema: submissionSchema !== undefined ? submissionSchema : undefined,
+      },
+    });
+
+    if (hasScoringCriteriaInput) {
+      await tx.scoringCriterion.deleteMany({ where: { hackathonId: req.params.id } });
+      if (scoringCriteriaInputs.length > 0) {
+        await tx.scoringCriterion.createMany({
+          data: scoringCriteriaInputs.map((c) => ({
             hackathonId: req.params.id,
-            name: session.name,
-            type: session.type,
-            region: session.region || null,
-            status: session.status || 'draft',
-            startAt: new Date(session.startAt),
-            endAt: new Date(session.endAt),
-          }
+            name: c.name,
+            maxScore: c.maxScore,
+            sortOrder: c.sortOrder || 0,
+          })),
         });
       }
     }
+
+    return tx.hackathon.findUnique({
+      where: { id: req.params.id },
+      include: { scoringCriteria: true },
+    });
+  });
+
+  res.json(updated);
+});
+
+app.get('/api/hackathon/markdown-doc', async (_req, res) => {
+  const currentHackathon = await getCurrentHackathon();
+  if (!currentHackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
   }
 
-  const updated = await prisma.hackathon.findUnique({
-    where: { id: req.params.id },
-    include: { sessions: true, scoringCriteria: true }
-  });
-  res.json(updated);
+  const doc = await readHackathonMarkdownDoc(currentHackathon.id);
+  if (!doc) {
+    return res.status(404).json({ error: 'Markdown document not found' });
+  }
+
+  res.json(doc);
+});
+
+app.put('/api/hackathon/markdown-doc', requireAdmin, async (req, res) => {
+  const currentHackathon = await getCurrentHackathon();
+  if (!currentHackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  const content = typeof req.body?.content === 'string' ? req.body.content : '';
+  const fileName = asString(req.body?.fileName);
+
+  if (!content.trim()) {
+    return res.status(400).json({ error: 'Markdown content is required' });
+  }
+
+  try {
+    const doc = await saveHackathonMarkdownDoc(currentHackathon.id, fileName, content);
+    res.json(doc);
+  } catch (error: unknown) {
+    res.status(500).json({ error: getErrorMessage(error, 'Failed to save markdown document') });
+  }
+});
+
+app.delete('/api/hackathon/markdown-doc', requireAdmin, async (_req, res) => {
+  const currentHackathon = await getCurrentHackathon();
+  if (!currentHackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  try {
+    const deleted = await deleteHackathonMarkdownDoc(currentHackathon.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Markdown document not found' });
+    }
+    res.json({ success: true });
+  } catch (error: unknown) {
+    res.status(500).json({ error: getErrorMessage(error, 'Failed to delete markdown document') });
+  }
 });
 
 app.get('/api/hackathons/:id/markdown-doc', async (req, res) => {
@@ -1031,35 +972,18 @@ app.delete('/api/hackathons/:id/markdown-doc', requireAdmin, async (req, res) =>
 // ===== Projects =====
 
 app.get('/api/projects', async (req, res) => {
-  const { hackathonId, sessionId } = req.query;
-  const sessionIdValue = asString(sessionId);
+  const { hackathonId } = req.query;
+  const hackathonIdValue = await getScopedHackathonId(hackathonId);
   const projects = await prisma.project.findMany({
     where: {
-      ...(hackathonId ? { hackathonId: String(hackathonId) } : {}),
-      ...(sessionIdValue
-        ? {
-            OR: [
-              { sessionId: sessionIdValue },
-              { projectRounds: { some: { sessionId: sessionIdValue } } },
-            ],
-          }
-        : {}),
+      ...(hackathonIdValue ? { hackathonId: hackathonIdValue } : {}),
     },
     include: {
       user: true,
       assignments: {
-        ...(sessionIdValue ? { where: { sessionId: sessionIdValue } } : {}),
         include: { judge: true, scores: true }
       },
       hackathon: true,
-      session: true,
-      projectRounds: {
-        include: {
-          session: true,
-          nextSession: true,
-        },
-        orderBy: { createdAt: 'asc' },
-      },
     }
   });
   res.json(projects);
@@ -1071,23 +995,9 @@ app.get('/api/projects/:id', async (req, res) => {
     include: {
       user: true,
       assignments: {
-        include: { judge: true, scores: true, projectRound: { include: { session: true } } }
+        include: { judge: true, scores: true }
       },
       hackathon: { include: { scoringCriteria: true } },
-      session: true,
-      projectRounds: {
-        include: {
-          session: true,
-          nextSession: true,
-          assignments: {
-            include: {
-              judge: true,
-              scores: true,
-            },
-          },
-        },
-        orderBy: { createdAt: 'asc' },
-      },
     }
   });
   if (!project) {
@@ -1097,9 +1007,9 @@ app.get('/api/projects/:id', async (req, res) => {
 });
 
 app.post('/api/projects', submissionRateLimiter, async (req, res) => {
-  const { hackathonId, sessionId, title, oneLiner, description, tags, demoUrl, repoUrl, submitterEmail, submitterName, submissionData } = req.body;
+  const { hackathonId, title, oneLiner, description, tags, demoUrl, repoUrl, submitterEmail, submitterName, submissionData } = req.body;
 
-  const hackathonIdValue = asString(hackathonId);
+  const hackathonIdValue = await getScopedHackathonId(hackathonId);
   const submitterEmailValue = normalizeEmail(submitterEmail);
   const submitterNameValue = asString(submitterName);
 
@@ -1117,20 +1027,10 @@ app.post('/api/projects', submissionRateLimiter, async (req, res) => {
 
   const relatedHackathon = await prisma.hackathon.findUnique({
     where: { id: hackathonIdValue },
-    include: { sessions: true },
   });
 
   if (!relatedHackathon) {
     return res.status(404).json({ error: 'Hackathon not found' });
-  }
-
-  const requestedSessionId = asString(sessionId);
-  const selectedSession = requestedSessionId
-    ? relatedHackathon.sessions.find((item) => item.id === requestedSessionId)
-    : relatedHackathon.sessions.find((item) => item.status === 'active') || relatedHackathon.sessions[0];
-
-  if (requestedSessionId && !selectedSession) {
-    return res.status(400).json({ error: 'sessionId does not belong to the target hackathon' });
   }
 
   const receipt = {
@@ -1156,7 +1056,6 @@ app.post('/api/projects', submissionRateLimiter, async (req, res) => {
   const project = await prisma.project.create({
     data: {
       hackathonId: hackathonIdValue,
-      sessionId: selectedSession?.id,
       title: titleValue,
       oneLiner: oneLinerValue,
       description: descriptionValue,
@@ -1173,13 +1072,8 @@ app.post('/api/projects', submissionRateLimiter, async (req, res) => {
     },
     include: {
       hackathon: { include: { scoringCriteria: true } },
-      session: true,
     }
   });
-
-  if (project.sessionId) {
-    await ensureProjectRound(project.id, project.sessionId);
-  }
 
   const emailResult = await sendSubmissionReceiptEmail({
     to: submitterEmailValue,
@@ -1209,7 +1103,6 @@ app.post('/api/projects', submissionRateLimiter, async (req, res) => {
       },
       include: {
         hackathon: { include: { scoringCriteria: true } },
-        session: true,
       },
     });
   } catch (error) {
@@ -1224,7 +1117,7 @@ app.post('/api/projects', submissionRateLimiter, async (req, res) => {
 
 app.put('/api/projects/:id', requireAdmin, async (req, res) => {
   try {
-    const { title, oneLiner, description, tags, demoUrl, repoUrl, submissionData, status, sessionId } = req.body;
+    const { title, oneLiner, description, tags, demoUrl, repoUrl, submissionData, status } = req.body;
     const existingProject = await prisma.project.findUnique({
       where: { id: req.params.id },
       select: { submissionData: true },
@@ -1260,13 +1153,8 @@ app.put('/api/projects/:id', requireAdmin, async (req, res) => {
           ...(existingReceipt ? { _receipt: existingReceipt } : {}),
         } as Prisma.InputJsonValue),
         status,
-        ...(sessionId !== undefined ? { sessionId } : {}),
       }
     });
-
-    if (project.sessionId) {
-      await ensureProjectRound(project.id, project.sessionId);
-    }
 
     res.json(project);
   } catch {
@@ -1358,28 +1246,20 @@ app.post('/api/projects/:id/receipt/resend', requireAdmin, async (req, res) => {
 // ===== Assignments =====
 
 app.get('/api/assignments', requireAuth, async (req, res) => {
-  const { sessionId, projectId, judgeId, status, projectRoundId, hackathonId } = req.query;
+  const { projectId, judgeId, status, hackathonId } = req.query;
+  const hackathonIdValue = await getScopedHackathonId(hackathonId);
   const viewer = req.authUser!;
   const effectiveJudgeId = viewer.role === 'judge' ? viewer.id : (judgeId ? String(judgeId) : undefined);
   const assignments = await prisma.assignment.findMany({
     where: {
-      ...(sessionId ? { sessionId: String(sessionId) } : {}),
       ...(projectId ? { projectId: String(projectId) } : {}),
       ...(effectiveJudgeId ? { judgeId: effectiveJudgeId } : {}),
       ...(status ? { status: String(status) } : {}),
-      ...(projectRoundId ? { projectRoundId: String(projectRoundId) } : {}),
-      ...(hackathonId ? { session: { hackathonId: String(hackathonId) } } : {}),
+      ...(hackathonIdValue ? { project: { hackathonId: hackathonIdValue } } : {}),
     },
     include: {
       project: true,
       judge: true,
-      session: true,
-      projectRound: {
-        include: {
-          session: true,
-          nextSession: true,
-        },
-      },
       scores: true,
     }
   });
@@ -1402,12 +1282,8 @@ app.put('/api/assignments/:id/status', requireAuth, async (req, res) => {
   }
 
   const viewer = req.authUser!;
-  if (viewer.role === 'judge' && existing.judgeId !== viewer.id) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  if (existing.isLocked) {
-    return res.status(409).json({ error: 'Assignment is locked for a finalized round' });
+  if (viewer.role !== 'judge' || existing.judgeId !== viewer.id) {
+    return res.status(403).json({ error: 'Only the assigned judge can update assignment status' });
   }
 
   const updated = await prisma.assignment.update({
@@ -1416,8 +1292,6 @@ app.put('/api/assignments/:id/status', requireAuth, async (req, res) => {
     include: {
       project: true,
       judge: true,
-      session: true,
-      projectRound: true,
       scores: true,
     }
   });
@@ -1426,91 +1300,80 @@ app.put('/api/assignments/:id/status', requireAuth, async (req, res) => {
 });
 
 app.post('/api/assignments', requireAdmin, async (req, res) => {
-  const { assignments } = req.body; // Array of { sessionId, projectId, judgeId, projectRoundId? }
+  const { assignments } = req.body; // Array of { projectId, judgeId }
 
   if (!Array.isArray(assignments) || assignments.length === 0) {
     return res.status(400).json({ error: 'Assignments payload must be a non-empty array' });
   }
 
   try {
+    // Parse and validate input shape first (no DB calls)
+    const parsed: { judgeId: string; projectId: string }[] = [];
+    for (const rawAssignment of assignments) {
+      const judgeId = asString(rawAssignment?.judgeId);
+      const projectId = asString(rawAssignment?.projectId);
+      if (!judgeId) throw new Error('Each assignment must contain judgeId');
+      if (!projectId) throw new Error('Each assignment must contain projectId');
+      parsed.push({ judgeId, projectId });
+    }
+
+    const uniqueJudgeIds = dedupeIds(parsed.map((a) => a.judgeId));
+    const uniqueProjectIds = dedupeIds(parsed.map((a) => a.projectId));
+
     const created = await prisma.$transaction(async (tx) => {
+      // Batch-validate judges and projects in two queries instead of N*3
+      const [judges, projects] = await Promise.all([
+        tx.user.findMany({
+          where: { id: { in: uniqueJudgeIds }, role: 'judge' },
+          select: { id: true },
+        }),
+        tx.project.findMany({
+          where: { id: { in: uniqueProjectIds } },
+          select: { id: true, hackathonId: true },
+        }),
+      ]);
+
+      const judgeIdSet = new Set(judges.map((j) => j.id));
+      const projectMap = new Map(projects.map((p) => [p.id, p]));
+
+      for (const judgeId of uniqueJudgeIds) {
+        if (!judgeIdSet.has(judgeId)) throw new Error(`Judge ${judgeId} not found`);
+      }
+      for (const projectId of uniqueProjectIds) {
+        if (!projectMap.has(projectId)) throw new Error(`Project ${projectId} not found`);
+      }
+
+      // Batch-validate hackathon memberships
+      const membershipKeys = new Set<string>();
+      for (const { judgeId, projectId } of parsed) {
+        const project = projectMap.get(projectId)!;
+        membershipKeys.add(`${project.hackathonId}:${judgeId}`);
+      }
+      const hackathonIds = [...new Set([...membershipKeys].map((k) => k.split(':')[0]))];
+      const memberships = await tx.hackathonJudge.findMany({
+        where: {
+          hackathonId: { in: hackathonIds },
+          userId: { in: uniqueJudgeIds },
+        },
+        select: { hackathonId: true, userId: true },
+      });
+      const membershipSet = new Set(memberships.map((m) => `${m.hackathonId}:${m.userId}`));
+
+      for (const key of membershipKeys) {
+        if (!membershipSet.has(key)) {
+          const [, judgeId] = key.split(':');
+          throw new Error(`Judge ${judgeId} is not registered for this hackathon`);
+        }
+      }
+
+      // Upsert assignments (still sequential due to unique constraint handling)
       const rows = [];
-
-      for (const rawAssignment of assignments) {
-        const judgeId = asString(rawAssignment?.judgeId);
-        const projectRoundId = asString(rawAssignment?.projectRoundId);
-        let sessionId = asString(rawAssignment?.sessionId);
-        let projectId = asString(rawAssignment?.projectId);
-
-        if (!judgeId) {
-          throw new Error('Each assignment must contain judgeId');
-        }
-
-        let resolvedRound: { id: string; sessionId: string; projectId: string } | null = null;
-        if (projectRoundId) {
-          const round = await tx.projectRound.findUnique({
-            where: { id: projectRoundId },
-            select: { id: true, sessionId: true, projectId: true },
-          });
-          if (!round) {
-            throw new Error(`Project round ${projectRoundId} not found`);
-          }
-          resolvedRound = round;
-          sessionId = round.sessionId;
-          projectId = round.projectId;
-        }
-
-        if (!sessionId || !projectId) {
-          throw new Error('Each assignment must contain sessionId and projectId, or a valid projectRoundId');
-        }
-
-        if (!resolvedRound) {
-          resolvedRound = await tx.projectRound.upsert({
-            where: {
-              projectId_sessionId: {
-                projectId,
-                sessionId,
-              },
-            },
-            update: {},
-            create: {
-              projectId,
-              sessionId,
-              promotionStatus: 'pending',
-            },
-            select: {
-              id: true,
-              sessionId: true,
-              projectId: true,
-            },
-          });
-        }
-
+      for (const { judgeId, projectId } of parsed) {
         const assignment = await tx.assignment.upsert({
-          where: {
-            sessionId_projectId_judgeId: {
-              sessionId,
-              projectId,
-              judgeId,
-            },
-          },
-          update: {
-            projectRoundId: resolvedRound.id,
-          },
-          create: {
-            sessionId,
-            projectId,
-            projectRoundId: resolvedRound.id,
-            judgeId,
-            status: 'pending',
-          },
-          include: {
-            project: true,
-            judge: true,
-            session: true,
-            projectRound: true,
-            scores: true,
-          },
+          where: { projectId_judgeId: { projectId, judgeId } },
+          update: {},
+          create: { projectId, judgeId, status: 'pending' },
+          include: { project: true, judge: true, scores: true },
         });
         rows.push(assignment);
       }
@@ -1535,294 +1398,6 @@ app.delete('/api/assignments/:id', requireAdmin, async (req, res) => {
   }
 });
 
-// ===== Project Rounds & Promotions =====
-
-app.get('/api/project-rounds', requireAdmin, async (req, res) => {
-  const { hackathonId, sessionId, projectId, promotionStatus } = req.query;
-
-  const rounds = await prisma.projectRound.findMany({
-    where: {
-      ...(hackathonId ? { project: { hackathonId: String(hackathonId) } } : {}),
-      ...(sessionId ? { sessionId: String(sessionId) } : {}),
-      ...(projectId ? { projectId: String(projectId) } : {}),
-      ...(promotionStatus ? { promotionStatus: String(promotionStatus) } : {}),
-    },
-    include: {
-      project: true,
-      session: true,
-      nextSession: true,
-      sourceRound: {
-        include: {
-          session: true,
-        },
-      },
-      assignments: {
-        include: {
-          judge: {
-            select: { id: true, name: true, email: true },
-          },
-          scores: true,
-        },
-      },
-    },
-    orderBy: [
-      { createdAt: 'asc' },
-    ],
-  });
-
-  const assignmentsForRounds = rounds.length > 0
-    ? await prisma.assignment.findMany({
-      where: {
-        OR: rounds.map((round) => ({
-          sessionId: round.sessionId,
-          projectId: round.projectId,
-        })),
-      },
-      include: {
-        judge: {
-          select: { id: true, name: true, email: true },
-        },
-        scores: true,
-      },
-    })
-    : [];
-
-  const assignmentsByRoundKey = new Map<string, typeof assignmentsForRounds>();
-  for (const assignment of assignmentsForRounds) {
-    const key = `${assignment.sessionId}:${assignment.projectId}`;
-    const existing = assignmentsByRoundKey.get(key) || [];
-    existing.push(assignment);
-    assignmentsByRoundKey.set(key, existing);
-  }
-
-  const result = rounds.map((round) => {
-    const roundAssignments = assignmentsByRoundKey.get(`${round.sessionId}:${round.projectId}`) || round.assignments;
-    const completedAssignments = roundAssignments.filter((assignment) => assignment.status === 'completed');
-    const pendingAssignments = roundAssignments.filter((assignment) => assignment.status === 'pending');
-    const inProgressAssignments = roundAssignments.filter((assignment) => assignment.status === 'in_progress');
-    const totalCompletedScore = completedAssignments.reduce((sum, assignment) => sum + (assignment.totalScore || 0), 0);
-
-    return {
-      id: round.id,
-      projectId: round.projectId,
-      sessionId: round.sessionId,
-      promotionStatus: round.promotionStatus,
-      nextSessionId: round.nextSessionId,
-      decisionNote: round.decisionNote,
-      decidedById: round.decidedById,
-      decidedAt: round.decidedAt,
-      createdAt: round.createdAt,
-      updatedAt: round.updatedAt,
-      sourceRoundId: round.sourceRoundId,
-      sourceSessionId: round.sourceRound?.sessionId || null,
-      sourceSessionName: round.sourceRound?.session?.name || null,
-      project: round.project,
-      session: round.session,
-      nextSession: round.nextSession,
-      averageScore: completedAssignments.length > 0
-        ? Math.round((totalCompletedScore / completedAssignments.length) * 100) / 100
-        : 0,
-      totalAssignments: roundAssignments.length,
-      completedAssignments: completedAssignments.length,
-      pendingAssignments: pendingAssignments.length,
-      inProgressAssignments: inProgressAssignments.length,
-      assignments: roundAssignments,
-    };
-  });
-
-  res.json(result);
-});
-
-app.post('/api/project-rounds/initialize', requireAdmin, async (req, res) => {
-  const sessionId = asString(req.body?.sessionId);
-  const sourceSessionId = asString(req.body?.sourceSessionId);
-  const requestedProjectIds = Array.isArray(req.body?.projectIds)
-    ? req.body.projectIds.map((id: unknown) => asString(id)).filter(Boolean) as string[]
-    : [];
-
-  if (!sessionId) {
-    return res.status(400).json({ error: 'sessionId is required' });
-  }
-
-  const targetSession = await prisma.session.findUnique({
-    where: { id: sessionId },
-    select: { id: true, hackathonId: true },
-  });
-
-  if (!targetSession) {
-    return res.status(404).json({ error: 'Session not found' });
-  }
-
-  let projectIds: string[] = [];
-  const sourceRoundMap = new Map<string, string>();
-
-  if (requestedProjectIds.length > 0) {
-    const projects = await prisma.project.findMany({
-      where: {
-        id: { in: requestedProjectIds },
-        hackathonId: targetSession.hackathonId,
-      },
-      select: { id: true },
-    });
-    projectIds = projects.map((project) => project.id);
-  } else if (sourceSessionId) {
-    const sourceRounds = await prisma.projectRound.findMany({
-      where: {
-        sessionId: sourceSessionId,
-        promotionStatus: 'advanced',
-      },
-      select: {
-        id: true,
-        projectId: true,
-        nextSessionId: true,
-      },
-    });
-
-    const filtered = sourceRounds.filter((round) => {
-      if (!round.nextSessionId) return true;
-      return round.nextSessionId === sessionId;
-    });
-
-    projectIds = filtered.map((round) => round.projectId);
-    for (const round of filtered) {
-      sourceRoundMap.set(round.projectId, round.id);
-    }
-  } else {
-    const projects = await prisma.project.findMany({
-      where: {
-        hackathonId: targetSession.hackathonId,
-        status: 'submitted',
-      },
-      select: { id: true },
-    });
-    projectIds = projects.map((project) => project.id);
-  }
-
-  const uniqueProjectIds = Array.from(new Set(projectIds));
-
-  const rounds = await prisma.$transaction(async (tx) => {
-    const createdRounds = [];
-    for (const projectId of uniqueProjectIds) {
-      const sourceRoundId = sourceRoundMap.get(projectId) || null;
-      const round = await tx.projectRound.upsert({
-        where: {
-          projectId_sessionId: {
-            projectId,
-            sessionId,
-          },
-        },
-        update: {
-          ...(sourceRoundId ? { sourceRoundId } : {}),
-        },
-        create: {
-          projectId,
-          sessionId,
-          promotionStatus: 'pending',
-          ...(sourceRoundId ? { sourceRoundId } : {}),
-        },
-      });
-      createdRounds.push(round);
-    }
-    return createdRounds;
-  });
-
-  res.json({
-    sessionId,
-    initializedCount: rounds.length,
-    rounds,
-  });
-});
-
-app.put('/api/project-rounds/:id/promotion', requireAdmin, async (req, res) => {
-  const decision = asString(req.body?.decision);
-
-  if (!decision || !VALID_PROMOTION_STATUSES.has(decision)) {
-    return res.status(400).json({ error: 'decision must be one of pending, advanced, eliminated' });
-  }
-
-  const nextSessionId = asString(req.body?.nextSessionId);
-  const note = asString(req.body?.note);
-  const decidedById = asString(req.body?.decidedById);
-  const judgeIds = Array.isArray(req.body?.judgeIds)
-    ? req.body.judgeIds.map((id: unknown) => asString(id)).filter(Boolean) as string[]
-    : [];
-
-  try {
-    const updatedRound = await applyPromotionDecision({
-      projectRoundId: req.params.id,
-      decision,
-      nextSessionId,
-      note,
-      decidedById,
-      judgeIds,
-    });
-
-    res.json(updatedRound);
-  } catch (error: unknown) {
-    const message = getErrorMessage(error, 'Failed to apply promotion decision');
-    if (
-      message.includes('Invalid promotion decision')
-      || message.includes('required')
-      || message.includes('not found')
-      || message.includes('same hackathon')
-    ) {
-      return res.status(400).json({ error: message });
-    }
-    res.status(500).json({ error: message });
-  }
-});
-
-app.post('/api/project-rounds/promotions/bulk', requireAdmin, async (req, res) => {
-  const decisions = Array.isArray(req.body?.decisions) ? req.body.decisions : [];
-  const defaultNextSessionId = asString(req.body?.nextSessionId);
-  const defaultDecidedById = asString(req.body?.decidedById);
-  const judgeIds = Array.isArray(req.body?.judgeIds)
-    ? req.body.judgeIds.map((id: unknown) => asString(id)).filter(Boolean) as string[]
-    : [];
-
-  if (decisions.length === 0) {
-    return res.status(400).json({ error: 'decisions is required' });
-  }
-
-  const results = [];
-  for (const item of decisions) {
-    const projectRoundId = asString(item?.projectRoundId);
-    const decision = asString(item?.decision);
-
-    if (!projectRoundId || !decision) {
-      continue;
-    }
-
-    const itemNextSessionId = asString(item?.nextSessionId) || defaultNextSessionId;
-    const itemNote = asString(item?.note);
-    const itemDecidedById = asString(item?.decidedById) || defaultDecidedById;
-
-    try {
-      const updatedRound = await applyPromotionDecision({
-        projectRoundId,
-        decision,
-        nextSessionId: itemNextSessionId,
-        note: itemNote,
-        decidedById: itemDecidedById,
-        judgeIds,
-      });
-      results.push({
-        projectRoundId,
-        success: true,
-        round: updatedRound,
-      });
-    } catch (error: unknown) {
-      results.push({
-        projectRoundId,
-        success: false,
-        error: getErrorMessage(error, 'Failed to apply promotion decision'),
-      });
-    }
-  }
-
-  res.json(results);
-});
-
 // ===== Scores =====
 
 app.post('/api/assignments/:id/scores', requireAuth, async (req, res) => {
@@ -1838,12 +1413,8 @@ app.post('/api/assignments/:id/scores', requireAuth, async (req, res) => {
   }
 
   const viewer = req.authUser!;
-  if (viewer.role === 'judge' && existing.judgeId !== viewer.id) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  if (existing.isLocked) {
-    return res.status(409).json({ error: 'Assignment is locked for a finalized round' });
+  if (viewer.role !== 'judge' || existing.judgeId !== viewer.id) {
+    return res.status(403).json({ error: 'Only the assigned judge can submit scores' });
   }
 
   if (!Array.isArray(scores) || scores.length === 0) {
@@ -1867,38 +1438,23 @@ app.post('/api/assignments/:id/scores', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Scores payload contains invalid entries' });
   }
 
-  // Calculate total score
   const totalScore = parsedScores.reduce((sum, scoreItem) => sum + scoreItem.score, 0);
 
-  // Delete existing scores for this assignment
-  await prisma.score.deleteMany({
-    where: { assignmentId }
-  });
-
-  // Create new scores
-  await prisma.score.createMany({
-    data: parsedScores.map((scoreItem) => ({
-      assignmentId,
-      criterionId: scoreItem.criterionId,
-      score: scoreItem.score,
-    }))
-  });
-
-  // Update assignment
-  const assignment = await prisma.assignment.update({
-    where: { id: assignmentId },
-    data: {
-      status: status || 'completed',
-      comment,
-      totalScore,
-    },
-    include: {
-      project: true,
-      judge: true,
-      session: true,
-      projectRound: true,
-      scores: true,
-    }
+  // Atomically replace scores and update assignment in a single transaction
+  const assignment = await prisma.$transaction(async (tx) => {
+    await tx.score.deleteMany({ where: { assignmentId } });
+    await tx.score.createMany({
+      data: parsedScores.map((scoreItem) => ({
+        assignmentId,
+        criterionId: scoreItem.criterionId,
+        score: scoreItem.score,
+      })),
+    });
+    return tx.assignment.update({
+      where: { id: assignmentId },
+      data: { status: status || 'completed', comment, totalScore },
+      include: { project: true, judge: true, scores: true },
+    });
   });
 
   res.json(assignment);
@@ -1908,6 +1464,7 @@ app.post('/api/assignments/:id/scores', requireAuth, async (req, res) => {
 
 app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
   const { hackathonId, userId, role } = req.query;
+  const hackathonIdValue = await getScopedHackathonId(hackathonId);
   const viewer = req.authUser!;
   const effectiveRole = viewer.role === 'judge' ? 'judge' : (role ? String(role) : 'admin');
   const effectiveUserId = viewer.role === 'judge' ? viewer.id : (userId ? String(userId) : undefined);
@@ -1915,21 +1472,18 @@ app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
   const stats: DashboardStats = {};
 
   if (effectiveRole === 'admin') {
-    const totalProjects = await prisma.project.count({
-      where: hackathonId ? { hackathonId: String(hackathonId) } : {}
-    });
-    const totalJudges = await prisma.user.count({ where: { role: 'judge' } });
-    const totalAssignments = await prisma.assignment.count({
-      where: hackathonId
-        ? { session: { hackathonId: String(hackathonId) } }
-        : {}
-    });
-    const completedAssignments = await prisma.assignment.count({
-      where: {
-        status: 'completed',
-        ...(hackathonId ? { session: { hackathonId: String(hackathonId) } } : {})
-      }
-    });
+    const hackathonFilter = hackathonIdValue ? { hackathonId: hackathonIdValue } : {};
+    const assignmentHackathonFilter = hackathonIdValue ? { project: { hackathonId: hackathonIdValue } } : {};
+
+    // Run independent COUNT queries in parallel to reduce total latency
+    const [totalProjects, totalJudges, totalAssignments, completedAssignments] = await Promise.all([
+      prisma.project.count({ where: hackathonFilter }),
+      hackathonIdValue
+        ? prisma.hackathonJudge.count({ where: { hackathonId: hackathonIdValue } })
+        : prisma.user.count({ where: { role: 'judge' } }),
+      prisma.assignment.count({ where: assignmentHackathonFilter }),
+      prisma.assignment.count({ where: { status: 'completed', ...assignmentHackathonFilter } }),
+    ]);
 
     stats.totalProjects = totalProjects;
     stats.totalJudges = totalJudges;
@@ -1937,15 +1491,17 @@ app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
     stats.completedAssignments = completedAssignments;
     stats.pendingReviews = totalAssignments - completedAssignments;
   } else if (effectiveRole === 'judge') {
-    const myAssignments = await prisma.assignment.count({
-      where: { judgeId: String(effectiveUserId) }
-    });
-    const completed = await prisma.assignment.count({
-      where: { judgeId: String(effectiveUserId), status: 'completed' }
-    });
-    const pending = await prisma.assignment.count({
-      where: { judgeId: String(effectiveUserId), status: 'pending' }
-    });
+    const baseWhere = {
+      judgeId: String(effectiveUserId),
+      ...(hackathonIdValue ? { project: { hackathonId: hackathonIdValue } } : {}),
+    };
+
+    // Run independent COUNT queries in parallel
+    const [myAssignments, completed, pending] = await Promise.all([
+      prisma.assignment.count({ where: baseWhere }),
+      prisma.assignment.count({ where: { ...baseWhere, status: 'completed' } }),
+      prisma.assignment.count({ where: { ...baseWhere, status: 'pending' } }),
+    ]);
 
     stats.totalAssignments = myAssignments;
     stats.completed = completed;
@@ -1959,10 +1515,11 @@ app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
 
 // Get auto-calculated leaderboard (scores-based)
 app.get('/api/leaderboard', async (req, res) => {
-  const { hackathonId, sessionId } = req.query;
+  const { hackathonId } = req.query;
+  const hackathonIdValue = await getScopedHackathonId(hackathonId);
 
-  const hackathon = hackathonId ? await prisma.hackathon.findUnique({
-    where: { id: String(hackathonId) },
+  const hackathon = hackathonIdValue ? await prisma.hackathon.findUnique({
+    where: { id: hackathonIdValue },
     select: { leaderboardData: true, leaderboardPublished: true }
   }) : null;
 
@@ -1973,20 +1530,11 @@ app.get('/api/leaderboard', async (req, res) => {
     const projects = await prisma.project.findMany({
       where: {
         id: { in: projectIds },
-        ...(sessionId
-          ? {
-              OR: [
-                { sessionId: String(sessionId) },
-                { projectRounds: { some: { sessionId: String(sessionId) } } },
-              ],
-            }
-          : {}),
       },
       include: {
         assignments: {
           where: {
             status: 'completed',
-            ...(sessionId ? { sessionId: String(sessionId) } : {}),
           },
           select: { totalScore: true },
         },
@@ -2003,6 +1551,7 @@ app.get('/api/leaderboard', async (req, res) => {
       maxPossible: number;
       judgeCount: number;
       submitterName: string | null;
+      submissionData: Record<string, unknown> | null;
       rank: number;
       award: string;
     };
@@ -2017,6 +1566,7 @@ app.get('/api/leaderboard', async (req, res) => {
         id: p.id, title: p.title, oneLiner: p.oneLiner, tags: p.tags,
         avgScore: Math.round(avgScore * 100) / 100, maxPossible,
         judgeCount: scores.length, submitterName: p.submitterName,
+        submissionData: (p.submissionData as Record<string, unknown>) || null,
         rank: entry.rank, award: entry.award,
       };
     }).filter((item): item is CuratedLeaderboardItem => item !== null);
@@ -2028,21 +1578,12 @@ app.get('/api/leaderboard', async (req, res) => {
   // Otherwise return scores-based ranking
   const projects = await prisma.project.findMany({
     where: {
-      ...(hackathonId ? { hackathonId: String(hackathonId) } : {}),
-      ...(sessionId
-        ? {
-            OR: [
-              { sessionId: String(sessionId) },
-              { projectRounds: { some: { sessionId: String(sessionId) } } },
-            ],
-          }
-        : {}),
+      ...(hackathonIdValue ? { hackathonId: hackathonIdValue } : {}),
     },
     include: {
       assignments: {
         where: {
           status: 'completed',
-          ...(sessionId ? { sessionId: String(sessionId) } : {}),
         },
         select: { totalScore: true }
       },
@@ -2061,11 +1602,42 @@ app.get('/api/leaderboard', async (req, res) => {
       id: p.id, title: p.title, oneLiner: p.oneLiner, tags: p.tags,
       avgScore: Math.round(avgScore * 100) / 100, maxPossible,
       judgeCount: scores.length, submitterName: p.submitterName,
+      submissionData: (p.submissionData as Record<string, unknown>) || null,
     };
   });
 
   leaderboard.sort((a, b) => b.avgScore - a.avgScore);
   res.json(leaderboard);
+});
+
+app.put('/api/hackathon/leaderboard', requireAdmin, async (req, res) => {
+  const currentHackathon = await getCurrentHackathon();
+  if (!currentHackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  const { entries, published } = req.body;
+  const hackathon = await prisma.hackathon.update({
+    where: { id: currentHackathon.id },
+    data: {
+      leaderboardData: entries,
+      leaderboardPublished: published,
+    }
+  });
+  res.json(hackathon);
+});
+
+app.get('/api/hackathon/leaderboard', requireAdmin, async (_req, res) => {
+  const currentHackathon = await getCurrentHackathon();
+  if (!currentHackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  const hackathon = await prisma.hackathon.findUnique({
+    where: { id: currentHackathon.id },
+    select: { leaderboardData: true, leaderboardPublished: true }
+  });
+  res.json(hackathon);
 });
 
 // Save curated leaderboard
@@ -2090,111 +1662,17 @@ app.get('/api/hackathons/:id/leaderboard', requireAdmin, async (req, res) => {
   res.json(hackathon);
 });
 
-// ===== Session CRUD =====
-
-app.post('/api/hackathons/:hackathonId/sessions', requireAdmin, async (req, res) => {
-  const { hackathonId } = req.params;
-  const { name, type, region, status, startAt, endAt } = req.body;
-
-  if (!name || typeof name !== 'string' || !name.trim()) {
-    return res.status(400).json({ error: 'name is required' });
-  }
-  if (!type || !VALID_SESSION_TYPES.has(type)) {
-    return res.status(400).json({ error: 'type must be one of: preliminary, semi_final, final' });
-  }
-  if (status !== undefined && !VALID_SESSION_STATUSES.has(status)) {
-    return res.status(400).json({ error: 'status must be one of: draft, active, judging, completed' });
-  }
-  if (!startAt || !endAt) {
-    return res.status(400).json({ error: 'startAt and endAt are required' });
-  }
-
-  const hackathon = await prisma.hackathon.findUnique({ where: { id: hackathonId }, select: { id: true } });
-  if (!hackathon) {
-    return res.status(404).json({ error: 'Hackathon not found' });
-  }
-
-  const session = await prisma.session.create({
-    data: {
-      hackathonId,
-      name: name.trim(),
-      type,
-      region: (typeof region === 'string' && region.trim()) ? region.trim() : null,
-      status: status || 'draft',
-      startAt: new Date(startAt),
-      endAt: new Date(endAt),
-    },
-  });
-  res.json(session);
-});
-
-app.put('/api/hackathons/:hackathonId/sessions/:sessionId', requireAdmin, async (req, res) => {
-  const { hackathonId, sessionId } = req.params;
-  const { name, type, region, status, startAt, endAt } = req.body;
-
-  const existing = await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true, hackathonId: true } });
-  if (!existing || existing.hackathonId !== hackathonId) {
-    return res.status(404).json({ error: 'Session not found' });
-  }
-
-  if (type !== undefined && !VALID_SESSION_TYPES.has(type)) {
-    return res.status(400).json({ error: 'type must be one of: preliminary, semi_final, final' });
-  }
-  if (status !== undefined && !VALID_SESSION_STATUSES.has(status)) {
-    return res.status(400).json({ error: 'status must be one of: draft, active, judging, completed' });
-  }
-
-  const updateData: Record<string, unknown> = {};
-  if (name !== undefined) updateData.name = String(name).trim();
-  if (type !== undefined) updateData.type = type;
-  if (region !== undefined) updateData.region = (typeof region === 'string' && region.trim()) ? region.trim() : null;
-  if (status !== undefined) updateData.status = status;
-  if (startAt !== undefined) updateData.startAt = new Date(startAt);
-  if (endAt !== undefined) updateData.endAt = new Date(endAt);
-
-  const session = await prisma.session.update({ where: { id: sessionId }, data: updateData });
-  res.json(session);
-});
-
-app.delete('/api/hackathons/:hackathonId/sessions/:sessionId', requireAdmin, async (req, res) => {
-  const { hackathonId, sessionId } = req.params;
-
-  const existing = await prisma.session.findUnique({ where: { id: sessionId }, select: { id: true, hackathonId: true } });
-  if (!existing || existing.hackathonId !== hackathonId) {
-    return res.status(404).json({ error: 'Session not found' });
-  }
-
-  const [projectCount, assignmentCount, projectRoundCount] = await Promise.all([
-    prisma.project.count({ where: { sessionId } }),
-    prisma.assignment.count({ where: { sessionId } }),
-    prisma.projectRound.count({ where: { sessionId } }),
-  ]);
-
-  if (projectCount > 0 || assignmentCount > 0 || projectRoundCount > 0) {
-    return res.status(409).json({
-      error: 'Cannot delete session with existing projects, assignments, or project rounds',
-      details: { projectCount, assignmentCount, projectRoundCount },
-    });
-  }
-
-  await prisma.session.delete({ where: { id: sessionId } });
-  res.json({ success: true });
-});
-
 // ===== Scoring Report =====
 
 app.get('/api/reports/projects', requireAdmin, async (req, res) => {
-  const { hackathonId, sessionId } = req.query;
+  const { hackathonId } = req.query;
+  const hackathonIdValue = await getScopedHackathonId(hackathonId);
 
-  const rounds = await prisma.projectRound.findMany({
+  const projects = await prisma.project.findMany({
     where: {
-      ...(hackathonId ? { project: { hackathonId: String(hackathonId) } } : {}),
-      ...(sessionId ? { sessionId: String(sessionId) } : {}),
+      ...(hackathonIdValue ? { hackathonId: hackathonIdValue } : {}),
     },
     include: {
-      project: true,
-      session: true,
-      nextSession: true,
       assignments: {
         include: {
           judge: {
@@ -2206,37 +1684,11 @@ app.get('/api/reports/projects', requireAdmin, async (req, res) => {
     }
   });
 
-  const assignmentsForRounds = rounds.length > 0
-    ? await prisma.assignment.findMany({
-      where: {
-        OR: rounds.map((round) => ({
-          sessionId: round.sessionId,
-          projectId: round.projectId,
-        })),
-      },
-      include: {
-        judge: {
-          select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true },
-        },
-        scores: true,
-      },
-    })
-    : [];
-
-  const assignmentsByRoundKey = new Map<string, typeof assignmentsForRounds>();
-  for (const assignment of assignmentsForRounds) {
-    const key = `${assignment.sessionId}:${assignment.projectId}`;
-    const existing = assignmentsByRoundKey.get(key) || [];
-    existing.push(assignment);
-    assignmentsByRoundKey.set(key, existing);
-  }
-
-  let report = rounds.map((round) => {
-    const roundAssignments = assignmentsByRoundKey.get(`${round.sessionId}:${round.projectId}`) || round.assignments;
+  const report = projects.map((project) => {
     const statusCount = { pending: 0, in_progress: 0, completed: 0 };
     let totalCompletedScore = 0;
 
-    for (const assignment of roundAssignments) {
+    for (const assignment of project.assignments) {
       if (assignment.status === 'pending') statusCount.pending += 1;
       if (assignment.status === 'in_progress') statusCount.in_progress += 1;
       if (assignment.status === 'completed') {
@@ -2250,22 +1702,16 @@ app.get('/api/reports/projects', requireAdmin, async (req, res) => {
       : 0;
 
     return {
-      projectRoundId: round.id,
-      projectId: round.projectId,
-      projectTitle: round.project.title,
-      submitterName: round.project.submitterName,
-      submitterEmail: round.project.submitterEmail,
-      sessionId: round.sessionId,
-      sessionName: round.session?.name || null,
-      promotionStatus: round.promotionStatus,
-      nextSessionId: round.nextSessionId,
-      nextSessionName: round.nextSession?.name || null,
+      projectId: project.id,
+      projectTitle: project.title,
+      submitterName: project.submitterName,
+      submitterEmail: project.submitterEmail,
       averageScore: avgScore,
-      totalAssignments: roundAssignments.length,
+      totalAssignments: project.assignments.length,
       completedAssignments: statusCount.completed,
       pendingAssignments: statusCount.pending,
       inProgressAssignments: statusCount.in_progress,
-      judges: roundAssignments.map((assignment) => ({
+      judges: project.assignments.map((assignment) => ({
         assignmentId: assignment.id,
         judgeId: assignment.judgeId,
         judgeName: assignment.judge.name,
@@ -2279,74 +1725,6 @@ app.get('/api/reports/projects', requireAdmin, async (req, res) => {
     };
   });
 
-  // Backward-compatible fallback for legacy data without projectRound rows.
-  if (report.length === 0) {
-    const projects = await prisma.project.findMany({
-      where: {
-        ...(hackathonId ? { hackathonId: String(hackathonId) } : {}),
-        ...(sessionId ? { sessionId: String(sessionId) } : {}),
-      },
-      include: {
-        session: true,
-        assignments: {
-          include: {
-            judge: {
-              select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true }
-            },
-            scores: true,
-          }
-        }
-      }
-    });
-
-    report = projects.map((project) => {
-      const statusCount = { pending: 0, in_progress: 0, completed: 0 };
-      let totalCompletedScore = 0;
-
-      for (const assignment of project.assignments) {
-        if (assignment.status === 'pending') statusCount.pending += 1;
-        if (assignment.status === 'in_progress') statusCount.in_progress += 1;
-        if (assignment.status === 'completed') {
-          statusCount.completed += 1;
-          totalCompletedScore += assignment.totalScore || 0;
-        }
-      }
-
-      const avgScore = statusCount.completed > 0
-        ? Math.round((totalCompletedScore / statusCount.completed) * 100) / 100
-        : 0;
-
-      return {
-        projectRoundId: null,
-        projectId: project.id,
-        projectTitle: project.title,
-        submitterName: project.submitterName,
-        submitterEmail: project.submitterEmail,
-        sessionId: project.sessionId,
-        sessionName: project.session?.name || null,
-        promotionStatus: 'pending',
-        nextSessionId: null,
-        nextSessionName: null,
-        averageScore: avgScore,
-        totalAssignments: project.assignments.length,
-        completedAssignments: statusCount.completed,
-        pendingAssignments: statusCount.pending,
-        inProgressAssignments: statusCount.in_progress,
-        judges: project.assignments.map((assignment) => ({
-          assignmentId: assignment.id,
-          judgeId: assignment.judgeId,
-          judgeName: assignment.judge.name,
-          judgeEmail: assignment.judge.email,
-          status: assignment.status,
-          totalScore: assignment.totalScore,
-          comment: assignment.comment,
-          scores: assignment.scores,
-          scoredAt: assignment.updatedAt,
-        })),
-      };
-    });
-  }
-
   report.sort((a, b) => {
     if (b.averageScore !== a.averageScore) return b.averageScore - a.averageScore;
     return a.projectTitle.localeCompare(b.projectTitle);
@@ -2356,31 +1734,27 @@ app.get('/api/reports/projects', requireAdmin, async (req, res) => {
 });
 
 app.get('/api/reports/scoring', requireAdmin, async (req, res) => {
-  const { hackathonId, sessionId } = req.query;
+  const { hackathonId } = req.query;
+  const hackathonIdValue = await getScopedHackathonId(hackathonId);
 
   const assignments = await prisma.assignment.findMany({
     where: {
       status: 'completed',
-      ...(hackathonId ? { session: { hackathonId: String(hackathonId) } } : {}),
-      ...(sessionId ? { sessionId: String(sessionId) } : {}),
+      ...(hackathonIdValue ? { project: { hackathonId: hackathonIdValue } } : {}),
     },
     include: {
       project: true,
       judge: true,
       scores: true,
-      session: true,
-      projectRound: true,
     }
   });
 
   const report = assignments.map(a => ({
     assignmentId: a.id,
     projectId: a.projectId,
-    projectRoundId: a.projectRoundId,
     projectTitle: a.project.title,
     judgeId: a.judgeId,
     judgeName: a.judge.name,
-    sessionName: a.session.name,
     totalScore: a.totalScore,
     comment: a.comment,
     scores: a.scores,
@@ -2388,6 +1762,288 @@ app.get('/api/reports/scoring', requireAdmin, async (req, res) => {
   }));
 
   res.json(report);
+});
+
+// ===== Hackathon Judges =====
+
+app.get('/api/hackathon/judges', requireAdmin, async (_req, res) => {
+  const currentHackathon = await getCurrentHackathon();
+  if (!currentHackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  const memberships = await prisma.hackathonJudge.findMany({
+    where: { hackathonId: currentHackathon.id },
+    include: {
+      user: {
+        select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  res.json(memberships.map((membership) => membership.user));
+});
+
+app.post('/api/hackathon/judges', requireAdmin, async (req, res) => {
+  const currentHackathon = await getCurrentHackathon();
+  if (!currentHackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  const judgeIds = Array.isArray(req.body?.judgeIds)
+    ? req.body.judgeIds.map((id: unknown) => asString(id)).filter(Boolean) as string[]
+    : [];
+  if (judgeIds.length === 0) {
+    return res.status(400).json({ error: 'judgeIds is required' });
+  }
+
+  const uniqueJudgeIds = dedupeIds(judgeIds);
+
+  try {
+    const users = await prisma.$transaction(async (tx) => {
+      const existingUsers = await tx.user.findMany({
+        where: {
+          id: { in: uniqueJudgeIds },
+          role: 'judge',
+        },
+        select: { id: true },
+      });
+
+      if (existingUsers.length !== uniqueJudgeIds.length) {
+        throw new Error('Some judge IDs are invalid');
+      }
+
+      for (const judgeId of uniqueJudgeIds) {
+        await tx.hackathonJudge.upsert({
+          where: {
+            hackathonId_userId: {
+              hackathonId: currentHackathon.id,
+              userId: judgeId,
+            },
+          },
+          update: {},
+          create: {
+            hackathonId: currentHackathon.id,
+            userId: judgeId,
+          },
+        });
+      }
+
+      return tx.hackathonJudge.findMany({
+        where: { hackathonId: currentHackathon.id },
+        include: {
+          user: {
+            select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+    });
+
+    res.json(users.map((membership) => membership.user));
+  } catch (error: unknown) {
+    res.status(400).json({ error: getErrorMessage(error, 'Failed to register judges') });
+  }
+});
+
+app.delete('/api/hackathon/judges/:judgeId', requireAdmin, async (req, res) => {
+  const currentHackathon = await getCurrentHackathon();
+  if (!currentHackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  const judgeId = req.params.judgeId;
+  const existingMembership = await prisma.hackathonJudge.findUnique({
+    where: {
+      hackathonId_userId: {
+        hackathonId: currentHackathon.id,
+        userId: judgeId,
+      },
+    },
+  });
+
+  if (!existingMembership) {
+    return res.status(404).json({ error: 'Judge is not registered for this hackathon' });
+  }
+
+  const blockingAssignments = await prisma.assignment.count({
+    where: {
+      judgeId,
+      project: { hackathonId: currentHackathon.id },
+    },
+  });
+
+  if (blockingAssignments > 0) {
+    return res.status(409).json({
+      error: 'Cannot remove judge registration while assignments exist in this hackathon',
+      blockingAssignments,
+    });
+  }
+
+  await prisma.hackathonJudge.delete({
+    where: {
+      hackathonId_userId: {
+        hackathonId: currentHackathon.id,
+        userId: judgeId,
+      },
+    },
+  });
+
+  res.json({ success: true });
+});
+
+app.get('/api/hackathons/:id/judges', requireAdmin, async (req, res) => {
+  const hackathonId = req.params.id;
+  const hackathon = await prisma.hackathon.findUnique({
+    where: { id: hackathonId },
+    select: { id: true },
+  });
+  if (!hackathon) {
+    return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  const memberships = await prisma.hackathonJudge.findMany({
+    where: { hackathonId },
+    include: {
+      user: {
+        select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  res.json(memberships.map((membership) => membership.user));
+});
+
+app.post('/api/hackathons/:id/judges', requireAdmin, async (req, res) => {
+  const hackathonId = req.params.id;
+  const incomingJudgeIds = Array.isArray(req.body?.judgeIds)
+    ? req.body.judgeIds.map((value: unknown) => asString(value)).filter(Boolean) as string[]
+    : [];
+  const judgeIds = dedupeIds(incomingJudgeIds);
+
+  if (judgeIds.length === 0) {
+    return res.status(400).json({ error: 'judgeIds is required' });
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const hackathon = await tx.hackathon.findUnique({
+        where: { id: hackathonId },
+        select: { id: true },
+      });
+      if (!hackathon) {
+        throw new Error('Hackathon not found');
+      }
+
+      const judges = await tx.user.findMany({
+        where: {
+          id: { in: judgeIds },
+          role: 'judge',
+        },
+        select: { id: true },
+      });
+      if (judges.length !== judgeIds.length) {
+        throw new Error('Some judges were not found');
+      }
+
+      for (const judgeId of judgeIds) {
+        await tx.hackathonJudge.upsert({
+          where: {
+            hackathonId_userId: {
+              hackathonId,
+              userId: judgeId,
+            },
+          },
+          update: {},
+          create: {
+            hackathonId,
+            userId: judgeId,
+          },
+        });
+      }
+    });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Failed to register judges');
+    if (message.includes('not found')) {
+      return res.status(404).json({ error: message });
+    }
+    return res.status(400).json({ error: message });
+  }
+
+  const memberships = await prisma.hackathonJudge.findMany({
+    where: { hackathonId },
+    include: {
+      user: {
+        select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  res.json(memberships.map((membership) => membership.user));
+});
+
+app.delete('/api/hackathons/:id/judges/:judgeId', requireAdmin, async (req, res) => {
+  const hackathonId = req.params.id;
+  const judgeId = req.params.judgeId;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const membership = await tx.hackathonJudge.findUnique({
+        where: {
+          hackathonId_userId: {
+            hackathonId,
+            userId: judgeId,
+          },
+        },
+      });
+      if (!membership) {
+        throw new Error('Judge registration not found');
+      }
+
+      const blockingAssignment = await tx.assignment.findFirst({
+        where: {
+          judgeId,
+          project: { hackathonId },
+        },
+        select: {
+          id: true,
+        },
+      });
+      if (blockingAssignment) {
+        const blockedError = new Error('Cannot remove judge registration while assignments exist in this hackathon') as Error & {
+          code?: string;
+        };
+        blockedError.code = 'JUDGE_REGISTRATION_BLOCKED_BY_ASSIGNMENTS';
+        throw blockedError;
+      }
+      await tx.hackathonJudge.delete({
+        where: {
+          hackathonId_userId: {
+            hackathonId,
+            userId: judgeId,
+          },
+        },
+      });
+    });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error, 'Failed to remove judge registration');
+    const typedError = error as { code?: string } | null;
+    if (typedError?.code === 'JUDGE_REGISTRATION_BLOCKED_BY_ASSIGNMENTS') {
+      return res.status(400).json({
+        error: message,
+        code: typedError.code,
+      });
+    }
+    if (message.includes('not found')) {
+      return res.status(404).json({ error: message });
+    }
+    return res.status(400).json({ error: message });
+  }
+
+  res.json({ success: true });
 });
 
 // ===== Users =====
@@ -2426,7 +2082,7 @@ app.post('/api/users', requireAdmin, async (req, res) => {
     if (existing) {
       return res.status(409).json({ error: 'A user with this email already exists' });
     }
-    const hashedPassword = bcrypt.hashSync(passwordValue, 10);
+    const hashedPassword = await bcrypt.hash(passwordValue, 10);
     const user = await prisma.user.create({
       data: {
         email: emailValue,
@@ -2445,15 +2101,20 @@ app.post('/api/users', requireAdmin, async (req, res) => {
 
 app.delete('/api/users/:id', requireAdmin, async (req, res) => {
   try {
-    // Delete scores, then assignments, then user
-    await prisma.score.deleteMany({
-      where: { assignment: { judgeId: req.params.id } }
-    });
-    await prisma.assignment.deleteMany({
-      where: { judgeId: req.params.id }
-    });
-    await prisma.user.delete({
-      where: { id: req.params.id }
+    // Delete all related records in a transaction: scores → assignments → hackathon memberships → user
+    await prisma.$transaction(async (tx) => {
+      await tx.score.deleteMany({
+        where: { assignment: { judgeId: req.params.id } },
+      });
+      await tx.assignment.deleteMany({
+        where: { judgeId: req.params.id },
+      });
+      await tx.hackathonJudge.deleteMany({
+        where: { userId: req.params.id },
+      });
+      await tx.user.delete({
+        where: { id: req.params.id },
+      });
     });
     res.json({ success: true });
   } catch (error) {
@@ -2481,7 +2142,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const valid = bcrypt.compareSync(passwordValue, user.password);
+    const valid = await bcrypt.compare(passwordValue, user.password);
     if (!valid) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }

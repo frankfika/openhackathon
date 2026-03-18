@@ -12,7 +12,6 @@ describe('calculateProjectScore', () => {
     overrides: Partial<Assignment> = {}
   ): Assignment => ({
     id: 'a1',
-    sessionId: 's1',
     projectId: 'p1',
     judgeId: 'j1',
     status: 'completed',
@@ -93,11 +92,11 @@ describe('getProjectsWithScores', () => {
     ]
     const assignments: Assignment[] = [
       {
-        id: 'a1', sessionId: 's1', projectId: 'p1',
+        id: 'a1', projectId: 'p1',
         judgeId: 'j1', status: 'completed', totalScore: 80,
       },
       {
-        id: 'a2', sessionId: 's1', projectId: 'p2',
+        id: 'a2', projectId: 'p2',
         judgeId: 'j1', status: 'completed', totalScore: 95,
       },
     ]

@@ -5,9 +5,6 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { app, prisma } from '../server';
 
 const DEFAULT_PASSWORD = 'secret123';
-type BulkPromotionResponseItem = {
-  success: boolean;
-};
 type ProjectReportJudge = {
   status: 'pending' | 'in_progress' | 'completed';
 };
@@ -23,18 +20,6 @@ async function seedHackathon() {
       status: 'published',
       coverGradient: 'from-blue-500 to-cyan-500',
       submissionSchema: {},
-      sessions: {
-        create: [
-          {
-            name: 'Preliminary',
-            type: 'preliminary',
-            region: '北京',
-            status: 'active',
-            startAt: new Date('2026-01-10T10:00:00.000Z'),
-            endAt: new Date('2026-01-10T18:00:00.000Z'),
-          },
-        ],
-      },
       scoringCriteria: {
         create: [
           { name: 'Innovation', maxScore: 60, sortOrder: 0 },
@@ -43,20 +28,18 @@ async function seedHackathon() {
       },
     },
     include: {
-      sessions: true,
       scoringCriteria: true,
     },
   });
 
   return {
     hackathon,
-    session: hackathon.sessions[0],
     criteria: hackathon.scoringCriteria,
   };
 }
 
 async function createJudge(email = 'judge@example.com', name = 'Judge One') {
-  return prisma.user.create({
+  const judge = await prisma.user.create({
     data: {
       email,
       name,
@@ -64,14 +47,28 @@ async function createJudge(email = 'judge@example.com', name = 'Judge One') {
       password: bcrypt.hashSync(DEFAULT_PASSWORD, 10),
     },
   });
+
+  const hackathons = await prisma.hackathon.findMany({
+    select: { id: true },
+  });
+  if (hackathons.length > 0) {
+    await prisma.hackathonJudge.createMany({
+      data: hackathons.map((hackathon) => ({
+        hackathonId: hackathon.id,
+        userId: judge.id,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  return judge;
 }
 
-async function createProject(params: { hackathonId: string; sessionId: string; title: string }) {
-  const { hackathonId, sessionId, title } = params;
+async function createProject(params: { hackathonId: string; title: string }) {
+  const { hackathonId, title } = params;
   const project = await prisma.project.create({
     data: {
       hackathonId,
-      sessionId,
       title,
       oneLiner: `${title} one-liner`,
       description: `${title} description`,
@@ -82,21 +79,6 @@ async function createProject(params: { hackathonId: string; sessionId: string; t
       submitterName: 'Project Owner',
       submissionData: {},
       status: 'submitted',
-    },
-  });
-
-  await prisma.projectRound.upsert({
-    where: {
-      projectId_sessionId: {
-        projectId: project.id,
-        sessionId,
-      },
-    },
-    update: {},
-    create: {
-      projectId: project.id,
-      sessionId,
-      promotionStatus: 'pending',
     },
   });
 
@@ -134,6 +116,7 @@ describe('API integration tests (real database)', () => {
     it('returns default site settings when none exist', async () => {
       const res = await request(app).get('/api/site-settings').expect(200);
       expect(res.body.siteName).toBe('OpenHackathon');
+      expect(res.body.adminBasePath).toBe('/admin');
       expect(res.body.tabTitle).toBe('OpenHackathon');
       expect(res.body.showPoweredBy).toBe(true);
     });
@@ -143,6 +126,7 @@ describe('API integration tests (real database)', () => {
         .put('/api/site-settings')
         .send({
           siteName: 'My Hackathon Hub',
+          adminBasePath: 'secret-console/',
           tabTitle: 'My Hackathon Hub Admin',
           seoTitle: 'Best Hackathon Platform',
           seoDescription: 'Custom SEO description',
@@ -155,6 +139,7 @@ describe('API integration tests (real database)', () => {
         .expect(200);
 
       expect(updateRes.body.siteName).toBe('My Hackathon Hub');
+      expect(updateRes.body.adminBasePath).toBe('/secret-console');
       expect(updateRes.body.logoUrl).toBe('https://cdn.example.com/logo.svg');
       expect(updateRes.body.showPoweredBy).toBe(false);
 
@@ -168,7 +153,7 @@ describe('API integration tests (real database)', () => {
   });
 
   describe('Hackathons', () => {
-    it('creates and fetches hackathons with nested sessions and scoring criteria', async () => {
+    it('creates and fetches hackathons with scoring criteria', async () => {
       const payload = {
         title: 'City Hack',
         tagline: 'Hack for good',
@@ -178,15 +163,6 @@ describe('API integration tests (real database)', () => {
         status: 'draft',
         coverGradient: 'from-red-400 to-orange-500',
         submissionSchema: { sections: [{ key: 'pitch' }] },
-        sessions: [
-          {
-            name: 'Round 1',
-            type: 'preliminary',
-            status: 'draft',
-            startAt: '2026-02-01T10:00:00.000Z',
-            endAt: '2026-02-01T18:00:00.000Z',
-          },
-        ],
         scoringCriteria: [
           { name: 'Impact', maxScore: 50, sortOrder: 0 },
           { name: 'Feasibility', maxScore: 50, sortOrder: 1 },
@@ -195,7 +171,6 @@ describe('API integration tests (real database)', () => {
 
       const createRes = await request(app).post('/api/hackathons').send(payload).expect(200);
       expect(createRes.body.title).toBe('City Hack');
-      expect(createRes.body.sessions).toHaveLength(1);
       expect(createRes.body.scoringCriteria).toHaveLength(2);
 
       const listRes = await request(app).get('/api/hackathons').expect(200);
@@ -209,8 +184,8 @@ describe('API integration tests (real database)', () => {
       expect(detailRes.body.scoringCriteria[0].name).toBe('Impact');
     });
 
-    it('updates hackathon fields, updates existing sessions, and creates new sessions', async () => {
-      const { hackathon, session } = await seedHackathon();
+    it('updates hackathon fields and scoring criteria', async () => {
+      const { hackathon } = await seedHackathon();
 
       const payload = {
         title: 'OpenHack Updated',
@@ -221,23 +196,6 @@ describe('API integration tests (real database)', () => {
         status: 'active',
         coverGradient: 'from-green-400 to-emerald-600',
         submissionSchema: { sections: [{ key: 'video' }] },
-        sessions: [
-          {
-            id: session.id,
-            name: 'Preliminary Updated',
-            type: 'preliminary',
-            status: 'judging',
-            startAt: '2026-01-11T10:00:00.000Z',
-            endAt: '2026-01-11T18:00:00.000Z',
-          },
-          {
-            name: 'Final Round',
-            type: 'final',
-            status: 'draft',
-            startAt: '2026-01-12T10:00:00.000Z',
-            endAt: '2026-01-12T18:00:00.000Z',
-          },
-        ],
         scoringCriteria: [
           { name: 'Novelty', maxScore: 70, sortOrder: 0 },
           { name: 'Quality', maxScore: 30, sortOrder: 1 },
@@ -250,7 +208,6 @@ describe('API integration tests (real database)', () => {
         .expect(200);
 
       expect(updateRes.body.title).toBe('OpenHack Updated');
-      expect(updateRes.body.sessions).toHaveLength(2);
       expect(updateRes.body.scoringCriteria).toHaveLength(2);
 
       const criteria = await prisma.scoringCriterion.findMany({
@@ -258,11 +215,6 @@ describe('API integration tests (real database)', () => {
         orderBy: { sortOrder: 'asc' },
       });
       expect(criteria.map((c) => c.name)).toEqual(['Novelty', 'Quality']);
-
-      const sessions = await prisma.session.findMany({ where: { hackathonId: hackathon.id } });
-      expect(sessions).toHaveLength(2);
-      expect(sessions.some((s) => s.name === 'Preliminary Updated')).toBe(true);
-      expect(sessions.some((s) => s.name === 'Final Round')).toBe(true);
     });
 
     it('stores, reads, and deletes local markdown documents for a hackathon', async () => {
@@ -304,12 +256,11 @@ describe('API integration tests (real database)', () => {
 
   describe('Projects', () => {
     it('runs full project CRUD with related assignment cleanup', async () => {
-      const { hackathon, session } = await seedHackathon();
+      const { hackathon } = await seedHackathon();
       const judge = await createJudge();
 
       const createPayload = {
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Vision AI',
         oneLiner: 'Computer vision helper',
         description: 'Detects defects in real time',
@@ -363,7 +314,6 @@ describe('API integration tests (real database)', () => {
 
       await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId,
           judgeId: judge.id,
           status: 'pending',
@@ -379,12 +329,11 @@ describe('API integration tests (real database)', () => {
     });
 
     it('supports resending submission receipt and persists latest delivery status', async () => {
-      const { hackathon, session } = await seedHackathon();
+      const { hackathon } = await seedHackathon();
       const createRes = await request(app)
         .post('/api/projects')
         .send({
           hackathonId: hackathon.id,
-          sessionId: session.id,
           title: 'Resend Test Project',
           submitterEmail: 'resend-owner@example.com',
           submitterName: 'Resend Owner',
@@ -413,12 +362,11 @@ describe('API integration tests (real database)', () => {
     });
 
     it('requires submitterEmail for public project submission', async () => {
-      const { hackathon, session } = await seedHackathon();
+      const { hackathon } = await seedHackathon();
       const res = await request(app)
         .post('/api/projects')
         .send({
           hackathonId: hackathon.id,
-          sessionId: session.id,
           title: 'No Email Project',
         })
         .expect(400);
@@ -427,12 +375,11 @@ describe('API integration tests (real database)', () => {
     });
 
     it('validates submitterEmail format for public submission', async () => {
-      const { hackathon, session } = await seedHackathon();
+      const { hackathon } = await seedHackathon();
       const res = await request(app)
         .post('/api/projects')
         .send({
           hackathonId: hackathon.id,
-          sessionId: session.id,
           title: 'Invalid Email Project',
           submitterEmail: 'invalid-email',
         })
@@ -442,7 +389,7 @@ describe('API integration tests (real database)', () => {
     });
 
     it('rate limits repeated public submissions from the same submitter email', async () => {
-      const { hackathon, session } = await seedHackathon();
+      const { hackathon } = await seedHackathon();
       const maxSubmissions = Number(process.env.SUBMISSION_RATE_LIMIT_MAX || 30);
       const allowedSubmissions = Number.isFinite(maxSubmissions) && maxSubmissions > 0
         ? Math.min(Math.floor(maxSubmissions), 20)
@@ -454,7 +401,6 @@ describe('API integration tests (real database)', () => {
           .post('/api/projects')
           .send({
             hackathonId: hackathon.id,
-            sessionId: session.id,
             title: `Rate Limit Project ${i + 1}`,
             submitterEmail,
             submitterName: 'Rate Limit Tester',
@@ -466,7 +412,6 @@ describe('API integration tests (real database)', () => {
         .post('/api/projects')
         .send({
           hackathonId: hackathon.id,
-          sessionId: session.id,
           title: 'Rate Limit Project Blocked',
           submitterEmail,
           submitterName: 'Rate Limit Tester',
@@ -589,17 +534,15 @@ describe('API integration tests (real database)', () => {
     });
 
     it('deletes user and cascades assignment + score cleanup', async () => {
-      const { hackathon, session, criteria } = await seedHackathon();
+      const { hackathon, criteria } = await seedHackathon();
       const judge = await createJudge('cascade.judge@example.com', 'Cascade Judge');
       const project = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Cascade Project',
       });
 
       const assignment = await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: project.id,
           judgeId: judge.id,
           status: 'completed',
@@ -625,27 +568,92 @@ describe('API integration tests (real database)', () => {
       expect(assignmentCount).toBe(0);
       expect(scoreCount).toBe(0);
     });
+
+    it('registers and unregisters judges per hackathon', async () => {
+      const { hackathon } = await seedHackathon();
+      const judge = await prisma.user.create({
+        data: {
+          email: 'membership.judge@example.com',
+          name: 'Membership Judge',
+          role: 'judge',
+          password: bcrypt.hashSync(DEFAULT_PASSWORD, 10),
+        },
+      });
+
+      const registerRes = await request(app)
+        .post(`/api/hackathons/${hackathon.id}/judges`)
+        .send({ judgeIds: [judge.id] })
+        .expect(200);
+      expect(registerRes.body).toHaveLength(1);
+      expect(registerRes.body[0].id).toBe(judge.id);
+
+      const listRes = await request(app)
+        .get(`/api/hackathons/${hackathon.id}/judges`)
+        .expect(200);
+      expect(listRes.body).toHaveLength(1);
+      expect(listRes.body[0].email).toBe('membership.judge@example.com');
+
+      await request(app)
+        .delete(`/api/hackathons/${hackathon.id}/judges/${judge.id}`)
+        .expect(200);
+
+      const listAfterDelete = await request(app)
+        .get(`/api/hackathons/${hackathon.id}/judges`)
+        .expect(200);
+      expect(listAfterDelete.body).toEqual([]);
+    });
+
+    it('blocks judge unregister when assignments still exist in the hackathon', async () => {
+      const { hackathon } = await seedHackathon();
+      const judge = await createJudge('membership.locked@example.com', 'Membership Locked Judge');
+      const project = await createProject({
+        hackathonId: hackathon.id,
+        title: 'Membership Locked Project',
+      });
+
+      await prisma.assignment.create({
+        data: {
+          projectId: project.id,
+          judgeId: judge.id,
+          status: 'pending',
+        },
+      });
+
+      const res = await request(app)
+        .delete(`/api/hackathons/${hackathon.id}/judges/${judge.id}`)
+        .expect(400);
+      expect(String(res.body.error)).toContain('assignments exist');
+      expect(res.body.code).toBe('JUDGE_REGISTRATION_BLOCKED_BY_ASSIGNMENTS');
+
+      const membership = await prisma.hackathonJudge.findUnique({
+        where: {
+          hackathonId_userId: {
+            hackathonId: hackathon.id,
+            userId: judge.id,
+          },
+        },
+      });
+      expect(membership).toBeTruthy();
+    });
   });
 
   describe('Assignments and Scores', () => {
     it('supports bulk assignment upsert and avoids duplicates', async () => {
-      const { hackathon, session } = await seedHackathon();
+      const { hackathon } = await seedHackathon();
       const judge = await createJudge('bulk.judge@example.com', 'Bulk Judge');
       const projectA = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Project A',
       });
       const projectB = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Project B',
       });
 
       const payload = {
         assignments: [
-          { sessionId: session.id, projectId: projectA.id, judgeId: judge.id },
-          { sessionId: session.id, projectId: projectB.id, judgeId: judge.id },
+          { projectId: projectA.id, judgeId: judge.id },
+          { projectId: projectB.id, judgeId: judge.id },
         ],
       };
 
@@ -668,18 +676,50 @@ describe('API integration tests (real database)', () => {
       expect(afterDelete).toBe(1);
     });
 
+    it('rejects assignment when judge is not registered to the hackathon', async () => {
+      const { hackathon } = await seedHackathon();
+      const unregisteredJudge = await prisma.user.create({
+        data: {
+          email: 'unregistered.assign@example.com',
+          name: 'Unregistered Assign Judge',
+          role: 'judge',
+          password: bcrypt.hashSync(DEFAULT_PASSWORD, 10),
+        },
+      });
+      const project = await createProject({
+        hackathonId: hackathon.id,
+        title: 'Unregistered Assignment Target',
+      });
+
+      const res = await request(app)
+        .post('/api/assignments')
+        .send({
+          assignments: [
+            { projectId: project.id, judgeId: unregisteredJudge.id },
+          ],
+        })
+        .expect(400);
+
+      expect(String(res.body.error)).toContain('not registered');
+      const count = await prisma.assignment.count({
+        where: {
+          projectId: project.id,
+          judgeId: unregisteredJudge.id,
+        },
+      });
+      expect(count).toBe(0);
+    });
+
     it('updates assignment status to in_progress', async () => {
-      const { hackathon, session } = await seedHackathon();
+      const { hackathon } = await seedHackathon();
       const judge = await createJudge('status.judge@example.com', 'Status Judge');
       const project = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Status Project',
       });
 
       const assignment = await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: project.id,
           judgeId: judge.id,
           status: 'pending',
@@ -688,6 +728,10 @@ describe('API integration tests (real database)', () => {
 
       const updateRes = await request(app)
         .put(`/api/assignments/${assignment.id}/status`)
+        .set('x-test-role', 'judge')
+        .set('x-test-user-id', judge.id)
+        .set('x-test-email', judge.email)
+        .set('x-test-name', judge.name)
         .send({ status: 'in_progress' })
         .expect(200);
 
@@ -700,17 +744,15 @@ describe('API integration tests (real database)', () => {
     });
 
     it('submits scores, computes totalScore, and persists score rows', async () => {
-      const { hackathon, session, criteria } = await seedHackathon();
+      const { hackathon, criteria } = await seedHackathon();
       const judge = await createJudge('score.judge@example.com', 'Score Judge');
       const project = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Score Project',
       });
 
       const assignment = await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: project.id,
           judgeId: judge.id,
           status: 'pending',
@@ -719,6 +761,10 @@ describe('API integration tests (real database)', () => {
 
       const submitRes = await request(app)
         .post(`/api/assignments/${assignment.id}/scores`)
+        .set('x-test-role', 'judge')
+        .set('x-test-user-id', judge.id)
+        .set('x-test-email', judge.email)
+        .set('x-test-name', judge.name)
         .send({
           scores: [
             { criterionId: criteria[0].id, score: 45 },
@@ -744,214 +790,67 @@ describe('API integration tests (real database)', () => {
       expect(scoresInDb).toHaveLength(2);
       expect(scoresInDb.map((s) => s.score).sort((a, b) => a - b)).toEqual([35, 45]);
     });
-  });
 
-  describe('Project Rounds and Promotions', () => {
-    it('initializes project rounds for a session', async () => {
-      const { hackathon, session } = await seedHackathon();
-      const projectA = await createProject({
-        hackathonId: hackathon.id,
-        sessionId: session.id,
-        title: 'Round Init A',
-      });
-      const projectB = await createProject({
-        hackathonId: hackathon.id,
-        sessionId: session.id,
-        title: 'Round Init B',
-      });
-
-      const res = await request(app)
-        .post('/api/project-rounds/initialize')
-        .send({ sessionId: session.id })
-        .expect(200);
-
-      expect(res.body.initializedCount).toBe(2);
-
-      const rounds = await prisma.projectRound.findMany({
-        where: { sessionId: session.id },
-        orderBy: { projectId: 'asc' },
-      });
-      expect(rounds).toHaveLength(2);
-      expect(rounds.map((round) => round.projectId)).toEqual([projectA.id, projectB.id].sort());
-    });
-
-    it('advances a project to next round and auto-creates next-round assignments', async () => {
-      const { hackathon, session } = await seedHackathon();
-      const finalSession = await prisma.session.create({
-        data: {
-          hackathonId: hackathon.id,
-          name: 'Final Round',
-          type: 'final',
-          status: 'draft',
-          startAt: new Date('2026-01-11T10:00:00.000Z'),
-          endAt: new Date('2026-01-11T18:00:00.000Z'),
-        },
-      });
-
-      const judgeA = await createJudge('promo.a@example.com', 'Promo Judge A');
-      const judgeB = await createJudge('promo.b@example.com', 'Promo Judge B');
-
+    it('forbids admins from changing judge progress or submitting scores', async () => {
+      const { hackathon, criteria } = await seedHackathon();
+      const judge = await createJudge('locked-down.judge@example.com', 'Locked Down Judge');
       const project = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
-        title: 'Promotion Project',
+        title: 'Permission Boundary Project',
       });
 
-      const currentRound = await prisma.projectRound.findUnique({
-        where: {
-          projectId_sessionId: {
-            projectId: project.id,
-            sessionId: session.id,
-          },
-        },
-      });
-      expect(currentRound).toBeTruthy();
-
-      const currentAssignment = await prisma.assignment.create({
+      const assignment = await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: project.id,
-          projectRoundId: currentRound!.id,
-          judgeId: judgeA.id,
-          status: 'completed',
-          totalScore: 88,
+          judgeId: judge.id,
+          status: 'pending',
         },
       });
 
-      const promoteRes = await request(app)
-        .put(`/api/project-rounds/${currentRound!.id}/promotion`)
+      await request(app)
+        .put(`/api/assignments/${assignment.id}/status`)
+        .set('x-test-role', 'admin')
+        .send({ status: 'in_progress' })
+        .expect(403);
+
+      await request(app)
+        .post(`/api/assignments/${assignment.id}/scores`)
+        .set('x-test-role', 'admin')
         .send({
-          decision: 'advanced',
-          nextSessionId: finalSession.id,
-          judgeIds: [judgeB.id],
-        })
-        .expect(200);
-
-      expect(promoteRes.body.promotionStatus).toBe('advanced');
-      expect(promoteRes.body.nextSessionId).toBe(finalSession.id);
-
-      const nextRound = await prisma.projectRound.findUnique({
-        where: {
-          projectId_sessionId: {
-            projectId: project.id,
-            sessionId: finalSession.id,
-          },
-        },
-      });
-      expect(nextRound).toBeTruthy();
-      expect(nextRound?.sourceRoundId).toBe(currentRound!.id);
-
-      const previousAssignment = await prisma.assignment.findUnique({
-        where: { id: currentAssignment.id },
-      });
-      expect(previousAssignment?.isLocked).toBe(true);
-
-      const nextAssignments = await prisma.assignment.findMany({
-        where: {
-          sessionId: finalSession.id,
-          projectId: project.id,
-        },
-      });
-      expect(nextAssignments).toHaveLength(1);
-      expect(nextAssignments[0].judgeId).toBe(judgeB.id);
-      expect(nextAssignments[0].projectRoundId).toBe(nextRound?.id);
-      expect(nextAssignments[0].status).toBe('pending');
-    });
-
-    it('applies bulk promotion decisions', async () => {
-      const { hackathon, session } = await seedHackathon();
-      const finalSession = await prisma.session.create({
-        data: {
-          hackathonId: hackathon.id,
-          name: 'Final Stage',
-          type: 'final',
-          status: 'draft',
-          startAt: new Date('2026-01-11T10:00:00.000Z'),
-          endAt: new Date('2026-01-11T18:00:00.000Z'),
-        },
-      });
-      const judge = await createJudge('promo.bulk@example.com', 'Promo Bulk Judge');
-
-      const projectA = await createProject({
-        hackathonId: hackathon.id,
-        sessionId: session.id,
-        title: 'Bulk Promotion A',
-      });
-      const projectB = await createProject({
-        hackathonId: hackathon.id,
-        sessionId: session.id,
-        title: 'Bulk Promotion B',
-      });
-
-      const roundA = await prisma.projectRound.findUnique({
-        where: {
-          projectId_sessionId: {
-            projectId: projectA.id,
-            sessionId: session.id,
-          },
-        },
-      });
-      const roundB = await prisma.projectRound.findUnique({
-        where: {
-          projectId_sessionId: {
-            projectId: projectB.id,
-            sessionId: session.id,
-          },
-        },
-      });
-
-      const bulkRes = await request(app)
-        .post('/api/project-rounds/promotions/bulk')
-        .send({
-          nextSessionId: finalSession.id,
-          judgeIds: [judge.id],
-          decisions: [
-            { projectRoundId: roundA?.id, decision: 'advanced' },
-            { projectRoundId: roundB?.id, decision: 'eliminated' },
+          scores: [
+            { criterionId: criteria[0].id, score: 45 },
+            { criterionId: criteria[1].id, score: 35 },
           ],
+          comment: 'Admin should not be able to score',
+          status: 'completed',
         })
-        .expect(200);
+        .expect(403);
 
-      expect(bulkRes.body).toHaveLength(2);
-      expect((bulkRes.body as BulkPromotionResponseItem[]).every((item) => item.success)).toBe(true);
-
-      const updatedA = await prisma.projectRound.findUnique({ where: { id: roundA!.id } });
-      const updatedB = await prisma.projectRound.findUnique({ where: { id: roundB!.id } });
-      expect(updatedA?.promotionStatus).toBe('advanced');
-      expect(updatedA?.nextSessionId).toBe(finalSession.id);
-      expect(updatedB?.promotionStatus).toBe('eliminated');
-
-      const nextAssignments = await prisma.assignment.findMany({
-        where: {
-          sessionId: finalSession.id,
-          projectId: projectA.id,
-        },
+      const assignmentInDb = await prisma.assignment.findUnique({
+        where: { id: assignment.id },
       });
-      expect(nextAssignments).toHaveLength(1);
-      expect(nextAssignments[0].judgeId).toBe(judge.id);
+      expect(assignmentInDb?.status).toBe('pending');
+      expect(assignmentInDb?.totalScore).toBeNull();
     });
   });
 
   describe('Dashboard, Leaderboard, Reports', () => {
     it('returns dashboard stats from real data for admin and judge', async () => {
-      const { hackathon, session } = await seedHackathon();
+      const { hackathon } = await seedHackathon();
       const judge1 = await createJudge('judge1@example.com', 'Judge 1');
       const judge2 = await createJudge('judge2@example.com', 'Judge 2');
 
       const project1 = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Stats Project 1',
       });
       const project2 = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Stats Project 2',
       });
 
       await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: project1.id,
           judgeId: judge1.id,
           status: 'completed',
@@ -960,7 +859,6 @@ describe('API integration tests (real database)', () => {
       });
       await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: project2.id,
           judgeId: judge1.id,
           status: 'pending',
@@ -968,7 +866,6 @@ describe('API integration tests (real database)', () => {
       });
       await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: project1.id,
           judgeId: judge2.id,
           status: 'completed',
@@ -998,23 +895,20 @@ describe('API integration tests (real database)', () => {
     });
 
     it('returns score-based leaderboard and curated leaderboard when published', async () => {
-      const { hackathon, session } = await seedHackathon();
+      const { hackathon } = await seedHackathon();
       const judge = await createJudge('leaderboard.judge@example.com', 'Leaderboard Judge');
 
       const projectA = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Leaderboard A',
       });
       const projectB = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Leaderboard B',
       });
 
       await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: projectA.id,
           judgeId: judge.id,
           status: 'completed',
@@ -1023,7 +917,6 @@ describe('API integration tests (real database)', () => {
       });
       await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: projectB.id,
           judgeId: judge.id,
           status: 'completed',
@@ -1069,22 +962,19 @@ describe('API integration tests (real database)', () => {
     });
 
     it('returns scoring report with completed assignments only', async () => {
-      const { hackathon, session, criteria } = await seedHackathon();
+      const { hackathon, criteria } = await seedHackathon();
       const judge = await createJudge('report.judge@example.com', 'Report Judge');
       const projectDone = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Report Done',
       });
       const projectPending = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Report Pending',
       });
 
       const completed = await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: projectDone.id,
           judgeId: judge.id,
           status: 'completed',
@@ -1109,7 +999,6 @@ describe('API integration tests (real database)', () => {
 
       await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: projectPending.id,
           judgeId: judge.id,
           status: 'pending',
@@ -1117,7 +1006,7 @@ describe('API integration tests (real database)', () => {
       });
 
       const report = await request(app)
-        .get(`/api/reports/scoring?hackathonId=${hackathon.id}&sessionId=${session.id}`)
+        .get(`/api/reports/scoring?hackathonId=${hackathon.id}`)
         .expect(200);
       expect(report.body).toHaveLength(1);
       expect(report.body[0]).toMatchObject({
@@ -1130,18 +1019,16 @@ describe('API integration tests (real database)', () => {
     });
 
     it('returns project report with real-time status per judge', async () => {
-      const { hackathon, session } = await seedHackathon();
+      const { hackathon } = await seedHackathon();
       const judgeA = await createJudge('project-report-a@example.com', 'Judge A');
       const judgeB = await createJudge('project-report-b@example.com', 'Judge B');
       const project = await createProject({
         hackathonId: hackathon.id,
-        sessionId: session.id,
         title: 'Project Report Target',
       });
 
       await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: project.id,
           judgeId: judgeA.id,
           status: 'completed',
@@ -1150,7 +1037,6 @@ describe('API integration tests (real database)', () => {
       });
       await prisma.assignment.create({
         data: {
-          sessionId: session.id,
           projectId: project.id,
           judgeId: judgeB.id,
           status: 'in_progress',
@@ -1174,141 +1060,6 @@ describe('API integration tests (real database)', () => {
       const judges = reportRes.body[0].judges as ProjectReportJudge[];
       expect(judges.some((judge) => judge.status === 'completed')).toBe(true);
       expect(judges.some((judge) => judge.status === 'in_progress')).toBe(true);
-    });
-  });
-
-  describe('Session CRUD endpoints', () => {
-    it('creates a session with region', async () => {
-      const { hackathon } = await seedHackathon();
-      const res = await request(app)
-        .post(`/api/hackathons/${hackathon.id}/sessions`)
-        .send({
-          name: 'Shanghai Preliminary',
-          type: 'preliminary',
-          region: '上海',
-          status: 'draft',
-          startAt: '2026-02-01T00:00:00.000Z',
-          endAt: '2026-02-02T00:00:00.000Z',
-        })
-        .expect(200);
-      expect(res.body.name).toBe('Shanghai Preliminary');
-      expect(res.body.type).toBe('preliminary');
-      expect(res.body.region).toBe('上海');
-      expect(res.body.hackathonId).toBe(hackathon.id);
-    });
-
-    it('creates a session without region (region is null)', async () => {
-      const { hackathon } = await seedHackathon();
-      const res = await request(app)
-        .post(`/api/hackathons/${hackathon.id}/sessions`)
-        .send({
-          name: 'National Final',
-          type: 'final',
-          startAt: '2026-03-01T00:00:00.000Z',
-          endAt: '2026-03-02T00:00:00.000Z',
-        })
-        .expect(200);
-      expect(res.body.name).toBe('National Final');
-      expect(res.body.region).toBeNull();
-    });
-
-    it('rejects invalid session type on create', async () => {
-      const { hackathon } = await seedHackathon();
-      const res = await request(app)
-        .post(`/api/hackathons/${hackathon.id}/sessions`)
-        .send({
-          name: 'Bad Session',
-          type: 'invalid_type',
-          startAt: '2026-02-01T00:00:00.000Z',
-          endAt: '2026-02-02T00:00:00.000Z',
-        })
-        .expect(400);
-      expect(res.body.error).toMatch(/type/i);
-    });
-
-    it('updates session region', async () => {
-      const { hackathon, session } = await seedHackathon();
-      const res = await request(app)
-        .put(`/api/hackathons/${hackathon.id}/sessions/${session.id}`)
-        .send({ region: '广州' })
-        .expect(200);
-      expect(res.body.region).toBe('广州');
-    });
-
-    it('clears region when empty string is sent', async () => {
-      const { hackathon, session } = await seedHackathon();
-      const res = await request(app)
-        .put(`/api/hackathons/${hackathon.id}/sessions/${session.id}`)
-        .send({ region: '' })
-        .expect(200);
-      expect(res.body.region).toBeNull();
-    });
-
-    it('returns 404 when updating session in wrong hackathon', async () => {
-      const { hackathon: h1 } = await seedHackathon();
-      const { session: s2 } = await seedHackathon();
-      await request(app)
-        .put(`/api/hackathons/${h1.id}/sessions/${s2.id}`)
-        .send({ name: 'Cross hackathon' })
-        .expect(404);
-    });
-
-    it('deletes an empty session successfully', async () => {
-      const { hackathon } = await seedHackathon();
-      const newSession = await prisma.session.create({
-        data: {
-          hackathonId: hackathon.id,
-          name: 'Empty Session',
-          type: 'final',
-          status: 'draft',
-          startAt: new Date('2026-04-01'),
-          endAt: new Date('2026-04-02'),
-        },
-      });
-      const res = await request(app)
-        .delete(`/api/hackathons/${hackathon.id}/sessions/${newSession.id}`)
-        .expect(200);
-      expect(res.body.success).toBe(true);
-    });
-
-    it('returns 409 when deleting a session with projects', async () => {
-      const { hackathon, session } = await seedHackathon();
-      await createProject({ hackathonId: hackathon.id, sessionId: session.id, title: 'Blocked Project' });
-      const res = await request(app)
-        .delete(`/api/hackathons/${hackathon.id}/sessions/${session.id}`)
-        .expect(409);
-      expect(res.body.error).toBeTruthy();
-      expect(res.body.details.projectCount).toBeGreaterThan(0);
-    });
-
-    it('returns 404 when deleting a non-existent session', async () => {
-      const { hackathon } = await seedHackathon();
-      await request(app)
-        .delete(`/api/hackathons/${hackathon.id}/sessions/non-existent-session-id`)
-        .expect(404);
-    });
-
-    it('existing PUT /api/hackathons/:id propagates region in sessions', async () => {
-      const { hackathon } = await seedHackathon();
-      const res = await request(app)
-        .put(`/api/hackathons/${hackathon.id}`)
-        .send({
-          sessions: [
-            {
-              name: 'Beijing Semi Final',
-              type: 'semi_final',
-              region: '北京',
-              status: 'draft',
-              startAt: '2026-05-01T00:00:00.000Z',
-              endAt: '2026-05-02T00:00:00.000Z',
-            },
-          ],
-        })
-        .expect(200);
-      const sessions = res.body.sessions as { name: string; region: string | null }[];
-      const newSession = sessions.find((s) => s.name === 'Beijing Semi Final');
-      expect(newSession).toBeTruthy();
-      expect(newSession?.region).toBe('北京');
     });
   });
 });

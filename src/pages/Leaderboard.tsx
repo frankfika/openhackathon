@@ -1,9 +1,16 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { useAuth } from '@/lib/auth'
 import { Trophy, Medal, Award, Star, Loader2, Pencil, Save, Eye, EyeOff, Plus, X } from 'lucide-react'
@@ -13,6 +20,8 @@ import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { Project } from '@/lib/types'
+import { useAdminRoutes } from '@/lib/admin-routing'
+import { getFilterableSubmissionFields, normalizeSubmissionFieldOptions } from '@/lib/submission-fields'
 
 type LeaderboardEntry = {
   projectId: string
@@ -27,15 +36,39 @@ export function Leaderboard() {
   const location = useLocation()
   const { activeHackathon } = useActiveHackathon()
   const { user } = useAuth()
+  const { adminBasePath } = useAdminRoutes()
   const queryClient = useQueryClient()
 
-  // Only show admin controls when inside /dashboard
-  const isDashboard = location.pathname.startsWith('/dashboard')
-  const isAdmin = user?.role === 'admin' && isDashboard
+  const isAdmin = user?.role === 'admin' && location.pathname.startsWith(adminBasePath)
 
   const [editing, setEditing] = useState(false)
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
   const [published, setPublished] = useState(false)
+  const [submissionFilters, setSubmissionFilters] = useState<Record<string, string>>({})
+
+  const filterableFields = useMemo(
+    () => getFilterableSubmissionFields(activeHackathon?.submissionSchema),
+    [activeHackathon?.submissionSchema]
+  )
+
+  useEffect(() => {
+    const allowedFieldIds = new Set(filterableFields.map((field) => field.id))
+    setSubmissionFilters((previous) => {
+      const nextEntries = Object.entries(previous).filter(([fieldId, value]) => allowedFieldIds.has(fieldId) && value)
+      return Object.fromEntries(nextEntries)
+    })
+  }, [filterableFields])
+
+  const updateSubmissionFilter = (fieldId: string, value: string) => {
+    setSubmissionFilters((previous) => {
+      if (!value) {
+        const next = { ...previous }
+        delete next[fieldId]
+        return next
+      }
+      return { ...previous, [fieldId]: value }
+    })
+  }
 
   // Fetch leaderboard (public view)
   const { data: rankedProjects = [], isLoading } = useQuery<RankedProject[]>({
@@ -119,6 +152,33 @@ export function Leaderboard() {
     return fromAll?.oneLiner || ''
   }
 
+  const getFieldValue = (data: Record<string, unknown> | null | undefined, fieldId: string): string => {
+    const value = data?.[fieldId]
+    if (typeof value === 'string') return value.trim()
+    if (Array.isArray(value)) {
+      return value
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .join(', ')
+    }
+    return ''
+  }
+
+  const filteredRankedProjects = useMemo(() => {
+    const hasFilters = Object.values(submissionFilters).some(Boolean)
+    if (!hasFilters) return rankedProjects
+    return rankedProjects.filter((project) => {
+      for (const [fieldId, selectedValue] of Object.entries(submissionFilters)) {
+        if (!selectedValue) continue
+        if (getFieldValue(project.submissionData, fieldId) !== selectedValue) {
+          return false
+        }
+      }
+      return true
+    })
+  }, [rankedProjects, submissionFilters])
+
   const getRankIcon = (index: number) => {
     switch (index) {
       case 0: return <Trophy className="h-6 w-6 text-yellow-500" />
@@ -138,7 +198,7 @@ export function Leaderboard() {
   }
 
   // Public view: if not published, show placeholder
-  const isPublicView = !isDashboard
+  const isPublicView = !location.pathname.startsWith(adminBasePath)
   const isPublished = config?.leaderboardPublished ?? false
 
   if (isLoading) {
@@ -275,15 +335,48 @@ export function Leaderboard() {
             </div>
           )}
 
+          {/* Submission field filters */}
+          {!editing && filterableFields.length > 0 && (
+            <div className="flex flex-wrap gap-3">
+              {filterableFields.map((field) => {
+                const optionSet = new Set<string>(normalizeSubmissionFieldOptions(field.options))
+                for (const p of rankedProjects) {
+                  const val = getFieldValue(p.submissionData, field.id)
+                  if (val) optionSet.add(val)
+                }
+                const options = [...optionSet].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+                return (
+                  <Select
+                    key={field.id}
+                    value={submissionFilters[field.id] || '__all__'}
+                    onValueChange={(value) => updateSubmissionFilter(field.id, value === '__all__' ? '' : value)}
+                  >
+                    <SelectTrigger className="w-full md:w-44">
+                      <SelectValue placeholder={field.label} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">{t('assignments.all_filter_values')}</SelectItem>
+                      {options.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )
+              })}
+            </div>
+          )}
+
           {/* Display mode */}
           {!editing && (
             <div className="grid gap-3 md:gap-4">
-              {rankedProjects.length === 0 && (
+              {filteredRankedProjects.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
                   {t('leaderboard.no_projects', 'No projects scored yet')}
                 </div>
               )}
-              {rankedProjects.map((project, index) => (
+              {filteredRankedProjects.map((project, index) => (
                 <Card
                   key={project.id}
                   className={cn("surface-panel border-none shadow-none transition-all", getRankColor(index))}

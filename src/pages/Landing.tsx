@@ -7,7 +7,6 @@ import {
   ArrowRight,
   BookOpen,
   Calendar,
-  FolderGit2,
   Gift,
   MapPin,
 } from 'lucide-react'
@@ -15,7 +14,6 @@ import { Button } from '@/components/ui/button'
 import { formatDateRange } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useActiveHackathon } from '@/lib/active-hackathon'
-import { api } from '@/lib/api'
 
 // ─── Animation variants ──────────────────────────────────────────────
 const fadeUp = {
@@ -42,17 +40,8 @@ function HeroSection() {
   const { activeHackathon: h } = useActiveHackathon()
 
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0 })
-  const [projectCount, setProjectCount] = useState(0)
   const isEnded = h.status === 'completed'
   const targetDate = h.status === 'active' ? h.endAt : h.startAt
-
-  useEffect(() => {
-    if (h.id) {
-      api.getProjects({ hackathonId: h.id }).then(projects => {
-        setProjectCount(projects.length)
-      })
-    }
-  }, [h.id])
 
   useEffect(() => {
     function calc() {
@@ -146,31 +135,21 @@ function HeroSection() {
             </span>
           </motion.div>
 
-          {/* Stats: projects + prize */}
-          <motion.div
-            className="mt-8 inline-flex items-center gap-6 rounded-2xl border border-border/40 bg-background/60 px-6 py-4 shadow-sm backdrop-blur dark:bg-background/40"
-            variants={fadeUp}
-          >
-            <div className="flex items-center gap-2.5">
-              <FolderGit2 className="h-5 w-5 text-muted-foreground" />
-              <div className="text-left">
-                <div className="text-2xl font-bold tabular-nums">{projectCount}</div>
-                <div className="text-xs text-muted-foreground">{t('landing.stats.projects')}</div>
-              </div>
-            </div>
-            {h.prizePool && (
-              <>
-                <div className="h-8 w-px bg-border" />
-                <div className="flex items-center gap-2.5">
-                  <Gift className="h-5 w-5 text-muted-foreground" />
-                  <div className="text-left">
-                    <div className="text-2xl font-bold">{h.prizePool}</div>
-                    <div className="text-xs text-muted-foreground">{t('landing.stats.prizes')}</div>
-                  </div>
+          {/* Stats: prize */}
+          {h.prizePool && (
+            <motion.div
+              className="mt-8 inline-flex items-center gap-6 rounded-2xl border border-border/40 bg-background/60 px-6 py-4 shadow-sm backdrop-blur dark:bg-background/40"
+              variants={fadeUp}
+            >
+              <div className="flex items-center gap-2.5">
+                <Gift className="h-5 w-5 text-muted-foreground" />
+                <div className="text-left">
+                  <div className="text-2xl font-bold">{h.prizePool}</div>
+                  <div className="text-xs text-muted-foreground">{t('landing.stats.prizes')}</div>
                 </div>
-              </>
-            )}
-          </motion.div>
+              </div>
+            </motion.div>
+          )}
 
           {/* Countdown */}
           {!isEnded && (

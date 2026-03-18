@@ -3,6 +3,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import React from 'react'
 import { AuthProvider, useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
+import type { User } from '@/lib/types'
 
 // Mock the api module
 vi.mock('@/lib/api', () => ({
@@ -66,11 +67,13 @@ describe('useAuth', () => {
       expect(result.current.isLoading).toBe(false)
     })
 
+    let authenticatedUser: User | null = null
     await act(async () => {
-      await result.current.login('admin@test.com', 'password')
+      authenticatedUser = await result.current.login('admin@test.com', 'password')
     })
 
     expect(result.current.user).toEqual(mockUser)
+    expect(authenticatedUser).toEqual(mockUser)
     expect(localStorage.getItem('openhackathon_user')).toBe(JSON.stringify(mockUser))
   })
 

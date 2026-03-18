@@ -5,14 +5,10 @@ import {
   Assignment,
   User,
   AssignmentStatus,
-  ProjectRound,
-  PromotionStatus,
   SiteSettings,
-  Session,
-  SessionType,
-  SessionStatus,
   HackathonMarkdownDoc,
   HackathonUpsertInput,
+  AdminUser,
 } from './types'
 
 const API_URL = '/api'
@@ -47,6 +43,10 @@ export const api = {
   },
 
   // Hackathons
+  getCurrentHackathon: async () => {
+    const res = await axios.get<Hackathon | null>(`${API_URL}/hackathon`)
+    return res.data
+  },
   getHackathons: async () => {
     const res = await axios.get<Hackathon[]>(`${API_URL}/hackathons`)
     return res.data
@@ -63,40 +63,24 @@ export const api = {
     const res = await axios.put<Hackathon>(`${API_URL}/hackathons/${id}`, data)
     return res.data
   },
-  getHackathonMarkdownDoc: async (id: string) => {
-    const res = await axios.get<HackathonMarkdownDoc>(`${API_URL}/hackathons/${id}/markdown-doc`)
+  getHackathonMarkdownDoc: async (id?: string) => {
+    const endpoint = id ? `${API_URL}/hackathons/${id}/markdown-doc` : `${API_URL}/hackathon/markdown-doc`
+    const res = await axios.get<HackathonMarkdownDoc>(endpoint)
     return res.data
   },
-  saveHackathonMarkdownDoc: async (id: string, data: { fileName?: string; content: string }) => {
-    const res = await axios.put<HackathonMarkdownDoc>(`${API_URL}/hackathons/${id}/markdown-doc`, data)
+  saveHackathonMarkdownDoc: async (id: string | undefined, data: { fileName?: string; content: string }) => {
+    const endpoint = id ? `${API_URL}/hackathons/${id}/markdown-doc` : `${API_URL}/hackathon/markdown-doc`
+    const res = await axios.put<HackathonMarkdownDoc>(endpoint, data)
     return res.data
   },
-  deleteHackathonMarkdownDoc: async (id: string) => {
-    const res = await axios.delete(`${API_URL}/hackathons/${id}/markdown-doc`)
-    return res.data
-  },
-
-  createSession: async (hackathonId: string, data: {
-    name: string; type: SessionType; region?: string;
-    status?: SessionStatus; startAt: string; endAt: string;
-  }) => {
-    const res = await axios.post<Session>(`${API_URL}/hackathons/${hackathonId}/sessions`, data)
-    return res.data
-  },
-  updateSession: async (hackathonId: string, sessionId: string, data: {
-    name?: string; type?: SessionType; region?: string;
-    status?: SessionStatus; startAt?: string; endAt?: string;
-  }) => {
-    const res = await axios.put<Session>(`${API_URL}/hackathons/${hackathonId}/sessions/${sessionId}`, data)
-    return res.data
-  },
-  deleteSession: async (hackathonId: string, sessionId: string) => {
-    const res = await axios.delete(`${API_URL}/hackathons/${hackathonId}/sessions/${sessionId}`)
+  deleteHackathonMarkdownDoc: async (id?: string) => {
+    const endpoint = id ? `${API_URL}/hackathons/${id}/markdown-doc` : `${API_URL}/hackathon/markdown-doc`
+    const res = await axios.delete(endpoint)
     return res.data
   },
 
   // Projects
-  getProjects: async (params?: { hackathonId?: string; sessionId?: string }) => {
+  getProjects: async (params?: { hackathonId?: string }) => {
     const res = await axios.get<Project[]>(`${API_URL}/projects`, { params })
     return res.data
   },
@@ -118,11 +102,11 @@ export const api = {
   },
 
   // Assignments
-  getAssignments: async (params?: { sessionId?: string; projectId?: string; projectRoundId?: string; judgeId?: string; status?: string; hackathonId?: string }) => {
+  getAssignments: async (params?: { projectId?: string; judgeId?: string; status?: string; hackathonId?: string }) => {
     const res = await axios.get<Assignment[]>(`${API_URL}/assignments`, { params })
     return res.data
   },
-  createAssignments: async (assignments: { sessionId?: string; projectId?: string; judgeId: string; projectRoundId?: string }[]) => {
+  createAssignments: async (assignments: { projectId?: string; judgeId: string }[]) => {
     const res = await axios.post<Assignment[]>(`${API_URL}/assignments`, { assignments })
     return res.data
   },
@@ -132,32 +116,6 @@ export const api = {
   },
   deleteAssignment: async (id: string) => {
     const res = await axios.delete(`${API_URL}/assignments/${id}`)
-    return res.data
-  },
-
-  // Project Rounds / Promotions
-  getProjectRounds: async (params?: { hackathonId?: string; sessionId?: string; projectId?: string; promotionStatus?: PromotionStatus }) => {
-    const res = await axios.get<ProjectRound[]>(`${API_URL}/project-rounds`, { params })
-    return res.data
-  },
-  initializeProjectRounds: async (data: { sessionId: string; sourceSessionId?: string; projectIds?: string[] }) => {
-    const res = await axios.post<{ sessionId: string; initializedCount: number; rounds: ProjectRound[] }>(`${API_URL}/project-rounds/initialize`, data)
-    return res.data
-  },
-  updateProjectRoundPromotion: async (
-    projectRoundId: string,
-    data: { decision: PromotionStatus; nextSessionId?: string; note?: string; decidedById?: string; judgeIds?: string[] }
-  ) => {
-    const res = await axios.put<ProjectRound>(`${API_URL}/project-rounds/${projectRoundId}/promotion`, data)
-    return res.data
-  },
-  bulkUpdateProjectRoundPromotions: async (data: {
-    decisions: { projectRoundId: string; decision: PromotionStatus; nextSessionId?: string; note?: string; decidedById?: string }[];
-    nextSessionId?: string;
-    decidedById?: string;
-    judgeIds?: string[];
-  }) => {
-    const res = await axios.post(`${API_URL}/project-rounds/promotions/bulk`, data)
     return res.data
   },
 
@@ -183,7 +141,7 @@ export const api = {
   },
 
   // Leaderboard
-  getLeaderboard: async (params?: { hackathonId?: string; sessionId?: string }) => {
+  getLeaderboard: async (params?: { hackathonId?: string }) => {
     const res = await axios.get<{
       id: string;
       title: string;
@@ -193,31 +151,33 @@ export const api = {
       maxPossible: number;
       judgeCount: number;
       submitterName: string;
+      submissionData?: Record<string, unknown> | null;
       rank?: number;
       award?: string;
     }[]>(`${API_URL}/leaderboard`, { params })
     return res.data
   },
 
-  getLeaderboardConfig: async (hackathonId: string) => {
-    const res = await axios.get<{ leaderboardData: { projectId: string; rank: number; award: string }[] | null; leaderboardPublished: boolean }>(`${API_URL}/hackathons/${hackathonId}/leaderboard`)
+  getLeaderboardConfig: async (hackathonId?: string) => {
+    const endpoint = hackathonId ? `${API_URL}/hackathons/${hackathonId}/leaderboard` : `${API_URL}/hackathon/leaderboard`
+    const res = await axios.get<{ leaderboardData: { projectId: string; rank: number; award: string }[] | null; leaderboardPublished: boolean }>(endpoint)
     return res.data
   },
 
-  saveLeaderboard: async (hackathonId: string, data: { entries: { projectId: string; rank: number; award: string }[]; published: boolean }) => {
-    const res = await axios.put(`${API_URL}/hackathons/${hackathonId}/leaderboard`, data)
+  saveLeaderboard: async (hackathonId: string | undefined, data: { entries: { projectId: string; rank: number; award: string }[]; published: boolean }) => {
+    const endpoint = hackathonId ? `${API_URL}/hackathons/${hackathonId}/leaderboard` : `${API_URL}/hackathon/leaderboard`
+    const res = await axios.put(endpoint, data)
     return res.data
   },
 
   // Reports
-  getScoringReport: async (params?: { hackathonId?: string; sessionId?: string }) => {
+  getScoringReport: async (params?: { hackathonId?: string }) => {
     const res = await axios.get<{
       assignmentId: string;
       projectId: string;
       projectTitle: string;
       judgeId: string;
       judgeName: string;
-      sessionName: string;
       totalScore: number;
       comment: string;
       scores: { criterionId: string; score: number }[];
@@ -225,18 +185,12 @@ export const api = {
     }[]>(`${API_URL}/reports/scoring`, { params })
     return res.data
   },
-  getProjectScoringReport: async (params?: { hackathonId?: string; sessionId?: string }) => {
+  getProjectScoringReport: async (params?: { hackathonId?: string }) => {
     const res = await axios.get<{
-      projectRoundId?: string | null;
       projectId: string;
       projectTitle: string;
       submitterName?: string | null;
       submitterEmail: string;
-      sessionId?: string | null;
-      sessionName?: string | null;
-      promotionStatus?: PromotionStatus;
-      nextSessionId?: string | null;
-      nextSessionName?: string | null;
       averageScore: number;
       totalAssignments: number;
       completedAssignments: number;
@@ -259,11 +213,26 @@ export const api = {
 
   // Users
   getUsers: async (params?: { role?: string }) => {
-    const res = await axios.get<{ id: string; email: string; name: string; role: string; avatarUrl?: string; createdAt?: string }[]>(`${API_URL}/users`, { params })
+    const res = await axios.get<AdminUser[]>(`${API_URL}/users`, { params })
+    return res.data
+  },
+  getHackathonJudges: async (hackathonId?: string) => {
+    const endpoint = hackathonId ? `${API_URL}/hackathons/${hackathonId}/judges` : `${API_URL}/hackathon/judges`
+    const res = await axios.get<AdminUser[]>(endpoint)
+    return res.data
+  },
+  registerHackathonJudges: async (hackathonId: string | undefined, judgeIds: string[]) => {
+    const endpoint = hackathonId ? `${API_URL}/hackathons/${hackathonId}/judges` : `${API_URL}/hackathon/judges`
+    const res = await axios.post<AdminUser[]>(endpoint, { judgeIds })
+    return res.data
+  },
+  removeHackathonJudge: async (hackathonId: string | undefined, judgeId: string) => {
+    const endpoint = hackathonId ? `${API_URL}/hackathons/${hackathonId}/judges/${judgeId}` : `${API_URL}/hackathon/judges/${judgeId}`
+    const res = await axios.delete(endpoint)
     return res.data
   },
   createUser: async (data: { email: string; name: string; password: string; role?: string }) => {
-    const res = await axios.post<{ id: string; email: string; name: string; role: string }>(`${API_URL}/users`, data)
+    const res = await axios.post<AdminUser>(`${API_URL}/users`, data)
     return res.data
   },
   deleteUser: async (id: string) => {

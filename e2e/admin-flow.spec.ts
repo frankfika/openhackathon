@@ -107,31 +107,4 @@ test.describe('Admin Workflow', () => {
     await expect(page.locator('body')).toContainText(/Completed|No assignments found|Open review/i);
   });
 
-  test('admin can navigate to hackathon settings sessions tab', async ({ page }) => {
-    await page.locator('text=Hackathon Settings').click();
-    await expect(page).toHaveURL(/.*dashboard\/hackathons\/.*\/settings/);
-
-    // Click the Sessions tab
-    await page.getByRole('tab', { name: /Sessions|赛程/i }).click();
-    await expect(page.locator('body')).toContainText(/Session Management|赛程管理/i);
-  });
-
-  test('admin can create a session with region in sessions tab', async ({ page }) => {
-    await page.locator('text=Hackathon Settings').click();
-    await expect(page).toHaveURL(/.*dashboard\/hackathons\/.*\/settings/);
-
-    await page.getByRole('tab', { name: /Sessions|赛程/i }).click();
-    await page.getByRole('button', { name: /Add Session|添加赛程/i }).click();
-
-    // Fill in the session form
-    await page.getByPlaceholder(/e\.g\. Beijing|北京初赛/i).fill('Shenzhen Preliminary');
-    await page.locator('input[type="date"]').first().fill('2026-06-01');
-    await page.locator('input[type="date"]').last().fill('2026-06-02');
-
-    // Save
-    await page.getByRole('button', { name: /^Save$|^保存$/i }).last().click();
-
-    // Session should appear in the list
-    await expect(page.locator('body')).toContainText(/Shenzhen Preliminary/i);
-  });
 });

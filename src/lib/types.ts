@@ -1,6 +1,4 @@
 export type HackathonStatus = 'draft' | 'upcoming' | 'active' | 'judging' | 'completed'
-export type SessionType = 'preliminary' | 'semi_final' | 'final'
-export type SessionStatus = 'draft' | 'active' | 'judging' | 'completed'
 export type UserRole = 'admin' | 'judge'
 
 export type ScoringCriterion = {
@@ -28,6 +26,10 @@ export type SubmissionField = {
   filterable?: boolean
 }
 
+export type SubmissionSchemaConfig = {
+  fields?: SubmissionField[]
+}
+
 export type Hackathon = {
   id: string
   title: string
@@ -37,46 +39,24 @@ export type Hackathon = {
   endAt: string
   status: HackathonStatus
   coverGradient: string
-  submissionSchema?: SubmissionField[] | { fields?: SubmissionField[] }
+  submissionSchema?: SubmissionField[] | SubmissionSchemaConfig
   scoringCriteria?: ScoringCriterion[]
   rulesUrl?: string
   detailsUrl?: string
   gitbookUrl?: string
   prizePool?: string
-  sessions?: Session[]
 }
 
-export type HackathonSessionInput = {
-  id?: string
-  name: string
-  type: SessionType
-  region?: string | null
-  status?: SessionStatus
-  startAt: string
-  endAt: string
-}
-
-export type HackathonUpsertInput = Partial<Omit<Hackathon, 'submissionSchema' | 'sessions' | 'scoringCriteria'>> & {
-  submissionSchema?: { fields: SubmissionField[] }
+export type HackathonUpsertInput = Partial<Omit<Hackathon, 'submissionSchema' | 'scoringCriteria'>> & {
+  submissionSchema?: SubmissionSchemaConfig
   scoringCriteria?: ScoringCriterion[]
-  sessions?: HackathonSessionInput[]
-}
-
-export type Session = {
-  id: string
-  hackathonId: string
-  name: string
-  type: SessionType
-  region?: string | null
-  status: SessionStatus
-  startAt: string
-  endAt: string
 }
 
 export type SiteSettings = {
   id?: string
   key?: string
   siteName: string
+  adminBasePath: string
   logoUrl?: string | null
   tabTitle: string
   seoTitle: string
@@ -93,10 +73,18 @@ export type HackathonMarkdownDoc = {
   updatedAt: string
 }
 
+export type AdminUser = {
+  id: string
+  email: string
+  name: string
+  role: 'admin' | 'judge'
+  avatarUrl?: string
+  createdAt?: string
+}
+
 export type Project = {
   id: string
   hackathonId: string
-  sessionId?: string | null
   userId?: string
   submitterEmail: string
   submitterName?: string
@@ -108,7 +96,6 @@ export type Project = {
   repoUrl?: string
   status: 'draft' | 'submitted'
   submissionData?: Record<string, unknown>
-  projectRounds?: ProjectRound[]
 }
 
 export type Judge = {
@@ -129,43 +116,15 @@ export type AssignmentStatus = 'pending' | 'in_progress' | 'completed'
 
 export type Assignment = {
   id: string
-  sessionId: string
   projectId: string
-  projectRoundId?: string | null
   judgeId: string
   status: AssignmentStatus
-  isLocked?: boolean
   scores?: AssignmentScore[] | Record<string, number>
   comment?: string
   totalScore?: number
   // API response includes related objects
-  session?: Session
   project?: Project
   judge?: User
-  projectRound?: ProjectRound
-}
-
-export type PromotionStatus = 'pending' | 'advanced' | 'eliminated'
-
-export type ProjectRound = {
-  id: string
-  projectId: string
-  sessionId: string
-  sourceRoundId?: string | null
-  promotionStatus: PromotionStatus
-  nextSessionId?: string | null
-  decisionNote?: string | null
-  decidedById?: string | null
-  decidedAt?: string | null
-  averageScore?: number
-  totalAssignments?: number
-  completedAssignments?: number
-  pendingAssignments?: number
-  inProgressAssignments?: number
-  session?: Session
-  nextSession?: Session | null
-  project?: Project
-  assignments?: Assignment[]
 }
 
 const ISO_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})/

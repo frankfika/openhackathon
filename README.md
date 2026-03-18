@@ -48,6 +48,20 @@ OpenHackathon 是一个面向黑客松主办方、评委与参赛团队的全流
 
 ![Promotions](./docs/assets/promotions.png)
 
+### 4.1 Admin 评审运营架构（v2）
+- Admin 评审运营已彻底拆分为独立页面：`${adminBasePath}/reviews`、`${adminBasePath}/assignments`、`${adminBasePath}/promotions`、`${adminBasePath}/reports`、`${adminBasePath}/judges`（默认 `adminBasePath=/admin`）。
+- `adminBasePath` 可在 Site Settings 中配置，用于统一控制后台入口路径，不改变评审业务流程本身。
+- 评委采用“账号全局、参赛季（hackathon）注册”的机制；只有注册到当前 hackathon 的评委才能参与分配与晋级后的自动派发。
+- 管理端侧边栏提供「黑客松列表」入口；并在侧栏明确显示“当前赛事名称 + 时间范围”，可一键切换赛事，避免“当前赛事”语义不清。
+- 初赛/复赛/决赛与赛区统一抽象为 session 维度；各页面通过 `sessionId` URL 参数保持同一上下文。
+- 一个项目支持分配给多位评委（同一场次下仅限制“同一项目-同一评委”不重复分配）。
+- 赛程时间线有强校验（前后端双重）：禁止开始时间晚于结束时间，并阻止“下游轮次开始时间早于上游轮次”的错误配置。
+- 晋级默认按赛区优先匹配下游场次（初赛→复赛/决赛、复赛→决赛均生效），并允许逐项目手动调整。
+- 晋级页不会默认全选评委；仅当存在“晋级”决策时，才要求显式选择下一轮评委，避免误操作批量派发。
+- 晋级页新增“搜索/赛区/决策筛选 + 对筛选结果批量设决策 + 自动补齐下一轮”，并在提交前阻止“已晋级但未选下一轮”的错误。
+- 决赛场次不进入晋级操作列表，避免“决赛后继续晋级”的错误路径。
+- 详细规则见：[Admin Review Architecture v2](./docs/admin-review-architecture.md)。
+
 ### 5. 赛事详情统一入口（规则/文档去重）
 - 前台统一使用「赛事详情」入口，不再拆分成重复的“规则”和“文档”菜单。
 - 文档来源按优先级自动回退：`gitbookUrl` → `rulesUrl` → `detailsUrl`。
@@ -125,7 +139,31 @@ SUBMISSION_RATE_LIMIT_MAX=30
 ## 🚀 快速开始
 ### 环境要求
 - Node.js 20+（推荐）
-- PostgreSQL 15+
+- Docker + Docker Compose
+
+### 一键启动开发栈
+```bash
+git clone https://github.com/frankfika/openhackathon.git
+cd openhackathon
+npm install
+npm run dev:up
+```
+
+这个入口会自动完成以下步骤：
+- 读取 `.env`；如果本地没有 `.env`，则回退到 `.env.example`
+- 使用 `docker compose` 启动 PostgreSQL
+- 等待数据库就绪后执行 `npx prisma db push`
+- 自动补齐内置开发账号（不会清空现有业务数据）
+- 启动现有的前端和 API 开发进程（`npm run dev`）
+
+常用命令：
+```bash
+# 首次初始化演示数据（会清空现有数据并重新写入 seed）
+npm run dev:up:seed
+
+# 关闭 Docker 中的数据库
+npm run dev:down
+```
 
 ### 本地开发
 ```bash
@@ -133,7 +171,7 @@ git clone https://github.com/frankfika/openhackathon.git
 cd openhackathon
 npm install
 
-# 初始化数据库
+# 手动模式：如果你自己管理 PostgreSQL，而不是使用一键脚本
 npx prisma db push
 npm run db:seed
 
@@ -143,7 +181,51 @@ npm run dev
 
 默认账号（seed）：
 - 管理员：`admin@openhackathon.com` / `password`
+- 备用管理员：`ops@openhackathon.com` / `password`
 - 评委：`alice@techgiants.com` / `password`
+- 空评委账号：`judge1@openhackathon.com` / `password`
+- 空评委账号：`judge2@openhackathon.com` / `password`
+- 空评委账号：`judge3@openhackathon.com` / `password`
+
+### 🌱 Seed 数据说明
+当前完整 seed（`npm run dev:up:seed` / `npm run db:seed`）会创建：
+- `10` 个内置账号
+- `7` 场 hackathon
+- `32` 个项目
+- `44` 条评审任务
+
+多样性：
+- 覆盖 `active`、`upcoming`、`draft`、`judging`、`completed` 五类活动状态。
+- 题材覆盖 AI、FinTech、Climate、Web3、EdTech、Health、CyberSecurity。
+- 同时包含单轮/双轮配置、已评审/评审中/未开始、带 repo / 带 demo / 纯文本提交等不同数据形态。
+- 既有“数据很满”的活动，也有“几乎空白”的活动，方便测试列表、报表、空状态和引导流程。
+
+可用性建议：
+- 看完整后台数据：用 `admin@openhackathon.com`。
+- 看完整评委工作台：用 `alice@techgiants.com`、`bob@venturecap.com`、`charlie@designstudio.io`、`diana@aifund.com`、`evan@dev.tools`。
+- 看空评委状态：用 `judge1@openhackathon.com`、`judge2@openhackathon.com`、`judge3@openhackathon.com`，这些账号不会绑定任何评审任务。
+- 看干净管理员身份：用 `ops@openhackathon.com`，这个账号不会带额外的个人业务历史。
+- 看 Setup Wizard：Wizard 主要由 hackathon 配置决定，不是由账号是否为空决定。登录任一管理员账号后，建议新建一个 hackathon，或者切换到 `Green Earth Hackathon` / `EdTech Remote Jam` 这类只有 `0-1` 个赛程的活动来观察引导效果。
+
+### 🧪 测试场景对照表
+| 场景 | 推荐账号 | 推荐 hackathon | 说明 |
+|---|---|---|---|
+| 看管理员满数据仪表盘 | `admin@openhackathon.com` | `Global AI Challenge 2026` | 当前默认 `active` 活动，项目、分配、评分、报表数据最完整。 |
+| 看评委工作台有任务状态 | `alice@techgiants.com` | `Global AI Challenge 2026` | 同时包含 `completed`、`in_progress`、`pending` 三种任务状态。 |
+| 看评委工作台空状态 | `judge1@openhackathon.com` | 任意 | 该账号没有任何 assignment，适合验证空列表、空面板、引导文案。 |
+| 看排行榜/已完成赛事 | `admin@openhackathon.com` | `Web3 World Championship` | 赛事已完成，适合看已结束活动、历史成绩和完成态数据。 |
+| 看评审中赛事 | `admin@openhackathon.com` | `EdTech Remote Jam` 或 `CyberSec Challenge 2026` | 都有进行中的评审任务，适合验证评审看板和进度统计。 |
+| 看活动创建后较空的配置态 | `ops@openhackathon.com` | 新建 hackathon | 最适合验证刚建活动后的后台空状态和 onboarding。 |
+| 看 Setup Wizard 自动提示 | `ops@openhackathon.com` | 新建 hackathon 或 `Green Earth Hackathon` | `Green Earth Hackathon` 只有 `1` 个 session，满足 wizard 建议条件。 |
+| 看单 session 活动配置 | `admin@openhackathon.com` | `EdTech Remote Jam` | 只有一个 final session，适合测试 wizard 对已有单轮活动的处理。 |
+| 看多轮活动配置 | `admin@openhackathon.com` | `Global AI Challenge 2026` / `CyberSec Challenge 2026` | 双轮赛程、标准 submission schema、已有评分标准。 |
+| 看无项目无评审的活动 | `ops@openhackathon.com` | `FinTech Asia Summit` / `Health Innovation Summit` | 有完整基本配置，但没有项目和 assignment，适合测试列表空态。 |
+
+注意：
+- `npm run dev:up:seed` 和 `npm run db:seed` 都会删除当前数据库中的业务数据后重新写入演示数据。
+- `npm run dev:up` 每次都会补齐上面的内置开发账号；如果这些账号已存在，会重置为固定密码 `password`。
+- `Ctrl+C` 会停止前端和 API 进程；数据库容器可通过 `npm run dev:down` 关闭。
+- 如果 `3001` 或 `5173` 端口已被占用，脚本会直接报错并打印占用进程，先释放端口再重跑即可。
 
 ### 测试
 ```bash
@@ -157,6 +239,8 @@ npm run test:e2e
 ```bash
 docker compose up -d --build
 ```
+
+如果你希望前端、API、数据库都运行在容器里，继续使用这个方式；如果只是本地开发，优先使用 `npm run dev:up`。
 
 默认端口：
 - Web: `5173`

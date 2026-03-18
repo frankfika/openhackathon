@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { Assignment, AssignmentStatus, ProjectRound } from '@/lib/types'
+import { Assignment, AssignmentStatus } from '@/lib/types'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,7 +10,6 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -21,6 +20,7 @@ import {
 } from '@/components/ui/table'
 import { ArrowLeft, Loader2, Pencil, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
 
 type ProjectDetailData = {
   id: string
@@ -37,10 +37,6 @@ type ProjectDetailData = {
   hackathon?: {
     scoringCriteria?: { id: string; name: string; maxScore: number }[]
   }
-  session?: {
-    name: string
-  }
-  projectRounds?: ProjectRound[]
 }
 
 const STATUS_OPTIONS: AssignmentStatus[] = ['pending', 'in_progress', 'completed']
@@ -48,6 +44,7 @@ const STATUS_OPTIONS: AssignmentStatus[] = ['pending', 'in_progress', 'completed
 export function ProjectDetail() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { adminBasePath } = useAdminRoutes()
   const queryClient = useQueryClient()
   const { id } = useParams()
   const [searchParams] = useSearchParams()
@@ -56,8 +53,6 @@ export function ProjectDetail() {
   )
   const [isEditing, setIsEditing] = useState(searchParams.get('edit') === '1')
   const [statusFilter, setStatusFilter] = useState<'all' | AssignmentStatus>('all')
-  const [selectedSessionId, setSelectedSessionId] = useState(searchParams.get('sessionId') || 'all')
-  const [selectedRoundId, setSelectedRoundId] = useState(searchParams.get('roundId') || 'all')
   const [form, setForm] = useState({
     title: '',
     oneLiner: '',
@@ -139,22 +134,12 @@ export function ProjectDetail() {
     return total / completedAssignments.length
   }, [completedAssignments])
 
-  const rounds = useMemo(() => {
-    return [...(project?.projectRounds || [])].sort((a, b) => {
-      const sessionA = a.session?.startAt ? new Date(a.session.startAt).getTime() : 0
-      const sessionB = b.session?.startAt ? new Date(b.session.startAt).getTime() : 0
-      return sessionA - sessionB
-    })
-  }, [project?.projectRounds])
-
   const filteredAssignments = useMemo(() => {
     return assignments.filter((assignment) => {
       if (statusFilter !== 'all' && assignment.status !== statusFilter) return false
-      if (selectedRoundId !== 'all' && assignment.projectRoundId !== selectedRoundId) return false
-      if (selectedSessionId !== 'all' && assignment.sessionId !== selectedSessionId) return false
       return true
     })
-  }, [assignments, statusFilter, selectedRoundId, selectedSessionId])
+  }, [assignments, statusFilter])
 
   const criterionNameMap = useMemo(() => {
     const map = new Map<string, string>()
@@ -197,14 +182,13 @@ export function ProjectDetail() {
     <div className="space-y-6 p-6 md:p-8">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2">
-          <Button variant="ghost" className="px-0" onClick={() => navigate('/dashboard/projects')}>
+          <Button variant="ghost" className="px-0" onClick={() => navigate(buildAdminPath(adminBasePath, 'projects'))}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             {t('common.back')}
           </Button>
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">{project.title}</h1>
           <p className="text-sm text-muted-foreground">
             {project.submitterName || project.submitterEmail}
-            {project.session?.name ? ` · ${project.session.name}` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -379,32 +363,6 @@ export function ProjectDetail() {
               )}
             </CardContent>
           </Card>
-
-          <Card className="surface-panel border-none shadow-none">
-            <CardHeader>
-              <CardTitle>{t('promotions.round_timeline')}</CardTitle>
-              <CardDescription>{t('promotions.round_timeline_desc')}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {rounds.length === 0 && (
-                <div className="surface-inset p-4 text-sm text-muted-foreground">
-                  {t('promotions.no_rounds')}
-                </div>
-              )}
-              {rounds.map((round) => (
-                <div key={round.id} className="flex items-center justify-between surface-inset p-3">
-                  <div>
-                    <p className="font-medium">{round.session?.name || round.sessionId}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {t('promotions.decision')}: {round.promotionStatus || 'pending'}
-                      {round.nextSession?.name ? ` → ${round.nextSession.name}` : ''}
-                    </p>
-                  </div>
-                  <Badge variant="outline">{round.promotionStatus || 'pending'}</Badge>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
         </>
       )}
 
@@ -417,58 +375,24 @@ export function ProjectDetail() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-              <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t('reports.session')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('reports.filter_all')}</SelectItem>
-                  {rounds.map((round) => (
-                    <SelectItem key={round.sessionId} value={round.sessionId}>
-                      {round.session?.name || round.sessionId}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={selectedRoundId} onValueChange={setSelectedRoundId}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t('promotions.round')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('reports.filter_all')}</SelectItem>
-                  {rounds.map((round) => (
-                    <SelectItem key={round.id} value={round.id}>
-                      {round.session?.name || round.id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant={statusFilter === 'all' ? 'default' : 'outline'}
-                  onClick={() => setStatusFilter('all')}
-                >
-                  {t('reports.filter_all')}
-                </Button>
-                {STATUS_OPTIONS.map((status) => (
-                  <Button
-                    key={status}
-                    size="sm"
-                    variant={statusFilter === status ? 'default' : 'outline'}
-                    onClick={() => setStatusFilter(status)}
-                  >
-                    {t(`judging.status.${status}`)}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => navigate('/dashboard/promotions')}>
-                {t('promotions.manage')}
+              <Button
+                size="sm"
+                variant={statusFilter === 'all' ? 'default' : 'outline'}
+                onClick={() => setStatusFilter('all')}
+              >
+                {t('reports.filter_all')}
               </Button>
+              {STATUS_OPTIONS.map((status) => (
+                <Button
+                  key={status}
+                  size="sm"
+                  variant={statusFilter === status ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter(status)}
+                >
+                  {t(`judging.status.${status}`)}
+                </Button>
+              ))}
             </div>
 
             {filteredAssignments.length === 0 ? (
@@ -481,7 +405,6 @@ export function ProjectDetail() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>{t('reports.judges')}</TableHead>
-                      <TableHead>{t('reports.session')}</TableHead>
                       <TableHead>{t('projects.status')}</TableHead>
                       <TableHead>{t('projects.score')}</TableHead>
                       <TableHead>{t('reports.scoring_matrix')}</TableHead>
@@ -492,7 +415,6 @@ export function ProjectDetail() {
                     {filteredAssignments.map((assignment) => (
                       <TableRow key={assignment.id}>
                         <TableCell>{assignment.judge?.name || assignment.judgeId}</TableCell>
-                        <TableCell>{assignment.session?.name || assignment.sessionId}</TableCell>
                         <TableCell>
                           <Badge variant="outline">
                             {String(t(`judging.status.${assignment.status}`))}

@@ -34,6 +34,10 @@ dist-ssr
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+.playwright-mcp/
+
+# Debug screenshots
+/*.png
 
 # Local HTTPS certificates
 *.pem

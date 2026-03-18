@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { useAdminRoutes } from '../lib/admin-routing'
 import { UserRole } from '../lib/types'
 
 type RequireRoleProps = {
@@ -14,6 +15,7 @@ export function RequireRole({
   redirectTo = '/login',
 }: RequireRoleProps) {
   const { user, isLoading } = useAuth()
+  const { adminBasePath } = useAdminRoutes()
 
   if (isLoading) {
     return (
@@ -28,7 +30,8 @@ export function RequireRole({
   }
 
   if (!allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />
+    const fallbackPath = user.role === 'admin' ? adminBasePath : '/judge'
+    return <Navigate to={fallbackPath} replace />
   }
 
   return <>{children}</>

@@ -1,26 +1,70 @@
 import React from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatDateRange, HackathonStatus } from '@/lib/types'
-import { ArrowRight, Calendar, MapPin, Settings, Check, Loader2 } from 'lucide-react'
+import { Calendar, MapPin, Settings, Check, Loader2, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/lib/auth'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
+import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
 
 const STATUS_OPTIONS: HackathonStatus[] = ['draft', 'upcoming', 'active', 'judging', 'completed']
 
 export function Hackathons() {
   const { t } = useTranslation()
   const { user } = useAuth()
+  const { adminBasePath } = useAdminRoutes()
   const navigate = useNavigate()
   const { activeHackathon, setActiveHackathonId, hackathons, isLoading, refreshHackathons } = useActiveHackathon()
   const isAdmin = user?.role === 'admin'
   const [updatingId, setUpdatingId] = React.useState<string | null>(null)
+  const [createOpen, setCreateOpen] = React.useState(false)
+  const [creating, setCreating] = React.useState(false)
+  const [newHackathon, setNewHackathon] = React.useState({
+    title: '',
+    tagline: '',
+    startAt: '',
+    endAt: '',
+  })
+
+  const handleCreate = async () => {
+    if (!newHackathon.title.trim() || !newHackathon.tagline.trim()) return
+    setCreating(true)
+    try {
+      const created = await api.createHackathon({
+        title: newHackathon.title.trim(),
+        tagline: newHackathon.tagline.trim(),
+        startAt: newHackathon.startAt || undefined,
+        endAt: newHackathon.endAt || undefined,
+        status: 'draft',
+      })
+      refreshHackathons()
+      setActiveHackathonId(created.id)
+      setCreateOpen(false)
+      setNewHackathon({ title: '', tagline: '', startAt: '', endAt: '' })
+      toast.success(t('hackathons.create_success', 'Hackathon created'))
+      navigate(buildAdminPath(adminBasePath, `hackathons/${created.id}`))
+    } catch {
+      toast.error(t('hackathons.create_error', 'Failed to create hackathon'))
+    } finally {
+      setCreating(false)
+    }
+  }
 
   const handleSwitchAndNavigate = (hackathonId: string, path: string) => {
     setActiveHackathonId(hackathonId)
@@ -58,12 +102,12 @@ export function Hackathons() {
               {t('hackathons.more_desc')}
             </p>
           </div>
-          <Link to="/dashboard">
-            <Button variant="outline" className="h-11 rounded-full bg-background/70 px-6 backdrop-blur hover:bg-background">
-              {t('hackathons.enter_workbench')}
-              <ArrowRight className="ml-2 h-4 w-4" />
+          {isAdmin && (
+            <Button onClick={() => setCreateOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              {t('hackathons.create', 'Create Hackathon')}
             </Button>
-          </Link>
+          )}
         </div>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">
@@ -75,11 +119,11 @@ export function Hackathons() {
                 className={cn(
                   "surface-panel border-none shadow-none transition-all",
                   isSelected && "ring-2 ring-primary/40 ring-offset-2 ring-offset-transparent",
-                  isAdmin && !isSelected && "cursor-pointer"
+                  isAdmin && "cursor-pointer"
                 )}
                 onClick={() => {
-                  if (isAdmin && !isSelected) {
-                    setActiveHackathonId(h.id)
+                  if (isAdmin) {
+                    navigate(buildAdminPath(adminBasePath, `hackathons/${h.id}`))
                   }
                 }}
               >
@@ -139,7 +183,7 @@ export function Hackathons() {
                             className="rounded-full bg-white/40 backdrop-blur hover:bg-white/60"
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleSwitchAndNavigate(h.id, `/dashboard/hackathons/${h.id}/settings`)
+                              handleSwitchAndNavigate(h.id, buildAdminPath(adminBasePath, `hackathons/${h.id}/settings`))
                             }}
                           >
                             <Settings className="h-4 w-4" />
@@ -150,7 +194,7 @@ export function Hackathons() {
                           className="rounded-full bg-white/40 backdrop-blur hover:bg-white/60"
                           onClick={(e) => {
                             e.stopPropagation()
-                            handleSwitchAndNavigate(h.id, '/dashboard/projects')
+                            handleSwitchAndNavigate(h.id, buildAdminPath(adminBasePath, 'projects'))
                           }}
                         >
                           {t('hackathons.view_projects')}
@@ -177,6 +221,67 @@ export function Hackathons() {
           })}
         </div>
       </section>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('hackathons.create', 'Create Hackathon')}</DialogTitle>
+            <DialogDescription>{t('hackathons.create_desc', 'Fill in the basics to get started. You can configure everything else later.')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-title">{t('hackathons.title')}</Label>
+              <Input
+                id="new-title"
+                placeholder={t('hackathons.title')}
+                value={newHackathon.title}
+                onChange={(e) => setNewHackathon((prev) => ({ ...prev, title: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-tagline">{t('hackathons.tagline')}</Label>
+              <Input
+                id="new-tagline"
+                placeholder={t('hackathons.tagline')}
+                value={newHackathon.tagline}
+                onChange={(e) => setNewHackathon((prev) => ({ ...prev, tagline: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-start">{t('hackathons.start_date')}</Label>
+                <Input
+                  id="new-start"
+                  type="date"
+                  value={newHackathon.startAt}
+                  onChange={(e) => setNewHackathon((prev) => ({ ...prev, startAt: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-end">{t('hackathons.end_date')}</Label>
+                <Input
+                  id="new-end"
+                  type="date"
+                  value={newHackathon.endAt}
+                  onChange={(e) => setNewHackathon((prev) => ({ ...prev, endAt: e.target.value }))}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={creating || !newHackathon.title.trim() || !newHackathon.tagline.trim()}
+            >
+              {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('hackathons.create', 'Create Hackathon')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

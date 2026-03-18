@@ -13,6 +13,7 @@ import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Assignment } from '@/lib/types'
+import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
 
 function scoresToRecord(scores: Assignment['scores']): Record<string, number> {
   if (!scores) return {}
@@ -30,6 +31,7 @@ export function JudgingDetail() {
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { user } = useAuth()
+  const { adminBasePath } = useAdminRoutes()
   const queryClient = useQueryClient()
   const hasMarkedInProgress = React.useRef(false)
 
@@ -83,7 +85,9 @@ export function JudgingDetail() {
   // Submit scores mutation
   const submitMutation = useMutation({
     mutationFn: () => {
-      if (!assignment) throw new Error('No assignment')
+      if (!assignment || user?.role !== 'judge' || assignment.judgeId !== user.id) {
+        throw new Error('Only the assigned judge can submit scores')
+      }
       const scoresArray = Object.entries(scores).map(([criterionId, score]) => ({
         criterionId,
         score,
@@ -98,7 +102,7 @@ export function JudgingDetail() {
       toast.success(t('judging.score_submitted', 'Score submitted successfully'))
       queryClient.invalidateQueries({ queryKey: ['assignments'] })
       // Navigate based on user role
-      const redirectPath = user?.role === 'judge' ? '/judge' : '/dashboard/judging'
+      const redirectPath = user?.role === 'judge' ? '/judge' : buildAdminPath(adminBasePath, 'reviews')
       navigate(redirectPath)
     },
     onError: () => {
@@ -143,19 +147,26 @@ export function JudgingDetail() {
   }
 
   // If we're viewing directly by project ID (no assignment), show read-only view
-  const isReadOnly = !assignment
+  const canScore = Boolean(assignment && user?.role === 'judge' && assignment.judgeId === user.id)
+  const isReadOnly = !canScore
 
   const handleScoreChange = (criterionId: string, value: number[]) => {
     setScores((prev) => ({ ...prev, [criterionId]: value[0] }))
   }
 
   const handleSubmit = () => {
+    if (!canScore) return
+    const confirmed = confirm(
+      t('judging.submit_confirm', 'Once submitted, scores cannot be changed. Are you sure you want to submit?')
+    )
+    if (!confirmed) return
     submitMutation.mutate()
   }
 
-  const totalScore = Object.values(scores).reduce((a, b) => a + b, 0)
+  const assignmentScoreMap = scoresToRecord(assignment?.scores)
+  const totalScore = assignment?.totalScore ?? Object.values(scores).reduce((a, b) => a + b, 0)
   const maxPossible = scoringCriteria.reduce((sum, c) => sum + (c.maxScore || 0), 0)
-  const backPath = user?.role === 'judge' ? '/judge' : '/dashboard/judging'
+  const backPath = user?.role === 'judge' ? '/judge' : buildAdminPath(adminBasePath, 'reviews')
 
   return (
     <div className="space-y-4 md:space-y-6">
@@ -165,7 +176,11 @@ export function JudgingDetail() {
         </Button>
         <div>
           <h1 className="text-xl md:text-2xl font-semibold tracking-tight">{project.title}</h1>
-          <p className="text-sm text-muted-foreground">{t('judging.judging_project', 'Judging Project')}</p>
+          <p className="text-sm text-muted-foreground">
+            {canScore
+              ? t('judging.judging_project', 'Judging Project')
+              : t('judging.assignment_detail', 'Assignment Detail')}
+          </p>
         </div>
       </div>
 
@@ -235,7 +250,7 @@ export function JudgingDetail() {
           )}
         </div>
 
-        {/* Scoring Form - Only visible to judges/admins with an assignment */}
+        {/* Scoring form is reserved for the assigned judge. Admins can inspect results only. */}
         {!isReadOnly ? (
           <div className="space-y-6">
             <Card className="surface-panel border-none shadow-none sticky top-6">
@@ -295,12 +310,64 @@ export function JudgingDetail() {
                     {totalScore > 0 ? totalScore : '-'} / {maxPossible || 100}
                   </span>
                 </CardTitle>
-                <CardDescription>{t('projects.score_desc', 'Final score awarded by judges')}</CardDescription>
+                <CardDescription>
+                  {assignment
+                    ? t('judging.read_only_assignment', 'Admins can inspect this assignment, but only the assigned judge can submit or edit scores.')
+                    : t('projects.score_desc', 'Final score awarded by judges')}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                 <div className="rounded-lg bg-muted p-4 text-center text-sm text-muted-foreground">
-                   {t('projects.read_only_score', 'Scoring is closed or you do not have permission to judge this project.')}
-                 </div>
+                {assignment ? (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="text-muted-foreground">{t('judging.assigned_judge', 'Assigned Judge')}</Label>
+                        <p className="text-sm font-medium">{assignment.judge?.name || '-'}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-muted-foreground">{t('judging.assignment_status_label', 'Assignment Status')}</Label>
+                        <p className="text-sm font-medium">{t(`judging.status.${assignment.status}`)}</p>
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    {scoringCriteria.length > 0 ? (
+                      <div className="space-y-3">
+                        <Label className="text-muted-foreground">{t('judging.score_breakdown', 'Score Breakdown')}</Label>
+                        {scoringCriteria.map((criterion) => {
+                          const criterionScore = assignmentScoreMap[criterion.id]
+
+                          return (
+                            <div key={criterion.id} className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2 text-sm">
+                              <span>{criterion.name}</span>
+                              <span className="font-medium">
+                                {criterionScore ?? '-'} / {criterion.maxScore}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground">{t('judging.comments', 'Comments')}</Label>
+                      <div className="rounded-lg bg-muted/60 p-3 text-sm text-muted-foreground">
+                        {assignment.comment || t('judging.no_comment', 'No comment submitted yet.')}
+                      </div>
+                    </div>
+
+                    {assignment.totalScore == null && (
+                      <div className="rounded-lg bg-muted p-4 text-center text-sm text-muted-foreground">
+                        {t('judging.no_score_yet', 'This assignment has not been scored yet.')}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="rounded-lg bg-muted p-4 text-center text-sm text-muted-foreground">
+                    {t('projects.read_only_score', 'Scoring is closed or you do not have permission to judge this project.')}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

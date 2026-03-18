@@ -30,11 +30,9 @@ export function PublicSubmit() {
     return trimmed.length > 0 ? trimmed : undefined
   }
 
-  // Use backend data as-is — no defaults
-  const schema: SubmissionField[] = useMemo(
-    () => getSubmissionFields(hackathon.submissionSchema),
-    [hackathon.submissionSchema]
-  )
+  const schema: SubmissionField[] = useMemo(() => {
+    return getSubmissionFields(hackathon.submissionSchema)
+  }, [hackathon.submissionSchema])
 
   const formSchema = useMemo(
     () =>
@@ -129,8 +127,6 @@ export function PublicSubmit() {
         }
       }
 
-      // Find active session
-      const activeSession = hackathon.sessions?.find(s => s.status === 'active') || hackathon.sessions?.[0]
       const titleValue =
         asNonEmptyString(rest.title) ||
         asNonEmptyString(rest.project_name) ||
@@ -145,7 +141,6 @@ export function PublicSubmit() {
 
       const payload = {
         hackathonId: hackathon.id,
-        sessionId: activeSession?.id,
         submitterEmail: submitterEmailValue,
         submitterName: submitterNameValue,
         title: titleValue,

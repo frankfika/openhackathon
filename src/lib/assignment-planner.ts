@@ -3,13 +3,11 @@ type AssignableProject = {
 }
 
 type ExistingAssignment = {
-  sessionId: string
   projectId: string
   judgeId: string
 }
 
 type AssignmentPlanInput = {
-  sessionId: string
   projects: AssignableProject[]
   judgeIds: string[]
   existingAssignments: ExistingAssignment[]
@@ -18,7 +16,6 @@ type AssignmentPlanInput = {
 }
 
 type PlannedAssignment = {
-  sessionId: string
   projectId: string
   judgeId: string
 }
@@ -43,14 +40,13 @@ function shuffleInPlace<T>(items: T[], random: () => number) {
 }
 
 export function planBulkAssignments(input: AssignmentPlanInput): PlannedAssignmentResult {
-  const { sessionId, projects, judgeIds, existingAssignments } = input
-  if (!sessionId || projects.length === 0 || judgeIds.length === 0) {
+  const { projects, judgeIds, existingAssignments } = input
+  if (projects.length === 0 || judgeIds.length === 0) {
     return { assignments: [] }
   }
 
   const existingKeys = new Set(
     existingAssignments
-      .filter((assignment) => assignment.sessionId === sessionId)
       .map((assignment) => `${assignment.projectId}:${assignment.judgeId}`)
   )
 
@@ -59,7 +55,7 @@ export function planBulkAssignments(input: AssignmentPlanInput): PlannedAssignme
     for (const judgeId of judgeIds) {
       const key = `${project.id}:${judgeId}`
       if (existingKeys.has(key)) continue
-      assignments.push({ sessionId, projectId: project.id, judgeId })
+      assignments.push({ projectId: project.id, judgeId })
       existingKeys.add(key)
     }
   }
@@ -68,8 +64,8 @@ export function planBulkAssignments(input: AssignmentPlanInput): PlannedAssignme
 }
 
 export function planBalancedRandomAssignments(input: AssignmentPlanInput): PlannedAssignmentResult {
-  const { sessionId, projects, judgeIds, existingAssignments } = input
-  if (!sessionId || projects.length === 0 || judgeIds.length === 0) {
+  const { projects, judgeIds, existingAssignments } = input
+  if (projects.length === 0 || judgeIds.length === 0) {
     return { assignments: [] }
   }
 
@@ -88,7 +84,6 @@ export function planBalancedRandomAssignments(input: AssignmentPlanInput): Plann
   }
 
   for (const assignment of existingAssignments) {
-    if (assignment.sessionId !== sessionId) continue
     if (!selectedJudgeIds.has(assignment.judgeId)) continue
 
     loadByJudge.set(assignment.judgeId, (loadByJudge.get(assignment.judgeId) || 0) + 1)
@@ -115,7 +110,6 @@ export function planBalancedRandomAssignments(input: AssignmentPlanInput): Plann
 
       const selectedJudgeId = rankedJudges[0]
       assignments.push({
-        sessionId,
         projectId: project.id,
         judgeId: selectedJudgeId,
       })

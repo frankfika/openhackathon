@@ -12,15 +12,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { SubmissionConfigBuilder } from '@/components/SubmissionConfigBuilder'
 import { ScoringCriteriaBuilder } from '@/components/ScoringCriteriaBuilder'
-import { SessionsTab } from '@/components/SessionsTab'
 import { SetupWizardDialog } from '@/components/SetupWizardDialog'
-import { HackathonSessionInput, SubmissionField, ScoringCriterion } from '@/lib/types'
+import { SubmissionField, ScoringCriterion, SubmissionSchemaConfig } from '@/lib/types'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ArrowLeft, Loader2, Check, Bell, Puzzle, CalendarClock, FileText, Trash2, Wand2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Check, FileText, Trash2, Wand2, ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { shouldSuggestSetupWizard } from '@/lib/setup-wizard'
+import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
 
 const GRADIENT_PRESETS = [
   { name: 'Violet Fusion', value: 'from-violet-600/20 via-fuchsia-500/10 to-indigo-600/20' },
@@ -49,15 +50,15 @@ type HackathonFormValues = {
 
 type HackathonUpdateValues = Partial<HackathonFormValues> & {
   coverGradient?: string
-  submissionSchema?: { fields: SubmissionField[] }
+  submissionSchema?: SubmissionSchemaConfig
   scoringCriteria?: ScoringCriterion[]
-  sessions?: HackathonSessionInput[]
 }
 
 export function HackathonSettings() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useTranslation()
+  const { adminBasePath } = useAdminRoutes()
   const queryClient = useQueryClient()
   const hackathonSchema = useMemo(
     () =>
@@ -99,7 +100,7 @@ export function HackathonSettings() {
   const [scoringCriteria, setScoringCriteria] = useState<ScoringCriterion[]>([])
   const [coverGradient, setCoverGradient] = useState('')
   const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false)
-  const [hasAutoOpenedSetupWizard, setHasAutoOpenedSetupWizard] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   // Update local state when hackathon data loads — no defaults, use backend data as-is
   useEffect(() => {
@@ -140,17 +141,10 @@ export function HackathonSettings() {
   const shouldSuggestWizard = useMemo(() => {
     if (!hackathon) return false
     return shouldSuggestSetupWizard({
-      sessionCount: hackathon.sessions?.length || 0,
       submissionFieldCount: submissionSchema.length,
       scoringCriteriaCount: scoringCriteria.length,
     })
   }, [hackathon, submissionSchema.length, scoringCriteria.length])
-
-  useEffect(() => {
-    if (!hackathon || hasAutoOpenedSetupWizard || !shouldSuggestWizard) return
-    setIsSetupWizardOpen(true)
-    setHasAutoOpenedSetupWizard(true)
-  }, [hackathon, hasAutoOpenedSetupWizard, shouldSuggestWizard])
 
   // Update form values when hackathon data loads
   useEffect(() => {
@@ -195,6 +189,7 @@ export function HackathonSettings() {
       toast.success(t('settings.saved'))
       queryClient.invalidateQueries({ queryKey: ['hackathon', id] })
       queryClient.invalidateQueries({ queryKey: ['hackathons'] })
+      queryClient.invalidateQueries({ queryKey: ['current-hackathon'] })
     },
     onError: () => {
       toast.error(t('settings.save_error'))
@@ -250,14 +245,20 @@ export function HackathonSettings() {
   }
 
   const onApplySetupWizard = async (data: {
+    title: string
+    tagline: string
+    city?: string
+    prizePool?: string
     startAt?: string
     endAt?: string
-    submissionSchema: { fields: SubmissionField[] }
+    gitbookUrl?: string
+    rulesUrl?: string
+    detailsUrl?: string
+    submissionSchema: SubmissionSchemaConfig
     scoringCriteria: ScoringCriterion[]
-    sessions?: HackathonSessionInput[]
   }) => {
     await updateMutation.mutateAsync(data)
-    setSubmissionSchema(data.submissionSchema.fields)
+    setSubmissionSchema(data.submissionSchema.fields || [])
     setScoringCriteria(data.scoringCriteria)
     setIsSetupWizardOpen(false)
   }
@@ -292,7 +293,7 @@ export function HackathonSettings() {
   return (
     <div className="container max-w-4xl py-10">
       <div className="mb-6">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/hackathons')} className="gap-2">
+        <Button variant="ghost" size="sm" onClick={() => navigate(buildAdminPath(adminBasePath, `hackathons/${id}`))} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           {t('common.back')}
         </Button>
@@ -306,23 +307,28 @@ export function HackathonSettings() {
         </Button>
       </div>
 
+      {shouldSuggestWizard ? (
+        <Card className="mb-6 border border-primary/20 bg-primary/5 shadow-none">
+          <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-sm font-semibold">{t('settings.setup_wizard.title', 'Setup Wizard')}</div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('settings.setup_wizard.dashboard_hint', 'This hackathon is still missing core setup. Run the wizard to configure the event profile, docs links, submission schema, judging flow, and scoring rubric.')}
+              </p>
+            </div>
+            <Button type="button" className="gap-2" onClick={() => setIsSetupWizardOpen(true)}>
+              <Wand2 className="h-4 w-4" />
+              {t('settings.setup_wizard.open')}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Tabs defaultValue="general">
         <TabsList className="flex flex-wrap w-full mb-8 h-auto gap-1 p-1">
           <TabsTrigger value="general" className="flex-1 min-w-[100px]">{t('settings.general')}</TabsTrigger>
           <TabsTrigger value="submission" className="flex-1 min-w-[100px]">{t('settings.submission')}</TabsTrigger>
           <TabsTrigger value="scoring" className="flex-1 min-w-[100px]">{t('settings.scoring')}</TabsTrigger>
-          <TabsTrigger value="sessions" className="flex-1 min-w-[100px] gap-1">
-            <CalendarClock className="h-3.5 w-3.5" />
-            {t('settings.sessions')}
-          </TabsTrigger>
-          <TabsTrigger value="notifications" className="flex-1 min-w-[100px] gap-1">
-            <Bell className="h-3.5 w-3.5" />
-            {t('settings.notifications')}
-          </TabsTrigger>
-          <TabsTrigger value="integrations" className="flex-1 min-w-[100px] gap-1">
-            <Puzzle className="h-3.5 w-3.5" />
-            {t('settings.integrations')}
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -356,116 +362,129 @@ export function HackathonSettings() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="city">{t('hackathons.city')}</Label>
-                  <Input id="city" {...register('city')} />
-                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="gap-2 text-muted-foreground"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                >
+                  <ChevronDown className={cn('h-4 w-4 transition-transform', showAdvanced && 'rotate-180')} />
+                  {t('settings.more_options', 'More Options')}
+                </Button>
 
-                <div className="space-y-2">
-                  <Label htmlFor="prizePool">{t('hackathons.prize_pool')}</Label>
-                  <Input id="prizePool" placeholder={t('hackathons.prize_pool_placeholder')} {...register('prizePool')} />
-                  <p className="text-xs text-muted-foreground">{t('hackathons.prize_pool_desc')}</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="gitbookUrl">{t('settings.gitbook_url')}</Label>
-                  <Input id="gitbookUrl" type="url" placeholder="https://docs.example.com" {...register('gitbookUrl')} />
-                  <p className="text-xs text-muted-foreground">{t('settings.gitbook_url_desc')}</p>
-                  {errors.gitbookUrl && <p className="text-sm text-destructive">{errors.gitbookUrl.message as string}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="rulesUrl">{t('settings.rules_url')}</Label>
-                  <Input id="rulesUrl" type="url" placeholder="https://example.com/rules" {...register('rulesUrl')} />
-                  <p className="text-xs text-muted-foreground">{t('settings.rules_url_desc')}</p>
-                  {errors.rulesUrl && <p className="text-sm text-destructive">{errors.rulesUrl.message as string}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="detailsUrl">{t('settings.details_url')}</Label>
-                  <Input id="detailsUrl" type="url" placeholder="https://example.com/event-details" {...register('detailsUrl')} />
-                  <p className="text-xs text-muted-foreground">{t('settings.details_url_desc')}</p>
-                  {errors.detailsUrl && <p className="text-sm text-destructive">{errors.detailsUrl.message as string}</p>}
-                </div>
-
-                <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-primary" />
-                        <Label htmlFor="markdownDoc">{t('settings.markdown_doc')}</Label>
+                {showAdvanced && (
+                  <div className="space-y-4 animate-in fade-in-0 slide-in-from-top-2 duration-200">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="city">{t('hackathons.city')}</Label>
+                        <Input id="city" {...register('city')} />
                       </div>
-                      <p className="text-xs text-muted-foreground">{t('settings.markdown_doc_desc')}</p>
-                    </div>
-                    <Badge variant={markdownDoc ? 'secondary' : 'outline'}>
-                      {markdownDoc?.fileName || t('settings.markdown_empty')}
-                    </Badge>
-                  </div>
-
-                  <Input
-                    id="markdownDoc"
-                    type="file"
-                    accept=".md,.markdown"
-                    onChange={handleMarkdownUpload}
-                    disabled={uploadMarkdownMutation.isPending || deleteMarkdownMutation.isPending}
-                  />
-
-                  {markdownDoc ? (
-                    <div className="space-y-3">
-                      <p className="text-xs text-muted-foreground">
-                        {t('settings.markdown_updated_at', { updatedAt: new Date(markdownDoc.updatedAt).toLocaleString() })}
-                      </p>
-                      <Textarea
-                        readOnly
-                        value={markdownDoc.content}
-                        className="min-h-[220px] resize-y bg-background/80 font-mono text-xs"
-                      />
-                      <div className="flex justify-end">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="gap-2 text-destructive hover:text-destructive"
-                          onClick={() => deleteMarkdownMutation.mutate()}
-                          disabled={uploadMarkdownMutation.isPending || deleteMarkdownMutation.isPending}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          {t('settings.markdown_delete')}
-                        </Button>
+                      <div className="space-y-2">
+                        <Label htmlFor="prizePool">{t('hackathons.prize_pool')}</Label>
+                        <Input id="prizePool" placeholder={t('hackathons.prize_pool_placeholder')} {...register('prizePool')} />
                       </div>
                     </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">{t('settings.markdown_empty_desc')}</p>
-                  )}
-                </div>
 
-                <div className="space-y-3">
-                  <Label>{t('settings.cover_gradient')}</Label>
-                  <p className="text-xs text-muted-foreground">{t('settings.cover_gradient_desc')}</p>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-                    {GRADIENT_PRESETS.map((preset) => (
-                      <button
-                        key={preset.value}
-                        type="button"
-                        onClick={() => setCoverGradient(preset.value)}
-                        className={`relative h-16 rounded-lg bg-gradient-to-r ${preset.value} border-2 transition-all hover:scale-105 ${
-                          coverGradient === preset.value
-                            ? 'border-primary ring-2 ring-primary/30'
-                            : 'border-transparent hover:border-muted-foreground/30'
-                        }`}
-                        title={preset.name}
-                      >
-                        {coverGradient === preset.value && (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <Check className="h-5 w-5 text-primary" />
+                    <div className="space-y-2">
+                      <Label htmlFor="gitbookUrl">{t('settings.gitbook_url')}</Label>
+                      <Input id="gitbookUrl" type="url" placeholder="https://docs.example.com" {...register('gitbookUrl')} />
+                      <p className="text-xs text-muted-foreground">{t('settings.gitbook_url_desc')}</p>
+                      {errors.gitbookUrl && <p className="text-sm text-destructive">{errors.gitbookUrl.message as string}</p>}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="rulesUrl">{t('settings.rules_url')}</Label>
+                        <Input id="rulesUrl" type="url" placeholder="https://example.com/rules" {...register('rulesUrl')} />
+                        {errors.rulesUrl && <p className="text-sm text-destructive">{errors.rulesUrl.message as string}</p>}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="detailsUrl">{t('settings.details_url')}</Label>
+                        <Input id="detailsUrl" type="url" placeholder="https://example.com/event-details" {...register('detailsUrl')} />
+                        {errors.detailsUrl && <p className="text-sm text-destructive">{errors.detailsUrl.message as string}</p>}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-primary" />
+                            <Label htmlFor="markdownDoc">{t('settings.markdown_doc')}</Label>
                           </div>
-                        )}
-                        <span className="absolute bottom-0.5 left-0 right-0 text-center text-[10px] text-muted-foreground truncate px-1">
-                          {preset.name}
-                        </span>
-                      </button>
-                    ))}
+                          <p className="text-xs text-muted-foreground">{t('settings.markdown_doc_desc')}</p>
+                        </div>
+                        <Badge variant={markdownDoc ? 'secondary' : 'outline'}>
+                          {markdownDoc?.fileName || t('settings.markdown_empty')}
+                        </Badge>
+                      </div>
+
+                      <Input
+                        id="markdownDoc"
+                        type="file"
+                        accept=".md,.markdown"
+                        onChange={handleMarkdownUpload}
+                        disabled={uploadMarkdownMutation.isPending || deleteMarkdownMutation.isPending}
+                      />
+
+                      {markdownDoc ? (
+                        <div className="space-y-3">
+                          <p className="text-xs text-muted-foreground">
+                            {t('settings.markdown_updated_at', { updatedAt: new Date(markdownDoc.updatedAt).toLocaleString() })}
+                          </p>
+                          <Textarea
+                            readOnly
+                            value={markdownDoc.content}
+                            className="min-h-[220px] resize-y bg-background/80 font-mono text-xs"
+                          />
+                          <div className="flex justify-end">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="gap-2 text-destructive hover:text-destructive"
+                              onClick={() => deleteMarkdownMutation.mutate()}
+                              disabled={uploadMarkdownMutation.isPending || deleteMarkdownMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              {t('settings.markdown_delete')}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">{t('settings.markdown_empty_desc')}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label>{t('settings.cover_gradient')}</Label>
+                      <p className="text-xs text-muted-foreground">{t('settings.cover_gradient_desc')}</p>
+                      <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                        {GRADIENT_PRESETS.map((preset) => (
+                          <button
+                            key={preset.value}
+                            type="button"
+                            onClick={() => setCoverGradient(preset.value)}
+                            className={`relative h-16 rounded-lg bg-gradient-to-r ${preset.value} border-2 transition-all hover:scale-105 ${
+                              coverGradient === preset.value
+                                ? 'border-primary ring-2 ring-primary/30'
+                                : 'border-transparent hover:border-muted-foreground/30'
+                            }`}
+                            title={preset.name}
+                          >
+                            {coverGradient === preset.value && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <Check className="h-5 w-5 text-primary" />
+                              </div>
+                            )}
+                            <span className="absolute bottom-0.5 left-0 right-0 text-center text-[10px] text-muted-foreground truncate px-1">
+                              {preset.name}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="pt-4">
                   <Button type="submit" disabled={updateMutation.isPending}>
@@ -498,57 +517,20 @@ export function HackathonSettings() {
           />
         </TabsContent>
 
-        <TabsContent value="sessions">
-          <SessionsTab hackathonId={id!} sessions={hackathon.sessions || []} />
-        </TabsContent>
-
-        <TabsContent value="notifications">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bell className="h-5 w-5" />
-                {t('settings.notifications')}
-                <Badge variant="secondary" className="text-xs">{t('common.coming_soon')}</Badge>
-              </CardTitle>
-              <CardDescription>{t('settings.notifications_desc')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="surface-inset border-dashed p-12 text-center text-muted-foreground">
-                <Bell className="h-10 w-10 mx-auto mb-3 opacity-40" />
-                <p className="font-medium">{t('settings.notifications_coming_soon')}</p>
-                <p className="text-sm mt-1">{t('settings.notifications_coming_soon_desc')}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="integrations">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Puzzle className="h-5 w-5" />
-                {t('settings.integrations')}
-                <Badge variant="secondary" className="text-xs">{t('common.coming_soon')}</Badge>
-              </CardTitle>
-              <CardDescription>{t('settings.integrations_desc')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="surface-inset border-dashed p-12 text-center text-muted-foreground">
-                <Puzzle className="h-10 w-10 mx-auto mb-3 opacity-40" />
-                <p className="font-medium">{t('settings.integrations_coming_soon')}</p>
-                <p className="text-sm mt-1">{t('settings.integrations_coming_soon_desc')}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       <SetupWizardDialog
         open={isSetupWizardOpen}
         onOpenChange={setIsSetupWizardOpen}
+        title={watch('title') || hackathon.title}
+        tagline={watch('tagline') || hackathon.tagline}
+        city={watch('city') || hackathon.city || ''}
+        prizePool={watch('prizePool') || hackathon.prizePool || ''}
         startAt={watchedStartAt || hackathon.startAt}
         endAt={watchedEndAt || hackathon.endAt}
-        existingSessions={hackathon.sessions || []}
+        gitbookUrl={watch('gitbookUrl') || hackathon.gitbookUrl || ''}
+        rulesUrl={watch('rulesUrl') || hackathon.rulesUrl || ''}
+        detailsUrl={watch('detailsUrl') || hackathon.detailsUrl || ''}
         existingSubmissionFields={submissionSchema}
         isApplying={updateMutation.isPending}
         onApply={onApplySetupWizard}

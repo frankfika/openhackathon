@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/lib/auth';
 import { UserRole } from '@/lib/types';
+import { useAdminRoutes } from '@/lib/admin-routing'
 
 type LoginFormValues = {
   email: string
@@ -23,6 +24,7 @@ export function Login() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { adminBasePath } = useAdminRoutes()
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<UserRole>('admin');
   const loginSchema = useMemo(
@@ -45,9 +47,9 @@ export function Login() {
   async function onSubmit(data: LoginFormValues) {
     setIsLoading(true);
     try {
-      await login(data.email, data.password);
+      const authenticatedUser = await login(data.email, data.password);
       toast.success(t('auth.welcome'));
-      const redirectPath = activeTab === 'judge' ? '/judge' : '/dashboard';
+      const redirectPath = authenticatedUser.role === 'judge' ? '/judge' : adminBasePath;
       navigate(redirectPath);
     } catch (error) {
       const message = error instanceof Error ? error.message : t('auth.sign_in_failed')

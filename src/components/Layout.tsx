@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { CalendarDays, Menu, X } from 'lucide-react'
 import { Button } from './ui/button'
 import { cn } from '@/lib/utils'
-import { useAuth } from '@/lib/auth'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { useSiteBranding } from '@/lib/site-branding'
 import { ThemeLanguageSwitcher } from './ThemeLanguageSwitcher'
@@ -12,12 +11,9 @@ import { ThemeLanguageSwitcher } from './ThemeLanguageSwitcher'
 export function Layout() {
   const location = useLocation()
   const { t } = useTranslation()
-  const { user, logout } = useAuth()
   const { activeHackathon } = useActiveHackathon()
   const { settings } = useSiteBranding()
   const [mobileOpen, setMobileOpen] = useState(false)
-
-  const isAuthPage = ['/login', '/register'].includes(location.pathname)
 
   const navItems = useMemo(
     () => [
@@ -32,12 +28,6 @@ export function Layout() {
   useEffect(() => {
     setMobileOpen(false)
   }, [location.pathname])
-
-  if (isAuthPage) {
-    return <Outlet />
-  }
-
-  const dashboardPath = user?.role === 'admin' ? '/dashboard' : '/judge'
 
   const isNavActive = (to: string, exact?: boolean) => {
     return exact ? location.pathname === to : location.pathname.startsWith(to)
@@ -88,30 +78,6 @@ export function Layout() {
           <div className="flex items-center gap-2">
             <ThemeLanguageSwitcher />
 
-            {user ? (
-              <>
-                <Link to={dashboardPath}>
-                  <Button variant="default" size="sm" className="rounded-full px-4 grand-cta">
-                    {t('nav.dashboard')}
-                  </Button>
-                </Link>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="hidden rounded-full md:inline-flex"
-                  onClick={logout}
-                >
-                  {t('nav.logout')}
-                </Button>
-              </>
-            ) : (
-              <Link to="/login">
-                <Button variant="ghost" size="sm" className="rounded-full font-medium">
-                  {t('nav.login')}
-                </Button>
-              </Link>
-            )}
-
             <Button
               variant="ghost"
               size="icon"
@@ -152,27 +118,6 @@ export function Layout() {
                 )
               })}
             </nav>
-
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {user ? (
-                <>
-                  <Link to={dashboardPath}>
-                    <Button className="w-full rounded-lg grand-cta" size="sm">
-                      {t('nav.dashboard')}
-                    </Button>
-                  </Link>
-                  <Button variant="outline" size="sm" className="w-full rounded-lg" onClick={logout}>
-                    {t('nav.logout')}
-                  </Button>
-                </>
-              ) : (
-                <Link to="/login" className="col-span-2">
-                  <Button variant="outline" className="w-full rounded-lg" size="sm">
-                    {t('nav.login')}
-                  </Button>
-                </Link>
-              )}
-            </div>
           </div>
         )}
       </header>

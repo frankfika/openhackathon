@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 import { useActiveHackathon } from '@/lib/active-hackathon'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
 
 const statuses: Array<'pending' | 'in_progress' | 'completed'> = [
   'pending',
@@ -21,18 +21,16 @@ export function Judging() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { activeHackathon } = useActiveHackathon()
-  const [status, setStatus] = useState<(typeof statuses)[number]>('in_progress')
-  const [selectedSessionId, setSelectedSessionId] = useState('all')
+  const { adminBasePath } = useAdminRoutes()
+  const isJudge = user?.role === 'judge'
+  const [status, setStatus] = useState<(typeof statuses)[number]>(isJudge ? 'pending' : 'in_progress')
 
   // Fetch assignments from API
   const { data: assignments = [] } = useQuery({
-    queryKey: ['assignments', activeHackathon?.id, user?.id, user?.role, selectedSessionId],
+    queryKey: ['assignments', activeHackathon?.id, user?.id, user?.role],
     queryFn: async () => {
-      const params: { sessionId?: string; judgeId?: string; hackathonId?: string } = {
+      const params: { judgeId?: string; hackathonId?: string } = {
         hackathonId: activeHackathon?.id,
-      }
-      if (selectedSessionId !== 'all') {
-        params.sessionId = selectedSessionId
       }
       if (user?.role === 'judge') {
         params.judgeId = user.id
@@ -53,7 +51,7 @@ export function Judging() {
     const filteredAssignments = assignments.filter((a) => a.status === status)
     return filteredAssignments.map((a) => {
       const project = projects.find((p) => p.id === a.projectId)
-      return { a, project, session: a.session }
+      return { a, project }
     })
   }, [status, assignments, projects])
 
@@ -62,27 +60,18 @@ export function Judging() {
       <section className="container py-6 md:py-14">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="space-y-2">
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight md:text-4xl">{t('judging.title')}</h1>
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight md:text-4xl">
+              {isJudge
+                ? t('judging.judge_title', 'My Review Queue')
+                : t('judging.admin_title', 'Judging Progress')}
+            </h1>
             <p className="text-sm md:text-base text-muted-foreground">
-              {t('judging.subtitle')}
+              {isJudge
+                ? t('judging.judge_subtitle', 'Review your assigned projects and submit scores.')
+                : t('judging.admin_subtitle', 'Track judging progress across judges. Admins do not submit scores here.')}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="w-[220px]">
-              <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
-                <SelectTrigger>
-                  <SelectValue placeholder={t('reports.session', 'Session')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('reports.filter_all', 'All')}</SelectItem>
-                  {(activeHackathon?.sessions || []).map((session) => (
-                    <SelectItem key={session.id} value={session.id}>
-                      {session.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             {statuses.map((s) => (
               <Button
                 key={s}
@@ -102,49 +91,53 @@ export function Judging() {
               {t('judging.no_assignments', 'No assignments found')}
             </div>
           )}
-          {rows.map(({ a, project, session }) => (
-            <Card key={a.id} className="surface-panel border-none shadow-none">
-              <CardHeader className="flex flex-row items-start justify-between gap-4">
-                <div className="space-y-1">
-                  <CardTitle className="text-lg">{project?.title}</CardTitle>
-                  <div className="text-xs text-muted-foreground">
-                    {session?.name} · {a.judge?.name}
+          {rows.map(({ a, project }) => {
+            const metaLine = isJudge
+              ? undefined
+              : a.judge?.name
+
+            return (
+              <Card key={a.id} className="surface-panel border-none shadow-none">
+                <CardHeader className="flex flex-row items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <CardTitle className="text-lg">{project?.title}</CardTitle>
+                    {metaLine && <div className="text-xs text-muted-foreground">{metaLine}</div>}
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {a.status === 'completed' ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      {t('judging.done')}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full bg-apple-blue/10 px-2.5 py-1 text-xs font-medium text-apple-blue">
-                      {t(`judging.status.${a.status}`)}
-                    </span>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <p className="text-sm text-foreground/80 leading-relaxed md:max-w-3xl">
-                  {project?.oneLiner}
-                </p>
-                <Button
-                  variant="outline"
-                  className="rounded-full"
-                  onClick={() => {
-                    // Navigate based on user role
-                    const reviewPath = user?.role === 'judge'
-                      ? `/judge/review/${a.id}`
-                      : `/dashboard/judging/${a.id}`
-                    navigate(reviewPath)
-                  }}
-                >
-                  {t('judging.open_review')}
-                  <ChevronRight className="ml-2 h-4 w-4" />
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                  <div className="flex items-center gap-2">
+                    {a.status === 'completed' ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        {t('judging.done')}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-apple-blue/10 px-2.5 py-1 text-xs font-medium text-apple-blue">
+                        {t(`judging.status.${a.status}`)}
+                      </span>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <p className="text-sm text-foreground/80 leading-relaxed md:max-w-3xl">
+                    {project?.oneLiner}
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="rounded-full"
+                    onClick={() => {
+                      // Navigate based on user role
+                      const reviewPath = user?.role === 'judge'
+                        ? `/judge/review/${a.id}`
+                        : buildAdminPath(adminBasePath, `judging/${a.id}`)
+                      navigate(reviewPath)
+                    }}
+                  >
+                    {isJudge ? t('judging.open_review') : t('judging.view_assignment', 'View details')}
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       </section>
     </div>

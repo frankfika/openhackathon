@@ -47,6 +47,20 @@ OpenHackathon is an end-to-end platform for hackathon organizers, judges, and pa
 
 ![Promotions](./docs/assets/promotions.png)
 
+### 4.1 Admin Review Operations Architecture (v2)
+- Admin review operations are fully split into dedicated pages: `${adminBasePath}/reviews`, `${adminBasePath}/assignments`, `${adminBasePath}/promotions`, `${adminBasePath}/reports`, `${adminBasePath}/judges` (default `adminBasePath=/admin`).
+- `adminBasePath` is configurable in Site Settings. It controls the admin entry path only and does not change judging business rules.
+- Judge identity is global, but eligibility is hackathon-scoped. Only judges registered to the current hackathon can be assigned or auto-carried to next-round assignments.
+- Admin sidebar now includes a dedicated `Hackathons` entry and shows explicit current hackathon name + date range, with a direct switch action to avoid ambiguous "current hackathon" context.
+- Preliminary / semi-final / final and region are consistently modeled as session dimensions, with shared `sessionId` URL context across review pages.
+- A project can be reviewed by multiple judges (uniqueness only prevents duplicate assignment of the same judge to the same project in the same session).
+- Session timelines are strongly validated in both UI and API: start date cannot be after end date, and downstream rounds cannot start earlier than upstream rounds.
+- Promotions prefer region-matched downstream routing by default (for both preliminary and semi-final flows), while still allowing per-project override.
+- Promotions do not auto-select all judges; reviewer selection is required only when there are `advanced` decisions, preventing accidental mass assignment.
+- Promotions now include keyword/decision/region filters, filtered-batch decision actions, and "auto fill next round", and block apply when advanced items miss a next-round target.
+- Final sessions are excluded from promotion-operation scope in UI, avoiding invalid "advance after final" paths.
+- Full product rules are documented in [Admin Review Architecture v2](./docs/admin-review-architecture.md).
+
 ### 5. Unified Event Details Entry (No Rules/Docs Duplication)
 - Public navigation now uses one `Event Details` entry instead of separate duplicated `Rules` and `Docs`.
 - Source fallback priority: `gitbookUrl` → `rulesUrl` → `detailsUrl`.
@@ -96,7 +110,31 @@ Notes:
 ## 🚀 Quick Start
 ### Requirements
 - Node.js 20+ (recommended)
-- PostgreSQL 15+
+- Docker + Docker Compose
+
+### One-Command Dev Startup
+```bash
+git clone https://github.com/frankfika/openhackathon.git
+cd openhackathon
+npm install
+npm run dev:up
+```
+
+This command now handles the full local dev bootstrap:
+- Loads `.env`, or falls back to `.env.example` if `.env` is missing
+- Starts PostgreSQL with `docker compose`
+- Waits for the database to become ready and runs `npx prisma db push`
+- Ensures the built-in development accounts exist without wiping application data
+- Launches the existing frontend and API dev processes via `npm run dev`
+
+Common commands:
+```bash
+# Initialize demo data (this wipes current data before reseeding)
+npm run dev:up:seed
+
+# Stop the Docker database container
+npm run dev:down
+```
 
 ### Local Development
 ```bash
@@ -104,7 +142,7 @@ git clone https://github.com/frankfika/openhackathon.git
 cd openhackathon
 npm install
 
-# Initialize database
+# Manual mode: use this if you manage PostgreSQL yourself
 npx prisma db push
 npm run db:seed
 
@@ -114,7 +152,51 @@ npm run dev
 
 Default seed accounts:
 - Admin: `admin@openhackathon.com` / `password`
+- Backup admin: `ops@openhackathon.com` / `password`
 - Judge: `alice@techgiants.com` / `password`
+- Empty judge account: `judge1@openhackathon.com` / `password`
+- Empty judge account: `judge2@openhackathon.com` / `password`
+- Empty judge account: `judge3@openhackathon.com` / `password`
+
+### 🌱 Seed Data Guide
+The full demo seed (`npm run dev:up:seed` / `npm run db:seed`) creates:
+- `10` built-in accounts
+- `7` hackathons
+- `32` projects
+- `44` review assignments
+
+Diversity:
+- Covers `active`, `upcoming`, `draft`, `judging`, and `completed` event states.
+- Includes AI, FinTech, Climate, Web3, EdTech, Health, and CyberSecurity themes.
+- Mixes single-round and multi-round setups, completed/in-progress/pending reviews, and submissions with repo links, demo links, or text-heavy payloads.
+- Intentionally includes both data-rich hackathons and almost-empty hackathons so empty states, reports, filters, and onboarding flows can all be tested.
+
+Suggested usage:
+- Full admin workspace: `admin@openhackathon.com`
+- Full judge workspace: `alice@techgiants.com`, `bob@venturecap.com`, `charlie@designstudio.io`, `diana@aifund.com`, `evan@dev.tools`
+- Empty judge states: `judge1@openhackathon.com`, `judge2@openhackathon.com`, `judge3@openhackathon.com`
+- Clean admin identity: `ops@openhackathon.com`
+- Setup Wizard testing: the wizard is driven by hackathon configuration, not by whether the account is empty. Use any admin account, then either create a new hackathon or switch to a sparse event such as `Green Earth Hackathon` or `EdTech Remote Jam`, which only have `0-1` round configured.
+
+### 🧪 Scenario Matrix
+| Scenario | Recommended account | Recommended hackathon | Why |
+|---|---|---|---|
+| Full admin dashboard | `admin@openhackathon.com` | `Global AI Challenge 2026` | This is the default `active` event and has the richest mix of projects, assignments, scores, and reports. |
+| Judge workspace with active tasks | `alice@techgiants.com` | `Global AI Challenge 2026` | Includes `completed`, `in_progress`, and `pending` assignments in one place. |
+| Judge empty state | `judge1@openhackathon.com` | Any | This account has no assignments, so it is ideal for empty-list and empty-panel validation. |
+| Completed-event and historical data | `admin@openhackathon.com` | `Web3 World Championship` | Best for validating completed-event behavior and finished review data. |
+| In-progress judging views | `admin@openhackathon.com` | `EdTech Remote Jam` or `CyberSec Challenge 2026` | Both include live review activity and mixed judging progress. |
+| Fresh admin onboarding | `ops@openhackathon.com` | A newly created hackathon | Best way to validate first-run admin flows and sparse states. |
+| Setup Wizard prompt | `ops@openhackathon.com` | A newly created hackathon or `Green Earth Hackathon` | `Green Earth Hackathon` has only `1` session, which matches the wizard suggestion rule. |
+| Single-session configuration | `admin@openhackathon.com` | `EdTech Remote Jam` | Useful for testing wizard behavior when a hackathon already has one round configured. |
+| Multi-round configuration | `admin@openhackathon.com` | `Global AI Challenge 2026` / `CyberSec Challenge 2026` | Good coverage for two-round structures, scoring setup, and populated workflows. |
+| No-project / no-assignment state | `ops@openhackathon.com` | `FinTech Asia Summit` / `Health Innovation Summit` | These have baseline event configuration but no projects or assignments, which is useful for empty-state validation. |
+
+Notes:
+- `npm run dev:up:seed` and `npm run db:seed` both delete current application data before reseeding demo content.
+- `npm run dev:up` always re-ensures the built-in development accounts above and resets their password to `password`.
+- `Ctrl+C` stops the frontend and API processes; use `npm run dev:down` to stop the Docker database container.
+- If port `3001` or `5173` is already in use, the script fails fast and prints the process holding that port.
 
 ### Testing
 ```bash
@@ -128,6 +210,8 @@ npm run test:e2e
 ```bash
 docker compose up -d --build
 ```
+
+Keep this flow if you want web, API, and database all inside containers; for normal local development, prefer `npm run dev:up`.
 
 Default ports:
 - Web: `5173`

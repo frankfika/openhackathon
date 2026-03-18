@@ -2,6 +2,7 @@ import { SiteSettings } from './types'
 
 export const defaultSiteSettings: SiteSettings = {
   siteName: import.meta.env.VITE_SITE_NAME || import.meta.env.VITE_ORGANIZER_NAME || 'OpenHackathon',
+  adminBasePath: import.meta.env.VITE_ADMIN_BASE_PATH || '/admin',
   logoUrl: import.meta.env.VITE_SITE_LOGO || import.meta.env.VITE_ORGANIZER_LOGO || '/openhackathon-logo.svg',
   tabTitle: import.meta.env.VITE_TAB_TITLE || 'OpenHackathon',
   seoTitle: import.meta.env.VITE_SEO_TITLE || 'OpenHackathon',

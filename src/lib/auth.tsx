@@ -22,7 +22,7 @@ function getLoginErrorMessage(err: unknown): string {
 
 type AuthContextType = {
   user: User | null
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<User>
   logout: () => void
   isLoading: boolean
   error: string | null
@@ -63,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         localStorage.removeItem(TOKEN_STORAGE_KEY)
       }
+      return user
     } catch (err: unknown) {
       const message = getLoginErrorMessage(err)
       setError(message)

@@ -13,9 +13,7 @@ const prisma = new PrismaClient();
 beforeEach(async () => {
   await prisma.score.deleteMany();
   await prisma.assignment.deleteMany();
-  await prisma.projectRound.deleteMany();
   await prisma.project.deleteMany();
-  await prisma.session.deleteMany();
   await prisma.scoringCriterion.deleteMany();
   await prisma.hackathon.deleteMany();
   await prisma.siteSetting.deleteMany();

@@ -1,13 +1,11 @@
 import React, { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { BookOpenText, ExternalLink, FileText, Link2, ScrollText, Settings2 } from 'lucide-react'
+import { BookOpenText, ExternalLink, FileText, Link2, ScrollText } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { MarkdownDocument } from '@/components/MarkdownDocument'
 import { useActiveHackathon } from '@/lib/active-hackathon'
-import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 
 function normalizeUrl(url?: string | null) {
@@ -19,7 +17,6 @@ function normalizeUrl(url?: string | null) {
 
 export function Docs() {
   const { t } = useTranslation()
-  const { user } = useAuth()
   const { activeHackathon: h } = useActiveHackathon()
   const [iframeError, setIframeError] = useState(false)
   const { data: localDoc, isLoading: isLoadingLocalDoc } = useQuery({
@@ -36,18 +33,18 @@ export function Docs() {
   })
 
   const source = useMemo(() => {
-    const detailsUrl = normalizeUrl(h.detailsUrl)
-    const rulesUrl = normalizeUrl(h.rulesUrl)
     const gitbookUrl = normalizeUrl(h.gitbookUrl)
+    const rulesUrl = normalizeUrl(h.rulesUrl)
+    const detailsUrl = normalizeUrl(h.detailsUrl)
 
-    if (detailsUrl) {
-      return { url: detailsUrl, label: t('nav.docs'), icon: Link2 }
+    if (gitbookUrl) {
+      return { url: gitbookUrl, label: 'GitBook', icon: BookOpenText }
     }
     if (rulesUrl) {
       return { url: rulesUrl, label: t('landing.footer.rules'), icon: ScrollText }
     }
-    if (gitbookUrl) {
-      return { url: gitbookUrl, label: 'GitBook', icon: BookOpenText }
+    if (detailsUrl) {
+      return { url: detailsUrl, label: t('nav.docs'), icon: Link2 }
     }
 
     return null
@@ -121,14 +118,6 @@ export function Docs() {
                 <ExternalLink className="h-4 w-4" />
               </Button>
             </a>
-            {user?.role === 'admin' && h.id && (
-              <Link to={`/dashboard/hackathons/${h.id}/settings`}>
-                <Button className="rounded-full gap-2 grand-cta">
-                  {t('settings.hackathon_settings')}
-                  <Settings2 className="h-4 w-4" />
-                </Button>
-              </Link>
-            )}
           </div>
         </div>
       </div>

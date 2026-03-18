@@ -30,6 +30,15 @@ describe('api client', () => {
   })
 
   describe('hackathons', () => {
+    it('getCurrentHackathon calls GET /api/hackathon', async () => {
+      const data = { id: 'h1', title: 'Current Hack' }
+      mockedAxios.get.mockResolvedValue({ data })
+
+      const result = await api.getCurrentHackathon()
+      expect(mockedAxios.get).toHaveBeenCalledWith('/api/hackathon')
+      expect(result).toEqual(data)
+    })
+
     it('getHackathons calls GET /api/hackathons', async () => {
       const data = [{ id: 'h1', title: 'Hack 1' }]
       mockedAxios.get.mockResolvedValue({ data })
@@ -92,6 +101,13 @@ describe('api client', () => {
       await api.deleteHackathonMarkdownDoc('h1')
       expect(mockedAxios.delete).toHaveBeenCalledWith('/api/hackathons/h1/markdown-doc')
     })
+
+    it('getHackathonMarkdownDoc falls back to single-hackathon endpoint without id', async () => {
+      mockedAxios.get.mockResolvedValue({ data: { fileName: 'README.md', content: '# Doc' } })
+
+      await api.getHackathonMarkdownDoc()
+      expect(mockedAxios.get).toHaveBeenCalledWith('/api/hackathon/markdown-doc')
+    })
   })
 
   describe('projects', () => {
@@ -131,30 +147,11 @@ describe('api client', () => {
     })
 
     it('createAssignments calls POST /api/assignments', async () => {
-      const assignments = [{ sessionId: 's1', projectId: 'p1', judgeId: 'j1' }]
+      const assignments = [{ projectId: 'p1', judgeId: 'j1' }]
       mockedAxios.post.mockResolvedValue({ data: assignments })
 
       await api.createAssignments(assignments)
       expect(mockedAxios.post).toHaveBeenCalledWith('/api/assignments', { assignments })
-    })
-  })
-
-  describe('project rounds', () => {
-    it('getProjectRounds calls GET /api/project-rounds with params', async () => {
-      mockedAxios.get.mockResolvedValue({ data: [] })
-
-      await api.getProjectRounds({ sessionId: 's1', hackathonId: 'h1' })
-      expect(mockedAxios.get).toHaveBeenCalledWith('/api/project-rounds', {
-        params: { sessionId: 's1', hackathonId: 'h1' },
-      })
-    })
-
-    it('updateProjectRoundPromotion calls PUT /api/project-rounds/:id/promotion', async () => {
-      const payload = { decision: 'advanced' as const, nextSessionId: 's2', judgeIds: ['j1'] }
-      mockedAxios.put.mockResolvedValue({ data: { id: 'r1' } })
-
-      await api.updateProjectRoundPromotion('r1', payload)
-      expect(mockedAxios.put).toHaveBeenCalledWith('/api/project-rounds/r1/promotion', payload)
     })
   })
 
@@ -208,6 +205,34 @@ describe('api client', () => {
       await api.deleteUser('u1')
       expect(mockedAxios.delete).toHaveBeenCalledWith('/api/users/u1')
     })
+
+    it('getHackathonJudges calls GET /api/hackathons/:id/judges', async () => {
+      mockedAxios.get.mockResolvedValue({ data: [] })
+
+      await api.getHackathonJudges('h1')
+      expect(mockedAxios.get).toHaveBeenCalledWith('/api/hackathons/h1/judges')
+    })
+
+    it('registerHackathonJudges calls POST /api/hackathons/:id/judges', async () => {
+      mockedAxios.post.mockResolvedValue({ data: [] })
+
+      await api.registerHackathonJudges('h1', ['j1', 'j2'])
+      expect(mockedAxios.post).toHaveBeenCalledWith('/api/hackathons/h1/judges', { judgeIds: ['j1', 'j2'] })
+    })
+
+    it('removeHackathonJudge calls DELETE /api/hackathons/:id/judges/:judgeId', async () => {
+      mockedAxios.delete.mockResolvedValue({ data: { success: true } })
+
+      await api.removeHackathonJudge('h1', 'j1')
+      expect(mockedAxios.delete).toHaveBeenCalledWith('/api/hackathons/h1/judges/j1')
+    })
+
+    it('getHackathonJudges falls back to /api/hackathon/judges without id', async () => {
+      mockedAxios.get.mockResolvedValue({ data: [] })
+
+      await api.getHackathonJudges()
+      expect(mockedAxios.get).toHaveBeenCalledWith('/api/hackathon/judges')
+    })
   })
 
   describe('leaderboard', () => {
@@ -224,6 +249,14 @@ describe('api client', () => {
 
       await api.saveLeaderboard('h1', payload)
       expect(mockedAxios.put).toHaveBeenCalledWith('/api/hackathons/h1/leaderboard', payload)
+    })
+
+    it('saveLeaderboard falls back to /api/hackathon/leaderboard without id', async () => {
+      const payload = { entries: [{ projectId: 'p1', rank: 1, award: 'Gold' }], published: true }
+      mockedAxios.put.mockResolvedValue({ data: {} })
+
+      await api.saveLeaderboard(undefined, payload)
+      expect(mockedAxios.put).toHaveBeenCalledWith('/api/hackathon/leaderboard', payload)
     })
   })
 

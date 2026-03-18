@@ -33,7 +33,7 @@ export default async function globalSetup() {
     await client.end();
   }
 
-  execSync('npx prisma db push --skip-generate', {
+  execSync('npx prisma db push --skip-generate --accept-data-loss', {
     env: {
       ...process.env,
       DATABASE_URL: TEST_DATABASE_URL,

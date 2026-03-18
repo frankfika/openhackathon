@@ -11,43 +11,63 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import {
   createSetupWizardBlueprint,
-  planSetupWizardSessions,
   SetupWizardDimension,
-  SetupWizardFormat,
-  SetupWizardSessionBlueprint,
   SetupWizardSubmissionStyle,
 } from '@/lib/setup-wizard'
-import { formatDateRange, HackathonSessionInput, ScoringCriterion, Session, SubmissionField } from '@/lib/types'
-import { CalendarClock, Filter, ListChecks, Loader2, Wand2 } from 'lucide-react'
+import { formatDateRange, ScoringCriterion, SubmissionField } from '@/lib/types'
+import { ArrowLeft, ArrowRight, Check, Filter, ListChecks, Loader2, Sparkles, Wand2 } from 'lucide-react'
 
 type SetupWizardApplyPayload = {
+  title: string
+  tagline: string
+  city?: string
+  prizePool?: string
   startAt?: string
   endAt?: string
-  submissionSchema: { fields: SubmissionField[] }
+  gitbookUrl?: string
+  rulesUrl?: string
+  detailsUrl?: string
+  submissionSchema: {
+    fields: SubmissionField[]
+  }
   scoringCriteria: ScoringCriterion[]
-  sessions?: HackathonSessionInput[]
 }
 
 type SetupWizardDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  title: string
+  tagline: string
+  city?: string
+  prizePool?: string
   startAt: string
   endAt: string
-  existingSessions: Session[]
+  gitbookUrl?: string
+  rulesUrl?: string
+  detailsUrl?: string
   existingSubmissionFields: SubmissionField[]
   isApplying?: boolean
   onApply: (payload: SetupWizardApplyPayload) => Promise<void>
 }
 
-function inferFormat(existingSessions: Session[]): SetupWizardFormat {
-  if (existingSessions.length === 0) return 'prelim_final'
-  if (existingSessions.length >= 3) return 'three_stage'
-  if (existingSessions.length === 2) return 'prelim_final'
-  return 'single_round'
+type SetupProfileState = {
+  title: string
+  tagline: string
+  city: string
+  prizePool: string
+  startAt: string
+  endAt: string
+  gitbookUrl: string
+  rulesUrl: string
+  detailsUrl: string
 }
+
+const TOTAL_STEPS = 3
 
 function inferSubmissionStyle(existingSubmissionFields: SubmissionField[]): SetupWizardSubmissionStyle {
   if (existingSubmissionFields.length === 0) return 'standard'
@@ -64,7 +84,6 @@ function inferDimensions(existingSubmissionFields: SubmissionField[]): SetupWiza
   const dimensions: SetupWizardDimension[] = []
   const fieldIds = new Set(existingSubmissionFields.map((field) => field.id))
 
-  if (fieldIds.has('region')) dimensions.push('region')
   if (fieldIds.has('className')) dimensions.push('class_name')
   if (fieldIds.has('category')) dimensions.push('category')
 
@@ -86,16 +105,12 @@ function getFieldLabel(fieldId: string, t: ReturnType<typeof useTranslation>['t'
     case 'tags':
       return t('projects.tags')
     default:
-      return t(`settings.setup_wizard.field_labels.${fieldId}`)
+      return t(`settings.setup_wizard.field_labels.${fieldId}`, fieldId)
   }
 }
 
 function getCriterionLabel(criterionKey: 'innovation' | 'execution' | 'impact', t: ReturnType<typeof useTranslation>['t']) {
-  return t(`settings.setup_wizard.criteria.${criterionKey}`)
-}
-
-function getGeneratedSessionName(session: SetupWizardSessionBlueprint, t: ReturnType<typeof useTranslation>['t']) {
-  return t(`settings.setup_wizard.session_names.${session.key}`)
+  return t(`settings.setup_wizard.criteria.${criterionKey}`, criterionKey)
 }
 
 function OptionCard({
@@ -138,59 +153,106 @@ function OptionCard({
   )
 }
 
+function StepIndicator({ current, total, labels }: { current: number; total: number; labels: string[] }) {
+  return (
+    <div className="flex items-center gap-2">
+      {Array.from({ length: total }, (_, i) => {
+        const step = i + 1
+        const isActive = step === current
+        const isDone = step < current
+        return (
+          <React.Fragment key={step}>
+            {i > 0 && <div className={cn('h-px flex-1', isDone ? 'bg-primary' : 'bg-border')} />}
+            <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-colors',
+                  isActive && 'bg-primary text-primary-foreground',
+                  isDone && 'bg-primary/20 text-primary',
+                  !isActive && !isDone && 'bg-muted text-muted-foreground'
+                )}
+              >
+                {isDone ? <Check className="h-3.5 w-3.5" /> : step}
+              </div>
+              <span className={cn('hidden text-sm sm:inline', isActive ? 'font-medium' : 'text-muted-foreground')}>
+                {labels[i]}
+              </span>
+            </div>
+          </React.Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
 export function SetupWizardDialog({
   open,
   onOpenChange,
+  title,
+  tagline,
+  city,
+  prizePool,
   startAt,
   endAt,
-  existingSessions,
+  gitbookUrl,
+  rulesUrl,
+  detailsUrl,
   existingSubmissionFields,
   isApplying,
   onApply,
 }: SetupWizardDialogProps) {
   const { t } = useTranslation()
-  const canGenerateSessions = existingSessions.length <= 1
 
-  const [format, setFormat] = useState<SetupWizardFormat>('prelim_final')
+  const [step, setStep] = useState(1)
   const [submissionStyle, setSubmissionStyle] = useState<SetupWizardSubmissionStyle>('standard')
   const [dimensions, setDimensions] = useState<SetupWizardDimension[]>([])
+  const [profile, setProfile] = useState<SetupProfileState>({
+    title: '',
+    tagline: '',
+    city: '',
+    prizePool: '',
+    startAt: '',
+    endAt: '',
+    gitbookUrl: '',
+    rulesUrl: '',
+    detailsUrl: '',
+  })
+
+  const stepLabels = [
+    t('settings.setup_wizard.step_basic', 'Basic Info'),
+    t('settings.setup_wizard.step_submission', 'Submission'),
+    t('settings.setup_wizard.step_preview', 'Preview'),
+  ]
 
   useEffect(() => {
     if (!open) return
 
-    setFormat(inferFormat(existingSessions))
+    setStep(1)
     setSubmissionStyle(inferSubmissionStyle(existingSubmissionFields))
     setDimensions(inferDimensions(existingSubmissionFields))
-  }, [open, existingSessions, existingSubmissionFields])
+    setProfile({
+      title: title || '',
+      tagline: tagline || '',
+      city: city || '',
+      prizePool: prizePool || '',
+      startAt: startAt || '',
+      endAt: endAt || '',
+      gitbookUrl: gitbookUrl || '',
+      rulesUrl: rulesUrl || '',
+      detailsUrl: detailsUrl || '',
+    })
+  }, [open, existingSubmissionFields, title, tagline, city, prizePool, startAt, endAt, gitbookUrl, rulesUrl, detailsUrl])
 
   const blueprint = useMemo(
     () =>
       createSetupWizardBlueprint({
-        startAt,
-        endAt,
-        format,
+        startAt: profile.startAt,
+        endAt: profile.endAt,
         submissionStyle,
         dimensions,
       }),
-    [startAt, endAt, format, submissionStyle, dimensions]
+    [profile.endAt, profile.startAt, submissionStyle, dimensions]
   )
-
-  const sessionPlan = useMemo(
-    () => planSetupWizardSessions(existingSessions, blueprint.sessions),
-    [existingSessions, blueprint.sessions]
-  )
-
-  const previewSessions = sessionPlan.mode === 'generated'
-    ? (sessionPlan.sessions || []).map((session) => ({
-        title: getGeneratedSessionName(session, t),
-        subtitle: t(`sessions.status_${session.status}`),
-        range: formatDateRange(session.startAt, session.endAt),
-      }))
-    : existingSessions.map((session) => ({
-        title: session.name,
-        subtitle: `${t(`sessions.type_${session.type}`)} · ${t(`sessions.status_${session.status}`)}`,
-        range: formatDateRange(session.startAt, session.endAt),
-      }))
 
   const previewFields = blueprint.submissionFields.map((field) => getFieldLabel(field.id, t))
   const previewCriteria = blueprint.scoringCriteria.map((criterion) => ({
@@ -207,6 +269,10 @@ export function SetupWizardDialog({
     })
   }
 
+  const handleProfileChange = (field: keyof SetupProfileState, value: string) => {
+    setProfile((current) => ({ ...current, [field]: value }))
+  }
+
   const handleApply = async () => {
     const submissionSchema = {
       fields: blueprint.submissionFields.map((field) => ({
@@ -215,6 +281,7 @@ export function SetupWizardDialog({
         type: field.type,
         required: field.required,
         filterable: field.filterable,
+        options: field.options,
       })),
     }
 
@@ -224,29 +291,28 @@ export function SetupWizardDialog({
       maxScore: criterion.maxScore,
     }))
 
-    const sessions = canGenerateSessions
-      ? (sessionPlan.sessions || []).map((session) => ({
-          id: session.id,
-          name: getGeneratedSessionName(session, t),
-          type: session.type,
-          status: session.status,
-          startAt: session.startAt,
-          endAt: session.endAt,
-        }))
-      : undefined
-
     await onApply({
-      startAt,
-      endAt,
+      title: profile.title.trim(),
+      tagline: profile.tagline.trim(),
+      city: profile.city.trim() || undefined,
+      prizePool: profile.prizePool.trim() || undefined,
+      startAt: profile.startAt,
+      endAt: profile.endAt,
+      gitbookUrl: profile.gitbookUrl.trim() || undefined,
+      rulesUrl: profile.rulesUrl.trim() || undefined,
+      detailsUrl: profile.detailsUrl.trim() || undefined,
       submissionSchema,
       scoringCriteria,
-      sessions,
     })
   }
 
+  const canProceedStep1 = profile.title.trim() && profile.tagline.trim() && profile.startAt && profile.endAt
+
+  const configuredDocs = [profile.gitbookUrl, profile.rulesUrl, profile.detailsUrl].filter(Boolean)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl overflow-hidden p-0">
+      <DialogContent className="max-w-2xl overflow-hidden p-0">
         <div className="bg-gradient-to-r from-sky-500/14 via-cyan-500/10 to-emerald-500/12 px-6 py-5">
           <DialogHeader className="space-y-3 text-left">
             <div className="flex items-center gap-2">
@@ -254,198 +320,265 @@ export function SetupWizardDialog({
                 <Wand2 className="h-5 w-5" />
               </div>
               <div>
-                <DialogTitle>{t('settings.setup_wizard.title')}</DialogTitle>
-                <DialogDescription className="mt-1 max-w-2xl">
-                  {t('settings.setup_wizard.description')}
+                <DialogTitle>{t('settings.setup_wizard.title', 'Setup Wizard')}</DialogTitle>
+                <DialogDescription className="mt-1">
+                  {t('settings.setup_wizard.description', 'Configure the hackathon profile, submission flow, judging structure, and default rubric in one pass.')}
                 </DialogDescription>
               </div>
-            </div>
-            <div className="rounded-2xl border border-white/70 bg-white/70 px-4 py-3 text-sm text-muted-foreground shadow-sm dark:border-slate-700/60 dark:bg-slate-950/40">
-              {t('settings.setup_wizard.apply_hint')}
             </div>
           </DialogHeader>
         </div>
 
-        <div className="grid gap-6 px-6 py-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="space-y-6">
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <CalendarClock className="h-4 w-4 text-primary" />
-                <div>
-                  <h3 className="font-semibold">{t('settings.setup_wizard.format_title')}</h3>
-                  <p className="text-sm text-muted-foreground">{t('settings.setup_wizard.format_desc')}</p>
+        <div className="px-6 pt-4">
+          <StepIndicator current={step} total={TOTAL_STEPS} labels={stepLabels} />
+        </div>
+
+        <div className="min-h-[340px] px-6 py-5">
+          {/* Step 1: Basic Info */}
+          {step === 1 && (
+            <div className="space-y-4 animate-in fade-in-0 duration-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <h3 className="font-semibold">{t('settings.setup_wizard.profile_title', 'Event Profile')}</h3>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="wizard-title">{t('hackathons.title')}</Label>
+                <Input id="wizard-title" value={profile.title} onChange={(e) => handleProfileChange('title', e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="wizard-tagline">{t('hackathons.tagline')}</Label>
+                <Input id="wizard-tagline" value={profile.tagline} onChange={(e) => handleProfileChange('tagline', e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="wizard-start">{t('hackathons.start_date')}</Label>
+                  <Input id="wizard-start" type="date" value={profile.startAt} onChange={(e) => handleProfileChange('startAt', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="wizard-end">{t('hackathons.end_date')}</Label>
+                  <Input id="wizard-end" type="date" value={profile.endAt} onChange={(e) => handleProfileChange('endAt', e.target.value)} />
                 </div>
               </div>
-
-              <div className="grid gap-3 md:grid-cols-3">
-                <OptionCard
-                  title={t('settings.setup_wizard.formats.single_round.title')}
-                  description={t('settings.setup_wizard.formats.single_round.desc')}
-                  selected={format === 'single_round'}
-                  disabled={!canGenerateSessions}
-                  onClick={() => setFormat('single_round')}
-                />
-                <OptionCard
-                  title={t('settings.setup_wizard.formats.prelim_final.title')}
-                  description={t('settings.setup_wizard.formats.prelim_final.desc')}
-                  selected={format === 'prelim_final'}
-                  disabled={!canGenerateSessions}
-                  badge={t('assignments.recommended')}
-                  onClick={() => setFormat('prelim_final')}
-                />
-                <OptionCard
-                  title={t('settings.setup_wizard.formats.three_stage.title')}
-                  description={t('settings.setup_wizard.formats.three_stage.desc')}
-                  selected={format === 'three_stage'}
-                  disabled={!canGenerateSessions}
-                  onClick={() => setFormat('three_stage')}
-                />
-              </div>
-
-              <p className="text-xs text-muted-foreground">
-                {canGenerateSessions
-                  ? t('settings.setup_wizard.session_generation_note')
-                  : t('settings.setup_wizard.session_preserve_note')}
-              </p>
-            </section>
-
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-primary" />
-                <div>
-                  <h3 className="font-semibold">{t('settings.setup_wizard.dimensions_title')}</h3>
-                  <p className="text-sm text-muted-foreground">{t('settings.setup_wizard.dimensions_desc')}</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="wizard-city">{t('hackathons.city')}</Label>
+                  <Input id="wizard-city" value={profile.city} onChange={(e) => handleProfileChange('city', e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="wizard-prize">{t('hackathons.prize_pool')}</Label>
+                  <Input id="wizard-prize" value={profile.prizePool} onChange={(e) => handleProfileChange('prizePool', e.target.value)} />
                 </div>
               </div>
+            </div>
+          )}
 
-              <div className="space-y-3 rounded-3xl border border-border/60 bg-muted/10 p-4">
-                {(['region', 'class_name', 'category'] as SetupWizardDimension[]).map((dimension) => (
-                  <label
-                    key={dimension}
-                    className="flex cursor-pointer items-start gap-3 rounded-2xl border border-transparent px-3 py-3 transition-colors hover:border-primary/20 hover:bg-background/70"
-                  >
-                    <Checkbox
-                      checked={dimensions.includes(dimension)}
-                      onCheckedChange={(checked) => toggleDimension(dimension, checked === true)}
-                      className="mt-0.5"
-                    />
-                    <div className="min-w-0">
-                      <div className="font-medium">{t(`settings.setup_wizard.dimensions.${dimension}.title`)}</div>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {t(`settings.setup_wizard.dimensions.${dimension}.desc`)}
-                      </p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </section>
-
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <ListChecks className="h-4 w-4 text-primary" />
-                <div>
-                  <h3 className="font-semibold">{t('settings.setup_wizard.submission_title')}</h3>
-                  <p className="text-sm text-muted-foreground">{t('settings.setup_wizard.submission_desc')}</p>
-                </div>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-3">
-                <OptionCard
-                  title={t('settings.setup_wizard.styles.lean.title')}
-                  description={t('settings.setup_wizard.styles.lean.desc')}
-                  selected={submissionStyle === 'lean'}
-                  onClick={() => setSubmissionStyle('lean')}
-                />
-                <OptionCard
-                  title={t('settings.setup_wizard.styles.standard.title')}
-                  description={t('settings.setup_wizard.styles.standard.desc')}
-                  selected={submissionStyle === 'standard'}
-                  badge={t('assignments.recommended')}
-                  onClick={() => setSubmissionStyle('standard')}
-                />
-                <OptionCard
-                  title={t('settings.setup_wizard.styles.detailed.title')}
-                  description={t('settings.setup_wizard.styles.detailed.desc')}
-                  selected={submissionStyle === 'detailed'}
-                  onClick={() => setSubmissionStyle('detailed')}
-                />
-              </div>
-            </section>
-          </div>
-
-          <aside className="rounded-[28px] border border-border/60 bg-muted/10 p-5">
-            <div className="flex items-center justify-between gap-3">
+          {/* Step 2: Submission & Filters */}
+          {step === 2 && (
+            <div className="space-y-6 animate-in fade-in-0 duration-200">
               <div>
-                <h3 className="font-semibold">{t('settings.setup_wizard.preview_title')}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{t('settings.setup_wizard.preview_desc')}</p>
+                <div className="flex items-center gap-2 mb-3">
+                  <ListChecks className="h-4 w-4 text-primary" />
+                  <div>
+                    <h3 className="font-semibold">{t('settings.setup_wizard.submission_title')}</h3>
+                    <p className="text-sm text-muted-foreground">{t('settings.setup_wizard.submission_desc')}</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3">
+                  <OptionCard
+                    title={t('settings.setup_wizard.styles.lean.title')}
+                    description={t('settings.setup_wizard.styles.lean.desc')}
+                    selected={submissionStyle === 'lean'}
+                    onClick={() => setSubmissionStyle('lean')}
+                  />
+                  <OptionCard
+                    title={t('settings.setup_wizard.styles.standard.title')}
+                    description={t('settings.setup_wizard.styles.standard.desc')}
+                    selected={submissionStyle === 'standard'}
+                    badge={t('assignments.recommended', 'Recommended')}
+                    onClick={() => setSubmissionStyle('standard')}
+                  />
+                  <OptionCard
+                    title={t('settings.setup_wizard.styles.detailed.title')}
+                    description={t('settings.setup_wizard.styles.detailed.desc')}
+                    selected={submissionStyle === 'detailed'}
+                    onClick={() => setSubmissionStyle('detailed')}
+                  />
+                </div>
               </div>
-              <Badge variant={canGenerateSessions ? 'secondary' : 'outline'}>
-                {canGenerateSessions
-                  ? t('settings.setup_wizard.preview_badges.generated_sessions')
-                  : t('settings.setup_wizard.preview_badges.keep_sessions')}
-              </Badge>
-            </div>
 
-            <div className="mt-5 space-y-5">
-              <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium">{t('settings.setup_wizard.preview_sections.sessions')}</div>
-                  <Badge variant="outline">{previewSessions.length}</Badge>
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Filter className="h-4 w-4 text-primary" />
+                  <div>
+                    <h3 className="font-semibold">{t('settings.setup_wizard.dimensions_title')}</h3>
+                    <p className="text-sm text-muted-foreground">{t('settings.setup_wizard.dimensions_desc')}</p>
+                  </div>
                 </div>
+
                 <div className="space-y-2">
-                  {previewSessions.map((session) => (
-                    <div key={`${session.title}-${session.range}`} className="rounded-2xl border border-border/60 bg-background/80 px-3 py-3">
-                      <div className="font-medium">{session.title}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">{session.subtitle}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">{session.range}</div>
-                    </div>
+                  {(['class_name', 'category'] as SetupWizardDimension[]).map((dimension) => (
+                    <label
+                      key={dimension}
+                      className="flex cursor-pointer items-start gap-3 rounded-2xl border border-border/60 px-4 py-3 transition-colors hover:border-primary/20 hover:bg-muted/20"
+                    >
+                      <Checkbox
+                        checked={dimensions.includes(dimension)}
+                        onCheckedChange={(checked) => toggleDimension(dimension, checked === true)}
+                        className="mt-0.5"
+                      />
+                      <div className="min-w-0">
+                        <div className="font-medium">{t(`settings.setup_wizard.dimensions.${dimension}.title`)}</div>
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                          {t(`settings.setup_wizard.dimensions.${dimension}.desc`)}
+                        </p>
+                      </div>
+                    </label>
                   ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Preview & Confirm */}
+          {step === 3 && (
+            <div className="space-y-5 animate-in fade-in-0 duration-200">
+              <h3 className="font-semibold">{t('settings.setup_wizard.preview_title')}</h3>
+
+              <section className="space-y-2">
+                <div className="text-sm font-medium">{t('settings.setup_wizard.profile_title', 'Event Profile')}</div>
+                <div className="rounded-2xl border border-border/60 bg-muted/10 px-4 py-3">
+                  <div className="font-medium">{profile.title}</div>
+                  <div className="mt-1 text-sm text-muted-foreground">{profile.tagline}</div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {profile.startAt && profile.endAt ? formatDateRange(profile.startAt, profile.endAt) : null}
+                    {profile.city ? ` · ${profile.city}` : ''}
+                    {profile.prizePool ? ` · ${profile.prizePool}` : ''}
+                  </div>
                 </div>
               </section>
 
-              <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium">{t('settings.setup_wizard.preview_sections.submission')}</div>
-                  <Badge variant="outline">{previewFields.length}</Badge>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {previewFields.map((fieldLabel) => (
-                    <Badge key={fieldLabel} variant="secondary" className="rounded-full px-3 py-1">
-                      {fieldLabel}
-                    </Badge>
-                  ))}
-                </div>
-                {dimensions.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">{t('settings.setup_wizard.no_dimensions')}</p>
-                ) : null}
-              </section>
+              <div className="grid grid-cols-2 gap-4">
+                <section className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium">{t('settings.setup_wizard.preview_sections.submission')}</div>
+                    <Badge variant="outline">{previewFields.length}</Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {previewFields.map((fieldLabel) => (
+                      <Badge key={fieldLabel} variant="secondary" className="rounded-full px-2.5 py-0.5 text-xs">
+                        {fieldLabel}
+                      </Badge>
+                    ))}
+                  </div>
+                </section>
 
-              <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium">{t('settings.setup_wizard.preview_sections.scoring')}</div>
-                  <Badge variant="outline">100</Badge>
-                </div>
-                <div className="space-y-2">
-                  {previewCriteria.map((criterion) => (
-                    <div key={criterion.label} className="flex items-center justify-between rounded-2xl border border-border/60 bg-background/80 px-3 py-2">
-                      <span className="text-sm">{criterion.label}</span>
-                      <span className="text-sm font-medium">{criterion.maxScore}</span>
+                <section className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium">{t('settings.setup_wizard.preview_sections.scoring')}</div>
+                    <Badge variant="outline">100</Badge>
+                  </div>
+                  <div className="space-y-1.5">
+                    {previewCriteria.map((criterion) => (
+                      <div key={criterion.label} className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/10 px-3 py-1.5">
+                        <span className="text-sm">{criterion.label}</span>
+                        <span className="text-sm font-medium">{criterion.maxScore}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+
+              {configuredDocs.length > 0 && (
+                <section className="space-y-2">
+                  <div className="text-sm font-medium">{t('settings.setup_wizard.docs_title', 'Docs & Links')}</div>
+                  <div className="space-y-1.5">
+                    {[
+                      { label: t('settings.gitbook_url', 'Docs URL'), value: profile.gitbookUrl },
+                      { label: t('settings.rules_url'), value: profile.rulesUrl },
+                      { label: t('settings.details_url'), value: profile.detailsUrl },
+                    ]
+                      .filter((item) => item.value)
+                      .map((item) => (
+                        <div key={item.label} className="rounded-xl border border-border/60 bg-muted/10 px-3 py-2">
+                          <div className="text-xs font-medium text-muted-foreground">{item.label}</div>
+                          <div className="mt-0.5 break-all text-sm">{item.value}</div>
+                        </div>
+                      ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Optional links on preview step */}
+              <section className="space-y-3 rounded-2xl border border-border/60 bg-muted/10 p-4">
+                <div className="text-sm font-medium">{t('settings.setup_wizard.optional_links', 'Optional Links')}</div>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="wizard-gitbook" className="text-xs">{t('settings.gitbook_url', 'Docs URL')}</Label>
+                    <Input
+                      id="wizard-gitbook"
+                      type="url"
+                      placeholder="https://docs.example.com"
+                      value={profile.gitbookUrl}
+                      onChange={(e) => handleProfileChange('gitbookUrl', e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="wizard-rules" className="text-xs">{t('settings.rules_url')}</Label>
+                      <Input
+                        id="wizard-rules"
+                        type="url"
+                        placeholder="https://example.com/rules"
+                        value={profile.rulesUrl}
+                        onChange={(e) => handleProfileChange('rulesUrl', e.target.value)}
+                      />
                     </div>
-                  ))}
+                    <div className="space-y-1">
+                      <Label htmlFor="wizard-details" className="text-xs">{t('settings.details_url')}</Label>
+                      <Input
+                        id="wizard-details"
+                        type="url"
+                        placeholder="https://example.com/event"
+                        value={profile.detailsUrl}
+                        onChange={(e) => handleProfileChange('detailsUrl', e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
               </section>
             </div>
-          </aside>
+          )}
         </div>
 
         <DialogFooter className="border-t border-border/60 px-6 py-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isApplying}>
-            {t('common.cancel')}
-          </Button>
-          <Button onClick={handleApply} disabled={isApplying}>
-            {isApplying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
-            {t('settings.setup_wizard.apply')}
-          </Button>
+          <div className="flex w-full items-center justify-between">
+            <div>
+              {step > 1 && (
+                <Button variant="ghost" onClick={() => setStep(step - 1)} disabled={isApplying}>
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  {t('settings.setup_wizard.prev', 'Previous')}
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isApplying}>
+                {t('common.cancel')}
+              </Button>
+              {step < TOTAL_STEPS ? (
+                <Button onClick={() => setStep(step + 1)} disabled={step === 1 && !canProceedStep1}>
+                  {t('settings.setup_wizard.next', 'Next')}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              ) : (
+                <Button onClick={handleApply} disabled={isApplying}>
+                  {isApplying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+                  {t('settings.setup_wizard.apply')}
+                </Button>
+              )}
+            </div>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
