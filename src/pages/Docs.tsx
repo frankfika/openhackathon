@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BookOpenText, ExternalLink, FileText, Link2, ScrollText } from 'lucide-react'
+import { BookOpenText, ExternalLink, FileText } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -33,22 +33,12 @@ export function Docs() {
   })
 
   const source = useMemo(() => {
-    const gitbookUrl = normalizeUrl(h.gitbookUrl)
-    const rulesUrl = normalizeUrl(h.rulesUrl)
-    const detailsUrl = normalizeUrl(h.detailsUrl)
-
-    if (gitbookUrl) {
-      return { url: gitbookUrl, label: 'GitBook', icon: BookOpenText }
+    const docsUrl = normalizeUrl(h.docsUrl)
+    if (docsUrl) {
+      return { url: docsUrl, label: t('nav.docs'), icon: BookOpenText }
     }
-    if (rulesUrl) {
-      return { url: rulesUrl, label: t('landing.footer.rules'), icon: ScrollText }
-    }
-    if (detailsUrl) {
-      return { url: detailsUrl, label: t('nav.docs'), icon: Link2 }
-    }
-
     return null
-  }, [h.detailsUrl, h.gitbookUrl, h.rulesUrl, t])
+  }, [h.docsUrl, t])
 
   if (isLoadingLocalDoc) {
     return (

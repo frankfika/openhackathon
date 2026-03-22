@@ -552,6 +552,62 @@ function dedupeIds(ids: string[]): string[] {
   return Array.from(new Set(ids.filter(Boolean)));
 }
 
+// ===== Activity Logging =====
+
+type ActivityAction =
+  | 'create' | 'update' | 'delete'
+  | 'submit' | 'assign' | 'unassign'
+  | 'score' | 'update_score' | 'complete_review'
+  | 'login' | 'logout' | 'invite';
+
+type ActivityEntityType =
+  | 'project' | 'assignment' | 'score' | 'hackathon'
+  | 'judge' | 'user' | 'session' | 'setting';
+
+type ActivityLogInput = {
+  hackathonId?: string;
+  actorId?: string;
+  actorRole: 'admin' | 'judge' | 'user' | 'system';
+  actorName: string;
+  action: ActivityAction;
+  entityType: ActivityEntityType;
+  entityId?: string;
+  metadata?: Prisma.InputJsonValue;
+  ipAddress?: string;
+};
+
+async function logActivity(input: ActivityLogInput): Promise<void> {
+  try {
+    await prisma.activityLog.create({
+      data: {
+        hackathonId: input.hackathonId,
+        actorId: input.actorId,
+        actorRole: input.actorRole,
+        actorName: input.actorName,
+        action: input.action,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        metadata: input.metadata ?? {},
+        ipAddress: input.ipAddress,
+      },
+    });
+  } catch (error) {
+    // Log to console but don't fail the operation if logging fails
+    console.error('Failed to log activity:', error);
+  }
+}
+
+// Helper to get actor info from request
+function getActorInfo(req: express.Request): { actorId: string; actorRole: 'admin' | 'judge'; actorName: string } | null {
+  const authUser = getAuthUserFromRequest(req);
+  if (!authUser) return null;
+  return {
+    actorId: authUser.id,
+    actorRole: authUser.role,
+    actorName: authUser.name,
+  };
+}
+
 type PrismaLikeClient = PrismaClient | Prisma.TransactionClient;
 type HackathonWithRelations = Prisma.HackathonGetPayload<{
   include: { scoringCriteria: true }
@@ -705,9 +761,8 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
     submissionSchema,
     scoringCriteria,
     prizePool,
-    gitbookUrl,
-    rulesUrl,
-    detailsUrl,
+    docsUrl,
+    judgesPerProject,
   } = req.body;
   const hasScoringCriteriaInput = Array.isArray(scoringCriteria);
   const scoringCriteriaInputs: ScoringCriterionPayload[] = hasScoringCriteriaInput
@@ -742,10 +797,9 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
       status,
       coverGradient,
       prizePool: prizePool || null,
-      gitbookUrl: gitbookUrl || null,
-      rulesUrl: rulesUrl || null,
-      detailsUrl: detailsUrl || null,
+      docsUrl: docsUrl || null,
       submissionSchema: submissionSchema || {},
+      judgesPerProject: typeof judgesPerProject === 'number' && judgesPerProject > 0 ? judgesPerProject : 2,
       scoringCriteria: hasScoringCriteriaInput ? {
         create: scoringCriteriaInputs.map((c) => ({
           name: c.name,
@@ -771,9 +825,8 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
     submissionSchema,
     scoringCriteria,
     prizePool,
-    gitbookUrl,
-    rulesUrl,
-    detailsUrl,
+    docsUrl,
+    judgesPerProject,
   } = req.body;
   const hasScoringCriteriaInput = Array.isArray(scoringCriteria);
   const scoringCriteriaInputs: ScoringCriterionPayload[] = hasScoringCriteriaInput
@@ -823,10 +876,9 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
         status,
         coverGradient,
         prizePool: prizePool !== undefined ? (prizePool || null) : undefined,
-        gitbookUrl: gitbookUrl !== undefined ? (gitbookUrl || null) : undefined,
-        rulesUrl: rulesUrl !== undefined ? (rulesUrl || null) : undefined,
-        detailsUrl: detailsUrl !== undefined ? (detailsUrl || null) : undefined,
+        docsUrl: docsUrl !== undefined ? (docsUrl || null) : undefined,
         submissionSchema: submissionSchema !== undefined ? submissionSchema : undefined,
+        judgesPerProject: typeof judgesPerProject === 'number' && judgesPerProject > 0 ? judgesPerProject : undefined,
       },
     });
 
@@ -1109,6 +1161,22 @@ app.post('/api/projects', submissionRateLimiter, async (req, res) => {
     console.error('[submission-email] Failed to persist receipt delivery status:', error);
   }
 
+  // Log project submission
+  await logActivity({
+    hackathonId: hackathonIdValue,
+    actorRole: 'user',
+    actorName: submitterNameValue || submitterEmailValue,
+    action: 'submit',
+    entityType: 'project',
+    entityId: project.id,
+    metadata: {
+      title: titleValue,
+      submitterEmail: submitterEmailValue,
+      receiptId: receipt.id,
+    },
+    ipAddress: req.ip,
+  });
+
   res.json({
     ...projectWithReceipt,
     receipt: receiptWithDelivery,
@@ -1325,19 +1393,19 @@ app.post('/api/assignments', requireAdmin, async (req, res) => {
       const [judges, projects] = await Promise.all([
         tx.user.findMany({
           where: { id: { in: uniqueJudgeIds }, role: 'judge' },
-          select: { id: true },
+          select: { id: true, name: true },
         }),
         tx.project.findMany({
           where: { id: { in: uniqueProjectIds } },
-          select: { id: true, hackathonId: true },
+          select: { id: true, hackathonId: true, title: true },
         }),
       ]);
 
-      const judgeIdSet = new Set(judges.map((j) => j.id));
+      const judgeMap = new Map(judges.map((j) => [j.id, j]));
       const projectMap = new Map(projects.map((p) => [p.id, p]));
 
       for (const judgeId of uniqueJudgeIds) {
-        if (!judgeIdSet.has(judgeId)) throw new Error(`Judge ${judgeId} not found`);
+        if (!judgeMap.has(judgeId)) throw new Error(`Judge ${judgeId} not found`);
       }
       for (const projectId of uniqueProjectIds) {
         if (!projectMap.has(projectId)) throw new Error(`Project ${projectId} not found`);
@@ -1381,6 +1449,27 @@ app.post('/api/assignments', requireAdmin, async (req, res) => {
       return rows;
     });
 
+    // Log assignment creation
+    const actor = getActorInfo(req);
+    for (const assignment of created) {
+      await logActivity({
+        hackathonId: assignment.project.hackathonId,
+        actorId: actor?.actorId,
+        actorRole: actor?.actorRole ?? 'system',
+        actorName: actor?.actorName ?? 'System',
+        action: 'assign',
+        entityType: 'assignment',
+        entityId: assignment.id,
+        metadata: {
+          projectId: assignment.projectId,
+          projectTitle: assignment.project.title,
+          judgeId: assignment.judgeId,
+          judgeName: assignment.judge.name,
+        },
+        ipAddress: req.ip,
+      });
+    }
+
     res.json(created);
   } catch (error: unknown) {
     res.status(400).json({ error: getErrorMessage(error, 'Failed to create assignments') });
@@ -1389,9 +1478,45 @@ app.post('/api/assignments', requireAdmin, async (req, res) => {
 
 app.delete('/api/assignments/:id', requireAdmin, async (req, res) => {
   try {
+    const assignment = await prisma.assignment.findUnique({
+      where: { id: req.params.id },
+      include: { scores: { select: { id: true }, take: 1 }, project: true, judge: true },
+    });
+    if (!assignment) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
+
+    const hasScores = assignment.status === 'completed' || assignment.scores.length > 0;
+    if (hasScores && req.query.force !== 'true') {
+      return res.status(409).json({
+        error: 'Assignment already scored',
+        code: 'ALREADY_SCORED',
+      });
+    }
+
     await prisma.assignment.delete({
       where: { id: req.params.id }
     });
+
+    // Log assignment deletion
+    const actor = getActorInfo(req);
+    await logActivity({
+      hackathonId: assignment.project.hackathonId,
+      actorId: actor?.actorId,
+      actorRole: actor?.actorRole ?? 'system',
+      actorName: actor?.actorName ?? 'System',
+      action: 'unassign',
+      entityType: 'assignment',
+      entityId: req.params.id,
+      metadata: {
+        projectId: assignment.projectId,
+        projectTitle: assignment.project.title,
+        judgeId: assignment.judgeId,
+        judgeName: assignment.judge.name,
+      },
+      ipAddress: req.ip,
+    });
+
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: 'Failed to delete assignment' });
@@ -1455,6 +1580,27 @@ app.post('/api/assignments/:id/scores', requireAuth, async (req, res) => {
       data: { status: status || 'completed', comment, totalScore },
       include: { project: true, judge: true, scores: true },
     });
+  });
+
+  // Log score submission
+  const action = existing.status === 'completed' ? 'update_score' : 'score';
+  await logActivity({
+    hackathonId: assignment.project.hackathonId,
+    actorId: viewer.id,
+    actorRole: viewer.role,
+    actorName: viewer.name,
+    action,
+    entityType: 'score',
+    entityId: assignmentId,
+    metadata: {
+      projectId: assignment.projectId,
+      projectTitle: assignment.project.title,
+      judgeId: assignment.judgeId,
+      judgeName: assignment.judge.name,
+      totalScore,
+      scores: parsedScores,
+    },
+    ipAddress: req.ip,
   });
 
   res.json(assignment);
@@ -1841,6 +1987,28 @@ app.post('/api/hackathon/judges', requireAdmin, async (req, res) => {
       });
     });
 
+    // Log judge registration
+    const actor = getActorInfo(req);
+    for (const judgeId of uniqueJudgeIds) {
+      const judge = users.find((u) => u.userId === judgeId)?.user;
+      if (judge) {
+        await logActivity({
+          hackathonId: currentHackathon.id,
+          actorId: actor?.actorId,
+          actorRole: actor?.actorRole ?? 'system',
+          actorName: actor?.actorName ?? 'System',
+          action: 'invite',
+          entityType: 'judge',
+          entityId: judgeId,
+          metadata: {
+            judgeName: judge.name,
+            judgeEmail: judge.email,
+          },
+          ipAddress: req.ip,
+        });
+      }
+    }
+
     res.json(users.map((membership) => membership.user));
   } catch (error: unknown) {
     res.status(400).json({ error: getErrorMessage(error, 'Failed to register judges') });
@@ -1888,6 +2056,20 @@ app.delete('/api/hackathon/judges/:judgeId', requireAdmin, async (req, res) => {
         userId: judgeId,
       },
     },
+  });
+
+  // Log judge removal
+  const actor = getActorInfo(req);
+  await logActivity({
+    hackathonId: currentHackathon.id,
+    actorId: actor?.actorId,
+    actorRole: actor?.actorRole ?? 'system',
+    actorName: actor?.actorName ?? 'System',
+    action: 'delete',
+    entityType: 'judge',
+    entityId: judgeId,
+    metadata: {},
+    ipAddress: req.ip,
   });
 
   res.json({ success: true });
@@ -2168,6 +2350,102 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// ===== Activity Logs =====
+
+// Get activity logs for current hackathon (admin only)
+app.get('/api/hackathon/activity-logs', requireAdmin, async (req, res) => {
+  try {
+    const hackathonId = await getScopedHackathonId(req.query.hackathonId);
+    if (!hackathonId) {
+      return res.status(400).json({ error: 'Hackathon ID required' });
+    }
+
+    const { limit = '50', offset = '0', action, entityType, actorId } = req.query;
+    const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
+    const offsetNum = parseInt(offset as string, 10) || 0;
+
+    const where: Prisma.ActivityLogWhereInput = { hackathonId };
+    if (action) where.action = action as string;
+    if (entityType) where.entityType = entityType as string;
+    if (actorId) where.actorId = actorId as string;
+
+    const [logs, total] = await Promise.all([
+      prisma.activityLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limitNum,
+        skip: offsetNum,
+      }),
+      prisma.activityLog.count({ where }),
+    ]);
+
+    res.json({ logs, total, limit: limitNum, offset: offsetNum });
+  } catch (error) {
+    console.error('Error fetching activity logs:', error);
+    res.status(500).json({ error: 'Failed to fetch activity logs' });
+  }
+});
+
+// Get activity logs for specific entity (admin only)
+app.get('/api/hackathon/activity-logs/:entityType/:entityId', requireAdmin, async (req, res) => {
+  try {
+    const { entityType, entityId } = req.params;
+    const hackathonId = await getScopedHackathonId(req.query.hackathonId);
+
+    const where: Prisma.ActivityLogWhereInput = { entityType, entityId };
+    if (hackathonId) where.hackathonId = hackathonId;
+
+    const logs = await prisma.activityLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    res.json({ logs });
+  } catch (error) {
+    console.error('Error fetching entity activity logs:', error);
+    res.status(500).json({ error: 'Failed to fetch activity logs' });
+  }
+});
+
+// Get activity stats summary (admin only)
+app.get('/api/hackathon/activity-stats', requireAdmin, async (req, res) => {
+  try {
+    const hackathonId = await getScopedHackathonId(req.query.hackathonId);
+    if (!hackathonId) {
+      return res.status(400).json({ error: 'Hackathon ID required' });
+    }
+
+    const since = new Date();
+    since.setDate(since.getDate() - 7); // Last 7 days
+
+    const [totalActions, recentActions, byRole, byEntity] = await Promise.all([
+      prisma.activityLog.count({ where: { hackathonId } }),
+      prisma.activityLog.count({ where: { hackathonId, createdAt: { gte: since } } }),
+      prisma.activityLog.groupBy({
+        by: ['actorRole'],
+        where: { hackathonId },
+        _count: { actorRole: true },
+      }),
+      prisma.activityLog.groupBy({
+        by: ['entityType'],
+        where: { hackathonId },
+        _count: { entityType: true },
+      }),
+    ]);
+
+    res.json({
+      totalActions,
+      recentActions,
+      byRole: byRole.reduce((acc, r) => ({ ...acc, [r.actorRole]: r._count.actorRole }), {}),
+      byEntity: byEntity.reduce((acc, e) => ({ ...acc, [e.entityType]: e._count.entityType }), {}),
+    });
+  } catch (error) {
+    console.error('Error fetching activity stats:', error);
+    res.status(500).json({ error: 'Failed to fetch activity stats' });
   }
 });
 

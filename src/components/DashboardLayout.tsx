@@ -3,9 +3,9 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   BarChart3,
   Calendar,
-  FileText,
   FolderGit2,
   Gavel,
+  History,
   LayoutDashboard,
   Loader2,
   LogOut,
@@ -121,9 +121,7 @@ export function DashboardLayout() {
             ? [{ name: t('nav.hackathons', 'Hackathons'), href: buildAdminPath(adminBasePath, 'hackathons'), icon: Calendar }]
             : []),
           { name: t('nav.projects'), href: buildAdminPath(adminBasePath, 'projects'), icon: FolderGit2 },
-          { name: t('nav.judging', 'Review Progress'), href: buildAdminPath(adminBasePath, 'reviews'), icon: Gavel },
-          { name: t('nav.assignments', 'Assignments'), href: buildAdminPath(adminBasePath, 'assignments'), icon: Users },
-          { name: t('nav.reports', 'Reports'), href: buildAdminPath(adminBasePath, 'reports'), icon: FileText },
+          { name: t('nav.assignments', 'Review Management'), href: buildAdminPath(adminBasePath, 'assignments'), icon: Gavel },
           { name: t('nav.leaderboard'), href: buildAdminPath(adminBasePath, 'leaderboard'), icon: BarChart3 },
         ],
       },
@@ -143,6 +141,7 @@ export function DashboardLayout() {
           ...(activeHackathon.id
             ? [{ name: t('nav.hackathon_settings', 'Hackathon Settings'), href: buildAdminPath(adminBasePath, `hackathons/${activeHackathon.id}/settings`), icon: Settings }]
             : []),
+          { name: t('nav.activity_log', 'Activity Log'), href: buildAdminPath(adminBasePath, 'activity'), icon: History },
           { name: t('nav.site_settings', 'Site Settings'), href: buildAdminPath(adminBasePath, 'settings'), icon: Settings },
         ],
       })

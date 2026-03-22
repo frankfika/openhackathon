@@ -20,6 +20,7 @@ import {
   SetupWizardSubmissionStyle,
 } from '@/lib/setup-wizard'
 import { formatDateRange, ScoringCriterion, SubmissionField } from '@/lib/types'
+import { getFieldLabel } from '@/lib/submission-fields'
 import { ArrowLeft, ArrowRight, Check, Filter, ListChecks, Loader2, Sparkles, Wand2 } from 'lucide-react'
 
 type SetupWizardApplyPayload = {
@@ -29,9 +30,7 @@ type SetupWizardApplyPayload = {
   prizePool?: string
   startAt?: string
   endAt?: string
-  gitbookUrl?: string
-  rulesUrl?: string
-  detailsUrl?: string
+  docsUrl?: string
   submissionSchema: {
     fields: SubmissionField[]
   }
@@ -47,9 +46,7 @@ type SetupWizardDialogProps = {
   prizePool?: string
   startAt: string
   endAt: string
-  gitbookUrl?: string
-  rulesUrl?: string
-  detailsUrl?: string
+  docsUrl?: string
   existingSubmissionFields: SubmissionField[]
   isApplying?: boolean
   onApply: (payload: SetupWizardApplyPayload) => Promise<void>
@@ -62,9 +59,7 @@ type SetupProfileState = {
   prizePool: string
   startAt: string
   endAt: string
-  gitbookUrl: string
-  rulesUrl: string
-  detailsUrl: string
+  docsUrl: string
 }
 
 const TOTAL_STEPS = 3
@@ -90,23 +85,8 @@ function inferDimensions(existingSubmissionFields: SubmissionField[]): SetupWiza
   return dimensions
 }
 
-function getFieldLabel(fieldId: string, t: ReturnType<typeof useTranslation>['t']) {
-  switch (fieldId) {
-    case 'title':
-      return t('projects.project_name')
-    case 'oneLiner':
-      return t('projects.one_liner')
-    case 'description':
-      return t('projects.description')
-    case 'demoUrl':
-      return t('projects.demo_url')
-    case 'repoUrl':
-      return t('projects.repo_url')
-    case 'tags':
-      return t('projects.tags')
-    default:
-      return t(`settings.setup_wizard.field_labels.${fieldId}`, fieldId)
-  }
+function getFieldLabelLocal(fieldId: string, t: ReturnType<typeof useTranslation>['t']) {
+  return getFieldLabel(fieldId, t(`settings.setup_wizard.field_labels.${fieldId}`, fieldId), t)
 }
 
 function getCriterionLabel(criterionKey: 'innovation' | 'execution' | 'impact', t: ReturnType<typeof useTranslation>['t']) {
@@ -194,9 +174,7 @@ export function SetupWizardDialog({
   prizePool,
   startAt,
   endAt,
-  gitbookUrl,
-  rulesUrl,
-  detailsUrl,
+  docsUrl,
   existingSubmissionFields,
   isApplying,
   onApply,
@@ -213,9 +191,7 @@ export function SetupWizardDialog({
     prizePool: '',
     startAt: '',
     endAt: '',
-    gitbookUrl: '',
-    rulesUrl: '',
-    detailsUrl: '',
+    docsUrl: '',
   })
 
   const stepLabels = [
@@ -237,11 +213,9 @@ export function SetupWizardDialog({
       prizePool: prizePool || '',
       startAt: startAt || '',
       endAt: endAt || '',
-      gitbookUrl: gitbookUrl || '',
-      rulesUrl: rulesUrl || '',
-      detailsUrl: detailsUrl || '',
+      docsUrl: docsUrl || '',
     })
-  }, [open, existingSubmissionFields, title, tagline, city, prizePool, startAt, endAt, gitbookUrl, rulesUrl, detailsUrl])
+  }, [open, existingSubmissionFields, title, tagline, city, prizePool, startAt, endAt, docsUrl])
 
   const blueprint = useMemo(
     () =>
@@ -254,7 +228,7 @@ export function SetupWizardDialog({
     [profile.endAt, profile.startAt, submissionStyle, dimensions]
   )
 
-  const previewFields = blueprint.submissionFields.map((field) => getFieldLabel(field.id, t))
+  const previewFields = blueprint.submissionFields.map((field) => getFieldLabelLocal(field.id, t))
   const previewCriteria = blueprint.scoringCriteria.map((criterion) => ({
     label: getCriterionLabel(criterion.key, t),
     maxScore: criterion.maxScore,
@@ -277,7 +251,7 @@ export function SetupWizardDialog({
     const submissionSchema = {
       fields: blueprint.submissionFields.map((field) => ({
         id: field.id,
-        label: getFieldLabel(field.id, t),
+        label: getFieldLabelLocal(field.id, t),
         type: field.type,
         required: field.required,
         filterable: field.filterable,
@@ -298,9 +272,7 @@ export function SetupWizardDialog({
       prizePool: profile.prizePool.trim() || undefined,
       startAt: profile.startAt,
       endAt: profile.endAt,
-      gitbookUrl: profile.gitbookUrl.trim() || undefined,
-      rulesUrl: profile.rulesUrl.trim() || undefined,
-      detailsUrl: profile.detailsUrl.trim() || undefined,
+      docsUrl: profile.docsUrl.trim() || undefined,
       submissionSchema,
       scoringCriteria,
     })
@@ -308,7 +280,7 @@ export function SetupWizardDialog({
 
   const canProceedStep1 = profile.title.trim() && profile.tagline.trim() && profile.startAt && profile.endAt
 
-  const configuredDocs = [profile.gitbookUrl, profile.rulesUrl, profile.detailsUrl].filter(Boolean)
+  const configuredDocs = [profile.docsUrl].filter(Boolean)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -490,22 +462,12 @@ export function SetupWizardDialog({
                 </section>
               </div>
 
-              {configuredDocs.length > 0 && (
+              {profile.docsUrl && (
                 <section className="space-y-2">
                   <div className="text-sm font-medium">{t('settings.setup_wizard.docs_title', 'Docs & Links')}</div>
-                  <div className="space-y-1.5">
-                    {[
-                      { label: t('settings.gitbook_url', 'Docs URL'), value: profile.gitbookUrl },
-                      { label: t('settings.rules_url'), value: profile.rulesUrl },
-                      { label: t('settings.details_url'), value: profile.detailsUrl },
-                    ]
-                      .filter((item) => item.value)
-                      .map((item) => (
-                        <div key={item.label} className="rounded-xl border border-border/60 bg-muted/10 px-3 py-2">
-                          <div className="text-xs font-medium text-muted-foreground">{item.label}</div>
-                          <div className="mt-0.5 break-all text-sm">{item.value}</div>
-                        </div>
-                      ))}
+                  <div className="rounded-xl border border-border/60 bg-muted/10 px-3 py-2">
+                    <div className="text-xs font-medium text-muted-foreground">{t('settings.docs_url')}</div>
+                    <div className="mt-0.5 break-all text-sm">{profile.docsUrl}</div>
                   </div>
                 </section>
               )}
@@ -513,39 +475,16 @@ export function SetupWizardDialog({
               {/* Optional links on preview step */}
               <section className="space-y-3 rounded-2xl border border-border/60 bg-muted/10 p-4">
                 <div className="text-sm font-medium">{t('settings.setup_wizard.optional_links', 'Optional Links')}</div>
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <Label htmlFor="wizard-gitbook" className="text-xs">{t('settings.gitbook_url', 'Docs URL')}</Label>
-                    <Input
-                      id="wizard-gitbook"
-                      type="url"
-                      placeholder="https://docs.example.com"
-                      value={profile.gitbookUrl}
-                      onChange={(e) => handleProfileChange('gitbookUrl', e.target.value)}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label htmlFor="wizard-rules" className="text-xs">{t('settings.rules_url')}</Label>
-                      <Input
-                        id="wizard-rules"
-                        type="url"
-                        placeholder="https://example.com/rules"
-                        value={profile.rulesUrl}
-                        onChange={(e) => handleProfileChange('rulesUrl', e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="wizard-details" className="text-xs">{t('settings.details_url')}</Label>
-                      <Input
-                        id="wizard-details"
-                        type="url"
-                        placeholder="https://example.com/event"
-                        value={profile.detailsUrl}
-                        onChange={(e) => handleProfileChange('detailsUrl', e.target.value)}
-                      />
-                    </div>
-                  </div>
+                <div className="space-y-1">
+                  <Label htmlFor="wizard-docs" className="text-xs">{t('settings.docs_url')}</Label>
+                  <Input
+                    id="wizard-docs"
+                    type="url"
+                    placeholder="https://docs.example.com"
+                    value={profile.docsUrl}
+                    onChange={(e) => handleProfileChange('docsUrl', e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">{t('settings.docs_url_desc')}</p>
                 </div>
               </section>
             </div>

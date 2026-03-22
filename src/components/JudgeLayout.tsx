@@ -8,21 +8,18 @@ import { useAuth } from '@/lib/auth'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { useSiteBranding } from '@/lib/site-branding'
 import { ThemeLanguageSwitcher } from '@/components/ThemeLanguageSwitcher'
-import { useAdminRoutes } from '@/lib/admin-routing'
-
 export function JudgeLayout() {
   const { t } = useTranslation()
   const { user, logout } = useAuth()
   const { activeHackathon } = useActiveHackathon()
   const { settings } = useSiteBranding()
-  const { adminLoginPath } = useAdminRoutes()
   const navigate = useNavigate()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
 
   const handleLogout = () => {
     logout()
-    navigate(adminLoginPath)
+    navigate('/judge/login')
   }
 
   const links = [{ to: '/judge', label: t('nav.my_tasks'), icon: ClipboardList }]

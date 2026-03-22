@@ -21,7 +21,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { Project } from '@/lib/types'
 import { useAdminRoutes } from '@/lib/admin-routing'
-import { getFilterableSubmissionFields, normalizeSubmissionFieldOptions } from '@/lib/submission-fields'
+import { getFilterableSubmissionFields, getFieldLabel, normalizeSubmissionFieldOptions } from '@/lib/submission-fields'
 
 type LeaderboardEntry = {
   projectId: string
@@ -352,7 +352,7 @@ export function Leaderboard() {
                     onValueChange={(value) => updateSubmissionFilter(field.id, value === '__all__' ? '' : value)}
                   >
                     <SelectTrigger className="w-full md:w-44">
-                      <SelectValue placeholder={field.label} />
+                      <SelectValue placeholder={getFieldLabel(field.id, field.label, t)} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__all__">{t('assignments.all_filter_values')}</SelectItem>

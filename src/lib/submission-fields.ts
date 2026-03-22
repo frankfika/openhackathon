@@ -1,4 +1,20 @@
+import type { TFunction } from 'i18next'
 import type { Hackathon, Project, SubmissionField } from './types'
+
+const KNOWN_FIELD_I18N: Record<string, string> = {
+  title: 'projects.project_name',
+  oneLiner: 'projects.one_liner',
+  description: 'projects.description',
+  demoUrl: 'projects.demo_url',
+  repoUrl: 'projects.repo_url',
+  tags: 'projects.tags',
+}
+
+/** Return the i18n label for a known field id, or the raw label as fallback. */
+export function getFieldLabel(fieldId: string, rawLabel: string, t: TFunction): string {
+  const key = KNOWN_FIELD_I18N[fieldId]
+  return key ? t(key) : rawLabel
+}
 
 export function getSubmissionFields(schema?: Hackathon['submissionSchema']): SubmissionField[] {
   const fields = Array.isArray(schema) ? schema : schema?.fields || []

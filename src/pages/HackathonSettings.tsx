@@ -43,15 +43,14 @@ type HackathonFormValues = {
   prizePool?: string
   startAt: string
   endAt: string
-  gitbookUrl?: string
-  rulesUrl?: string
-  detailsUrl?: string
+  docsUrl?: string
 }
 
 type HackathonUpdateValues = Partial<HackathonFormValues> & {
   coverGradient?: string
   submissionSchema?: SubmissionSchemaConfig
   scoringCriteria?: ScoringCriterion[]
+  judgesPerProject?: number
 }
 
 export function HackathonSettings() {
@@ -69,9 +68,7 @@ export function HackathonSettings() {
         prizePool: z.string().max(50).optional(),
         startAt: z.string(),
         endAt: z.string(),
-        gitbookUrl: z.string().url(t('submission.validation.url_invalid')).optional().or(z.literal('')),
-        rulesUrl: z.string().url(t('submission.validation.url_invalid')).optional().or(z.literal('')),
-        detailsUrl: z.string().url(t('submission.validation.url_invalid')).optional().or(z.literal('')),
+        docsUrl: z.string().url(t('submission.validation.url_invalid')).optional().or(z.literal('')),
       }),
     [t]
   )
@@ -98,6 +95,7 @@ export function HackathonSettings() {
 
   const [submissionSchema, setSubmissionSchema] = useState<SubmissionField[]>([])
   const [scoringCriteria, setScoringCriteria] = useState<ScoringCriterion[]>([])
+  const [judgesPerProject, setJudgesPerProject] = useState(2)
   const [coverGradient, setCoverGradient] = useState('')
   const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -110,6 +108,7 @@ export function HackathonSettings() {
         : hackathon.submissionSchema?.fields || []
       setSubmissionSchema(fields)
       setScoringCriteria(hackathon.scoringCriteria || [])
+      setJudgesPerProject(hackathon.judgesPerProject ?? 2)
       setCoverGradient(hackathon.coverGradient || '')
     }
   }, [hackathon])
@@ -129,9 +128,7 @@ export function HackathonSettings() {
       prizePool: '',
       startAt: '',
       endAt: '',
-      gitbookUrl: '',
-      rulesUrl: '',
-      detailsUrl: '',
+      docsUrl: '',
     }
   })
 
@@ -156,9 +153,7 @@ export function HackathonSettings() {
         prizePool: hackathon.prizePool || '',
         startAt: hackathon.startAt ? new Date(hackathon.startAt).toISOString().split('T')[0] : '',
         endAt: hackathon.endAt ? new Date(hackathon.endAt).toISOString().split('T')[0] : '',
-        gitbookUrl: hackathon.gitbookUrl || '',
-        rulesUrl: hackathon.rulesUrl || '',
-        detailsUrl: hackathon.detailsUrl || '',
+        docsUrl: hackathon.docsUrl || '',
       })
     }
   }, [hackathon, reset])
@@ -251,9 +246,7 @@ export function HackathonSettings() {
     prizePool?: string
     startAt?: string
     endAt?: string
-    gitbookUrl?: string
-    rulesUrl?: string
-    detailsUrl?: string
+    docsUrl?: string
     submissionSchema: SubmissionSchemaConfig
     scoringCriteria: ScoringCriterion[]
   }) => {
@@ -386,23 +379,10 @@ export function HackathonSettings() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="gitbookUrl">{t('settings.gitbook_url')}</Label>
-                      <Input id="gitbookUrl" type="url" placeholder="https://docs.example.com" {...register('gitbookUrl')} />
-                      <p className="text-xs text-muted-foreground">{t('settings.gitbook_url_desc')}</p>
-                      {errors.gitbookUrl && <p className="text-sm text-destructive">{errors.gitbookUrl.message as string}</p>}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="rulesUrl">{t('settings.rules_url')}</Label>
-                        <Input id="rulesUrl" type="url" placeholder="https://example.com/rules" {...register('rulesUrl')} />
-                        {errors.rulesUrl && <p className="text-sm text-destructive">{errors.rulesUrl.message as string}</p>}
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="detailsUrl">{t('settings.details_url')}</Label>
-                        <Input id="detailsUrl" type="url" placeholder="https://example.com/event-details" {...register('detailsUrl')} />
-                        {errors.detailsUrl && <p className="text-sm text-destructive">{errors.detailsUrl.message as string}</p>}
-                      </div>
+                      <Label htmlFor="docsUrl">{t('settings.docs_url')}</Label>
+                      <Input id="docsUrl" type="url" placeholder="https://docs.example.com" {...register('docsUrl')} />
+                      <p className="text-xs text-muted-foreground">{t('settings.docs_url_desc')}</p>
+                      {errors.docsUrl && <p className="text-sm text-destructive">{errors.docsUrl.message as string}</p>}
                     </div>
 
                     <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
@@ -508,6 +488,35 @@ export function HackathonSettings() {
         </TabsContent>
 
         <TabsContent value="scoring">
+          <div className="mb-6 space-y-3">
+            <div>
+              <h3 className="text-lg font-medium">{t('settings.judges_per_project')}</h3>
+              <p className="text-sm text-muted-foreground mt-1">{t('settings.judges_per_project_desc')}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                className="w-24"
+                value={judgesPerProject}
+                onChange={(e) => {
+                  const v = Number.parseInt(e.target.value, 10)
+                  if (v > 0) setJudgesPerProject(v)
+                }}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  await updateMutation.mutateAsync({ judgesPerProject })
+                }}
+                disabled={updateMutation.isPending}
+              >
+                {t('common.save_changes')}
+              </Button>
+            </div>
+          </div>
           <ScoringCriteriaBuilder
             initialCriteria={scoringCriteria}
             onSave={(criteria) => {
@@ -528,9 +537,7 @@ export function HackathonSettings() {
         prizePool={watch('prizePool') || hackathon.prizePool || ''}
         startAt={watchedStartAt || hackathon.startAt}
         endAt={watchedEndAt || hackathon.endAt}
-        gitbookUrl={watch('gitbookUrl') || hackathon.gitbookUrl || ''}
-        rulesUrl={watch('rulesUrl') || hackathon.rulesUrl || ''}
-        detailsUrl={watch('detailsUrl') || hackathon.detailsUrl || ''}
+        docsUrl={watch('docsUrl') || hackathon.docsUrl || ''}
         existingSubmissionFields={submissionSchema}
         isApplying={updateMutation.isPending}
         onApply={onApplySetupWizard}

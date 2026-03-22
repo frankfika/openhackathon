@@ -34,7 +34,7 @@ import { Badge } from '@/components/ui/badge'
 import { Search, Pencil, Trash2, Eye, Loader2, BarChart3 } from 'lucide-react'
 import { toast } from 'sonner'
 import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
-import { getFilterableSubmissionFields, getProjectSubmissionFieldValue, getSubmissionFieldFilterOptions } from '@/lib/submission-fields'
+import { getFilterableSubmissionFields, getFieldLabel, getProjectSubmissionFieldValue, getSubmissionFieldFilterOptions } from '@/lib/submission-fields'
 
 type ProjectWithAssignments = Project & {
   assignments?: Assignment[]
@@ -130,7 +130,7 @@ export function Projects() {
               onValueChange={(v) => updateFilter(field.id, v === '__all__' ? '' : v)}
             >
               <SelectTrigger className="w-36">
-                <SelectValue placeholder={field.label} />
+                <SelectValue placeholder={getFieldLabel(field.id, field.label, t)} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">{t('assignments.all_filter_values')}</SelectItem>

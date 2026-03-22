@@ -76,9 +76,7 @@ export function AdminDashboard() {
       prizePool?: string
       startAt?: string
       endAt?: string
-      gitbookUrl?: string
-      rulesUrl?: string
-      detailsUrl?: string
+      docsUrl?: string
       submissionSchema: SubmissionSchemaConfig
       scoringCriteria: ScoringCriterion[]
     }) => {
@@ -169,7 +167,7 @@ export function AdminDashboard() {
             icon: FileText,
             title: t('dashboard.next.report', 'View Report'),
             desc: t('dashboard.next.report_desc', 'Detailed scoring breakdown and export.'),
-            action: () => navigate(buildAdminPath(adminBasePath, 'reports')),
+            action: () => navigate(buildAdminPath(adminBasePath, 'assignments')),
           },
         ]
       case 'completed':
@@ -185,7 +183,7 @@ export function AdminDashboard() {
             icon: FileText,
             title: t('dashboard.next.export', 'Export Report'),
             desc: t('dashboard.next.export_desc', 'Download scoring data as CSV.'),
-            action: () => navigate(buildAdminPath(adminBasePath, 'reports')),
+            action: () => navigate(buildAdminPath(adminBasePath, 'assignments')),
           },
         ]
       default:
@@ -323,9 +321,7 @@ export function AdminDashboard() {
         prizePool={activeHackathon.prizePool || ''}
         startAt={toDateInputValue(activeHackathon.startAt)}
         endAt={toDateInputValue(activeHackathon.endAt)}
-        gitbookUrl={activeHackathon.gitbookUrl || ''}
-        rulesUrl={activeHackathon.rulesUrl || ''}
-        detailsUrl={activeHackathon.detailsUrl || ''}
+        docsUrl={activeHackathon.docsUrl || ''}
         existingSubmissionFields={submissionFields}
         isApplying={updateMutation.isPending}
         onApply={async (payload) => {

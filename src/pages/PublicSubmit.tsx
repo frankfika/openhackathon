@@ -9,9 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { SubmissionField, formatDateRange } from '@/lib/types'
-import { getSubmissionFields } from '@/lib/submission-fields'
+import { getSubmissionFields, getFieldLabel } from '@/lib/submission-fields'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { toast } from 'sonner'
 import { CalendarDays, ClipboardList, Loader2, Mail, Sparkles, User } from 'lucide-react'
@@ -41,7 +40,7 @@ export function PublicSubmit() {
           submitterEmail: z.string().email(t('submission.validation.email_invalid')),
           submitterName: z.string().optional(),
           ...schema.reduce((acc, field) => {
-            const requiredMessage = t('submission.validation.field_required', { field: field.label })
+            const requiredMessage = t('submission.validation.field_required', { field: getFieldLabel(field.id, field.label, t) })
             let validator: z.ZodTypeAny
 
             if (field.type === 'url') {
@@ -94,8 +93,6 @@ export function PublicSubmit() {
     resolver: zodResolver(formSchema),
   })
 
-  const customRequiredFieldCount = schema.filter((field) => field.required).length
-  const requiredFieldCount = 1 + customRequiredFieldCount
   const hasCustomFields = schema.length > 0
 
   // Fields that map directly to Project model columns
@@ -225,9 +222,7 @@ export function PublicSubmit() {
                   {formatDateRange(hackathon.startAt, hackathon.endAt)}
                 </span>
               </div>
-              <Badge variant="outline" className="w-fit">
-                {t('submission.required_fields_hint', { count: requiredFieldCount })}
-              </Badge>
+              <p className="text-xs text-muted-foreground">* {t('submission.required_mark_hint')}</p>
             </div>
 
             <div className="space-y-3 text-sm">
@@ -265,7 +260,7 @@ export function PublicSubmit() {
                 <div className="surface-inset space-y-4 p-4 md:p-5">
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-sm font-semibold text-foreground">{t('submission.sections.contact_info')}</h3>
-                    <Badge variant="outline">{t('submission.required_fields_hint', { count: requiredFieldCount })}</Badge>
+                    <span className="text-xs text-muted-foreground">* {t('submission.required_mark_hint')}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {t('submission.contact_help')}
@@ -317,9 +312,7 @@ export function PublicSubmit() {
                 <div className="surface-inset space-y-4 p-4 md:p-5">
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-sm font-semibold text-foreground">{t('submission.sections.project_details')}</h3>
-                    <Badge variant="outline">
-                      {t('submission.required_fields_hint', { count: customRequiredFieldCount })}
-                    </Badge>
+                    <span className="text-xs text-muted-foreground">* {t('submission.required_mark_hint')}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {t('submission.project_help')}
@@ -340,7 +333,7 @@ export function PublicSubmit() {
                           className={cn('space-y-2', field.type === 'textarea' ? 'md:col-span-2' : undefined)}
                         >
                           <Label htmlFor={field.id}>
-                            {field.label}
+                            {getFieldLabel(field.id, field.label, t)}
                             {field.required ? (
                               <span className="ml-1 text-destructive">*</span>
                             ) : (

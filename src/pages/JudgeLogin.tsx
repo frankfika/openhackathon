@@ -1,29 +1,27 @@
-import React, { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { toast } from 'sonner';
-import { Loader2, ShieldCheck } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
-import { useAuth } from '@/lib/auth';
-import { useAdminRoutes } from '@/lib/admin-routing'
+import React, { useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import * as z from 'zod'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { toast } from 'sonner'
+import { Loader2, Scale } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useAuth } from '@/lib/auth'
 
 type LoginFormValues = {
   email: string
   password: string
 }
 
-export function Login() {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const { login } = useAuth();
-  const { adminBasePath } = useAdminRoutes()
-  const [isLoading, setIsLoading] = useState(false);
+export function JudgeLogin() {
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const { login } = useAuth()
+  const [isLoading, setIsLoading] = useState(false)
   const loginSchema = useMemo(
     () =>
       z.object({
@@ -39,23 +37,23 @@ export function Login() {
     formState: { errors },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-  });
+  })
 
   async function onSubmit(data: LoginFormValues) {
-    setIsLoading(true);
+    setIsLoading(true)
     try {
-      const authenticatedUser = await login(data.email, data.password);
-      if (authenticatedUser.role === 'judge') {
-        toast.error(t('auth.admin_login_wrong_role'))
+      const authenticatedUser = await login(data.email, data.password)
+      if (authenticatedUser.role !== 'judge') {
+        toast.error(t('auth.judge_login_wrong_role'))
         return
       }
-      toast.success(t('auth.welcome'));
-      navigate(adminBasePath);
+      toast.success(t('auth.welcome'))
+      navigate('/judge')
     } catch (error) {
       const message = error instanceof Error ? error.message : t('auth.sign_in_failed')
       toast.error(message)
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
   }
 
@@ -64,17 +62,17 @@ export function Login() {
       <Card className="surface-panel-strong w-full max-w-md border-0 shadow-none sm:rounded-3xl">
         <CardHeader className="space-y-1 text-center pb-6 pt-8">
           <div className="mx-auto mb-4 flex flex-col items-center gap-2">
-            <Link to="/" className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <Link to="/" className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500 text-white shadow-sm hover:bg-amber-600 transition-colors">
+              <Scale className="h-5 w-5" />
             </Link>
-            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-              <ShieldCheck className="h-3 w-3" />
-              {t('auth.admin')}
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+              <Scale className="h-3 w-3" />
+              {t('auth.judge')}
             </span>
           </div>
-          <CardTitle className="text-2xl font-bold tracking-tight">{t('auth.welcome')}</CardTitle>
+          <CardTitle className="text-2xl font-bold tracking-tight">{t('auth.judge_login_title')}</CardTitle>
           <CardDescription>
-            {t('auth.welcome_desc')}
+            {t('auth.judge_login_desc')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 pb-8 px-6">
@@ -107,7 +105,7 @@ export function Login() {
                 <p className="text-sm text-red-500">{errors.password.message}</p>
               )}
             </div>
-            <Button className="w-full h-10 shadow-sm grand-cta" type="submit" disabled={isLoading}>
+            <Button className="w-full h-10 shadow-sm bg-amber-500 hover:bg-amber-600 text-white" type="submit" disabled={isLoading}>
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('auth.sign_in')}
             </Button>
@@ -115,5 +113,5 @@ export function Login() {
         </CardContent>
       </Card>
     </div>
-  );
+  )
 }

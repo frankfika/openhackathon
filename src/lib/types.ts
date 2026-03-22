@@ -41,10 +41,9 @@ export type Hackathon = {
   coverGradient: string
   submissionSchema?: SubmissionField[] | SubmissionSchemaConfig
   scoringCriteria?: ScoringCriterion[]
-  rulesUrl?: string
-  detailsUrl?: string
-  gitbookUrl?: string
+  docsUrl?: string
   prizePool?: string
+  judgesPerProject?: number
 }
 
 export type HackathonUpsertInput = Partial<Omit<Hackathon, 'submissionSchema' | 'scoringCriteria'>> & {
@@ -149,4 +148,35 @@ export function formatCalendarDate(value: string) {
 
 export function formatDateRange(startAt: string, endAt: string) {
   return `${formatCalendarDate(startAt)} – ${formatCalendarDate(endAt)}`
+}
+
+export type ActivityAction =
+  | 'create' | 'update' | 'delete'
+  | 'submit' | 'assign' | 'unassign'
+  | 'score' | 'update_score' | 'complete_review'
+  | 'login' | 'logout' | 'invite'
+
+export type ActivityEntityType =
+  | 'project' | 'assignment' | 'score' | 'hackathon'
+  | 'judge' | 'user' | 'session' | 'setting'
+
+export type ActivityLog = {
+  id: string
+  hackathonId?: string
+  actorId?: string
+  actorRole: 'admin' | 'judge' | 'user' | 'system'
+  actorName: string
+  action: ActivityAction
+  entityType: ActivityEntityType
+  entityId?: string
+  metadata?: Record<string, unknown>
+  ipAddress?: string
+  createdAt: string
+}
+
+export type ActivityStats = {
+  totalActions: number
+  recentActions: number
+  byRole: Record<string, number>
+  byEntity: Record<string, number>
 }

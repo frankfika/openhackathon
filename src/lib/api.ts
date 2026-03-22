@@ -9,6 +9,8 @@ import {
   HackathonMarkdownDoc,
   HackathonUpsertInput,
   AdminUser,
+  ActivityLog,
+  ActivityStats,
 } from './types'
 
 const API_URL = '/api'
@@ -114,8 +116,8 @@ export const api = {
     const res = await axios.put<Assignment>(`${API_URL}/assignments/${assignmentId}/status`, { status })
     return res.data
   },
-  deleteAssignment: async (id: string) => {
-    const res = await axios.delete(`${API_URL}/assignments/${id}`)
+  deleteAssignment: async (id: string, force?: boolean) => {
+    const res = await axios.delete(`${API_URL}/assignments/${id}`, { params: force ? { force: 'true' } : undefined })
     return res.data
   },
 
@@ -243,6 +245,37 @@ export const api = {
   // Auth
   login: async (email: string, password: string): Promise<User & { token?: string }> => {
     const res = await axios.post<User & { token?: string }>(`${API_URL}/auth/login`, { email, password })
+    return res.data
+  },
+
+  // Activity Logs
+  getActivityLogs: async (params?: {
+    hackathonId?: string
+    limit?: number
+    offset?: number
+    action?: string
+    entityType?: string
+    actorId?: string
+  }) => {
+    const res = await axios.get<{
+      logs: ActivityLog[]
+      total: number
+      limit: number
+      offset: number
+    }>(`${API_URL}/hackathon/activity-logs`, { params })
+    return res.data
+  },
+  getEntityActivityLogs: async (entityType: string, entityId: string, hackathonId?: string) => {
+    const res = await axios.get<{ logs: ActivityLog[] }>(
+      `${API_URL}/hackathon/activity-logs/${entityType}/${entityId}`,
+      { params: hackathonId ? { hackathonId } : undefined }
+    )
+    return res.data
+  },
+  getActivityStats: async (hackathonId?: string) => {
+    const res = await axios.get<ActivityStats>(`${API_URL}/hackathon/activity-stats`, {
+      params: hackathonId ? { hackathonId } : undefined,
+    })
     return res.data
   },
 }

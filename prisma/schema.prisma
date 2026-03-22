@@ -37,16 +37,16 @@ model Hackathon {
   submissionSchema Json?  // Stores the form configuration
   leaderboardData Json?   // Admin-curated ranking: [{ projectId, rank, award }]
   leaderboardPublished Boolean @default(false)
-  rulesUrl      String?
-  detailsUrl    String?
-  gitbookUrl    String?
+  docsUrl       String?
   prizePool     String?
+  judgesPerProject Int @default(2)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   projects         Project[]
   scoringCriteria  ScoringCriterion[]
   judges           HackathonJudge[]
+  activityLogs     ActivityLog[]
 }
 
 model HackathonJudge {
@@ -150,4 +150,31 @@ model SiteSetting {
   poweredByUrl   String   @default("https://openhackathon.dev")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model ActivityLog {
+  id           String   @id @default(uuid())
+  hackathonId  String?
+  hackathon    Hackathon? @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+
+  // Actor info
+  actorId      String?  // User ID (null for system actions)
+  actorRole    String   // admin, judge, user, system
+  actorName    String   // Snapshot of name at time of action
+
+  // Action details
+  action       String   // create, update, delete, submit, assign, unassign, score, etc.
+  entityType   String   // project, assignment, score, hackathon, judge, etc.
+  entityId     String?  // ID of the affected entity
+
+  // Context
+  metadata     Json?    // Additional context (e.g., { projectTitle, judgeName, score })
+  ipAddress    String?  // For audit trail
+
+  createdAt    DateTime @default(now())
+
+  @@index([hackathonId])
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }

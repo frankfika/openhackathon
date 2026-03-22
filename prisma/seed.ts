@@ -78,15 +78,14 @@ async function main() {
       endAt: new Date('2026-03-17'),
       status: 'active',
       coverGradient: 'from-cyan-600/20 via-blue-500/10 to-emerald-600/20',
-      rulesUrl: 'https://github.com/example/rules',
-      detailsUrl: 'https://github.com/example/details',
+      docsUrl: 'https://github.com/example/rules',
       prizePool: '$50,000+',
       submissionSchema: {
         fields: [
-          { id: 'title', label: 'Project Name', type: 'text', required: true, placeholder: 'e.g. Nova Copilot' },
-          { id: 'oneLiner', label: 'One Liner', type: 'text', required: true, placeholder: 'What does your project do?' },
-          { id: 'description', label: 'Description', type: 'textarea', required: true, placeholder: 'Problem, solution, and value' },
-          { id: 'repoUrl', label: 'Repository URL', type: 'url', required: true, placeholder: 'https://github.com/...' },
+          { id: 'title', label: '项目名称', type: 'text', required: true, placeholder: '例如：Nova Copilot' },
+          { id: 'oneLiner', label: '一句话介绍', type: 'text', required: true, placeholder: '你的项目做了什么？' },
+          { id: 'description', label: '项目描述', type: 'textarea', required: true, placeholder: '问题、解决方案和价值' },
+          { id: 'repoUrl', label: '代码仓库', type: 'url', required: true, placeholder: 'https://github.com/...' },
         ],
       },
       scoringCriteria: {
