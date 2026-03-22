@@ -40,14 +40,19 @@ function HeroSection() {
   const { activeHackathon: h } = useActiveHackathon()
 
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0 })
-  const isEnded = h.status === 'completed'
   const targetDate = h.status === 'active' ? h.endAt : h.startAt
+  const [countdownExpired, setCountdownExpired] = useState(false)
+  const isEnded = h.status === 'completed' || (h.status === 'active' && countdownExpired)
 
   useEffect(() => {
     function calc() {
       const target = new Date(targetDate)
       const now = new Date()
-      if (target <= now) return { days: 0, hours: 0, minutes: 0 }
+      if (target <= now) {
+        setCountdownExpired(true)
+        return { days: 0, hours: 0, minutes: 0 }
+      }
+      setCountdownExpired(false)
       return {
         days: differenceInDays(target, now),
         hours: differenceInHours(target, now) % 24,
