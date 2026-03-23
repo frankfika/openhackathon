@@ -103,6 +103,10 @@ export const api = {
   },
 
   // Assignments
+  getAssignment: async (id: string) => {
+    const res = await axios.get<Assignment>(`${API_URL}/assignments/${id}`)
+    return res.data
+  },
   getAssignments: async (params?: { projectId?: string; judgeId?: string; status?: string; hackathonId?: string; lite?: boolean }) => {
     const res = await axios.get<Assignment[]>(`${API_URL}/assignments`, { params })
     return res.data

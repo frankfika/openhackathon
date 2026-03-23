@@ -35,25 +35,20 @@ export function JudgingDetail() {
   const queryClient = useQueryClient()
   const hasMarkedInProgress = React.useRef(false)
 
-  // Fetch assignment
+  // Fetch assignment by ID directly (single request instead of fetching all)
   const { data: assignment, isLoading: isLoadingAssignment } = useQuery({
     queryKey: ['assignment', id],
-    queryFn: () => api.getAssignments().then(assignments => assignments.find(a => a.id === id)),
+    queryFn: () => api.getAssignment(id!),
     enabled: !!id,
+    retry: false,
   })
 
-  // Fetch project
-  const { data: projectFromAssignment, isLoading: isLoadingProjectFromAssignment } = useQuery({
-    queryKey: ['project', assignment?.projectId],
-    queryFn: () => api.getProject(assignment!.projectId),
-    enabled: !!assignment?.projectId,
-  })
-
-  // Fallback: open by project id directly (from project list)
+  // Project comes from assignment.project (included in response), or fetch directly
+  const projectFromAssignment = assignment?.project
   const { data: projectFromDirectId, isLoading: isLoadingProjectFromDirectId } = useQuery({
     queryKey: ['project', id, 'direct'],
     queryFn: () => api.getProject(id!),
-    enabled: !!id && !assignment,
+    enabled: !!id && !isLoadingAssignment && !assignment,
     retry: false,
   })
 
@@ -136,7 +131,7 @@ export function JudgingDetail() {
       })
   }, [assignment, id, queryClient, user?.role])
 
-  const isLoadingProject = assignment ? isLoadingProjectFromAssignment : isLoadingProjectFromDirectId
+  const isLoadingProject = assignment ? false : isLoadingProjectFromDirectId
 
   if (isLoadingAssignment || isLoadingProject) {
     return <div>{t('common.loading')}</div>

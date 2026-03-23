@@ -8,24 +8,16 @@ import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/lib/auth'
-import { useActiveHackathon } from '@/lib/active-hackathon'
 
 export function JudgeDashboard() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { activeHackathon } = useActiveHackathon()
 
   const { data: assignments = [], isLoading: isLoadingAssignments } = useQuery({
     queryKey: ['assignments', 'judge', user?.id],
     queryFn: () => api.getAssignments({ judgeId: user?.id }),
     enabled: !!user?.id,
-  })
-
-  const { data: projects = [] } = useQuery({
-    queryKey: ['projects', activeHackathon?.id],
-    queryFn: () => api.getProjects({ hackathonId: activeHackathon?.id }),
-    enabled: !!activeHackathon?.id,
   })
 
   const pendingAssignments = assignments.filter((a) => a.status === 'pending')
@@ -93,16 +85,14 @@ export function JudgeDashboard() {
                 </div>
               ) : (
                 pendingAssignments.map((assignment) => {
-                  const project = projects.find((p) => p.id === assignment.projectId)
-
                   return (
                     <div
                       key={assignment.id}
                       className="flex flex-col gap-3 rounded-2xl border border-white/70 bg-white/78 p-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-900/10 md:flex-row md:items-center md:justify-between"
                     >
                       <div className="space-y-1">
-                        <div className="font-semibold">{project?.title}</div>
-                        <div className="text-xs text-muted-foreground">{project?.oneLiner}</div>
+                        <div className="font-semibold">{assignment.project?.title}</div>
+                        <div className="text-xs text-muted-foreground">{assignment.project?.oneLiner}</div>
                       </div>
                       <Button size="sm" className="rounded-full grand-cta" onClick={() => navigate(`/judge/review/${assignment.id}`)}>
                         {t('dashboard.judge.start', 'Start Review')}

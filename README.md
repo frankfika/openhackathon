@@ -5,7 +5,7 @@
 
 ![OpenHackathon Home](./docs/assets/home.png)
 
-![Version](https://img.shields.io/badge/Version-1.2.0-blue?style=flat-square)
+![Version](https://img.shields.io/badge/Version-1.3.0-blue?style=flat-square)
 ![Stack](https://img.shields.io/badge/Stack-React%20%7C%20Express%20%7C%20PostgreSQL-1f6feb?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
@@ -48,7 +48,12 @@ OpenHackathon 是一个面向黑客松主办方、评委与参赛团队的全流
 
 ![Promotions](./docs/assets/promotions.png)
 
-### 4.1 Admin 评审运营架构（v2）
+### 4.1 评审管理优化（v1.3）
+- **列表/矩阵双视图**：评审管理页面支持列表视图（紧凑，适合项目多评委少的场景）和矩阵视图（完整交叉表，适合批量操作）。
+- **指定分配优化**：列表视图每行只显示已分配评委，点击 `+` 按钮弹出选择器指定分配新评委。
+- **操作日志**：新增操作日志页面，记录项目提交、评分、分配等所有操作，支持按操作类型、对象类型、操作人筛选。
+
+### 4.2 Admin 评审运营架构（v2）
 - Admin 评审运营已彻底拆分为独立页面：`${adminBasePath}/reviews`、`${adminBasePath}/assignments`、`${adminBasePath}/promotions`、`${adminBasePath}/reports`、`${adminBasePath}/judges`（默认 `adminBasePath=/admin`）。
 - `adminBasePath` 可在 Site Settings 中配置，用于统一控制后台入口路径，不改变评审业务流程本身。
 - 评委采用“账号全局、参赛季（hackathon）注册”的机制；只有注册到当前 hackathon 的评委才能参与分配与晋级后的自动派发。
@@ -62,12 +67,17 @@ OpenHackathon 是一个面向黑客松主办方、评委与参赛团队的全流
 - 决赛场次不进入晋级操作列表，避免“决赛后继续晋级”的错误路径。
 - 详细规则见：[Admin Review Architecture v2](./docs/admin-review-architecture.md)。
 
-### 5. 赛事详情统一入口（规则/文档去重）
+### 5. 评委工作台优化（v1.3）
+- **左右分栏布局**：左侧任务列表，右侧项目详情和评分表单，无需跳转即可完成评审。
+- **状态筛选**：快速切换待评审/评审中/已完成任务。
+- **实时评分**：滑块控件实时计算总分，已评分项目显示完成状态和分数。
+
+### 7. 赛事详情统一入口（规则/文档去重）
 - 前台统一使用「赛事详情」入口，不再拆分成重复的“规则”和“文档”菜单。
 - 文档来源按优先级自动回退：`gitbookUrl` → `rulesUrl` → `detailsUrl`。
 - 后台活动设置支持三种链接配置，便于主办方逐步完善内容。
 
-### 6. 公开提交回执与邮件通知
+### 8. 公开提交回执与邮件通知
 - `/submit` 页面仅强制邮箱，提交后后端自动生成回执号（如 `SUB-20260228-ABC123`）。
 - 后端可通过 SMTP 自动发送回执邮件，并在回执中记录发送状态（`emailSent`/失败原因/最后尝试时间）。
 - 支持管理员手动重发回执：`POST /api/projects/:id/receipt/resend`。

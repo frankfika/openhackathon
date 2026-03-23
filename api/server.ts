@@ -1034,9 +1034,15 @@ app.get('/api/projects', async (req, res) => {
     include: lite ? undefined : {
       user: true,
       assignments: {
-        include: { judge: true, scores: true }
+        select: {
+          id: true,
+          projectId: true,
+          judgeId: true,
+          status: true,
+          totalScore: true,
+          judge: { select: { id: true, name: true } },
+        }
       },
-      hackathon: true,
     }
   });
   res.json(projects);
@@ -1333,6 +1339,21 @@ app.get('/api/assignments', requireAuth, async (req, res) => {
     }
   });
   res.json(assignments);
+});
+
+app.get('/api/assignments/:id', requireAuth, async (req, res) => {
+  const assignment = await prisma.assignment.findUnique({
+    where: { id: req.params.id },
+    include: {
+      project: true,
+      judge: true,
+      scores: true,
+    },
+  });
+  if (!assignment) {
+    return res.status(404).json({ error: 'Assignment not found' });
+  }
+  res.json(assignment);
 });
 
 app.put('/api/assignments/:id/status', requireAuth, async (req, res) => {
@@ -1704,23 +1725,25 @@ app.get('/api/leaderboard', async (req, res) => {
     select: { leaderboardData: true, leaderboardPublished: true }
   }) : null;
 
+  // Fetch scoring criteria once for maxPossible calculation
+  const hackathonFull = hackathonIdValue ? await prisma.hackathon.findUnique({
+    where: { id: hackathonIdValue },
+    select: { scoringCriteria: true },
+  }) : null;
+  const maxPossible = hackathonFull?.scoringCriteria?.reduce((sum, c) => sum + c.maxScore, 0) ?? 0;
+
   // If published, return curated leaderboard
   if (hackathon?.leaderboardPublished && hackathon?.leaderboardData) {
     const entries = hackathon.leaderboardData as { projectId: string; rank: number; award: string }[];
     const projectIds = entries.map(e => e.projectId);
     const projects = await prisma.project.findMany({
-      where: {
-        id: { in: projectIds },
-      },
+      where: { id: { in: projectIds } },
       include: {
         assignments: {
-          where: {
-            status: 'completed',
-          },
+          where: { status: 'completed' },
           select: { totalScore: true },
         },
-        hackathon: { include: { scoringCriteria: true } },
-      }
+      },
     });
 
     type CuratedLeaderboardItem = {
@@ -1737,12 +1760,12 @@ app.get('/api/leaderboard', async (req, res) => {
       award: string;
     };
 
+    const projectMap = new Map(projects.map(p => [p.id, p]));
     const result = entries.map((entry): CuratedLeaderboardItem | null => {
-      const p = projects.find(p => p.id === entry.projectId);
+      const p = projectMap.get(entry.projectId);
       if (!p) return null;
       const scores = p.assignments.map(a => a.totalScore || 0);
       const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-      const maxPossible = p.hackathon.scoringCriteria.reduce((sum, c) => sum + c.maxScore, 0);
       return {
         id: p.id, title: p.title, oneLiner: p.oneLiner, tags: p.tags,
         avgScore: Math.round(avgScore * 100) / 100, maxPossible,
@@ -1763,13 +1786,10 @@ app.get('/api/leaderboard', async (req, res) => {
     },
     include: {
       assignments: {
-        where: {
-          status: 'completed',
-        },
-        select: { totalScore: true }
+        where: { status: 'completed' },
+        select: { totalScore: true },
       },
-      hackathon: { include: { scoringCriteria: true } },
-    }
+    },
   });
 
   const leaderboard = projects.map(p => {
@@ -1777,7 +1797,6 @@ app.get('/api/leaderboard', async (req, res) => {
     const avgScore = scores.length > 0
       ? scores.reduce((a, b) => a + b, 0) / scores.length
       : 0;
-    const maxPossible = p.hackathon.scoringCriteria.reduce((sum, c) => sum + c.maxScore, 0);
 
     return {
       id: p.id, title: p.title, oneLiner: p.oneLiner, tags: p.tags,

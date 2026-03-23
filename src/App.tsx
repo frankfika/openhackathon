@@ -29,7 +29,16 @@ const Docs = lazy(() => import('./pages/Docs').then((mod) => ({ default: mod.Doc
 const Settings = lazy(() => import('./pages/Settings').then((mod) => ({ default: mod.Settings })))
 const ActivityLog = lazy(() => import('./pages/ActivityLog').then((mod) => ({ default: mod.ActivityLogPage })))
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+})
 const RouteLoader = () => <div className="py-16 text-center text-muted-foreground">Loading...</div>
 
 function LegacyDashboardRedirect({ adminBasePath }: { adminBasePath: string }) {
