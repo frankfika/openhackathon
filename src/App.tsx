@@ -10,6 +10,7 @@ import { DashboardLayout } from './components/DashboardLayout'
 import { JudgeLayout } from './components/JudgeLayout'
 import { RequireRole } from './components/RequireRole'
 import { buildAdminPath, getAdminBasePath } from './lib/admin-routing'
+import { api } from './lib/api'
 
 const Login = lazy(() => import('./pages/Login').then((mod) => ({ default: mod.Login })))
 const JudgeLogin = lazy(() => import('./pages/JudgeLogin').then((mod) => ({ default: mod.JudgeLogin })))
@@ -41,6 +42,41 @@ const queryClient = new QueryClient({
   },
 })
 const RouteLoader = () => <div className="py-16 text-center text-muted-foreground">Loading...</div>
+
+function LandingRouteEntry() {
+  const [checking, setChecking] = React.useState(true)
+  const [needsSetup, setNeedsSetup] = React.useState(false)
+
+  React.useEffect(() => {
+    let cancelled = false
+
+    api
+      .getSetupStatus()
+      .then(({ needsSetup: required }) => {
+        if (!cancelled) setNeedsSetup(required)
+      })
+      .catch(() => {
+        if (!cancelled) setNeedsSetup(false)
+      })
+      .finally(() => {
+        if (!cancelled) setChecking(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (checking) {
+    return <RouteLoader />
+  }
+
+  if (needsSetup) {
+    return <Navigate to="/setup" replace />
+  }
+
+  return <Landing />
+}
 
 function LegacyDashboardRedirect({ adminBasePath }: { adminBasePath: string }) {
   const location = useLocation()
@@ -89,7 +125,7 @@ function AppRoutes() {
       <Suspense fallback={<RouteLoader />}>
         <Routes>
           <Route element={<Layout />}>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={<LandingRouteEntry />} />
             <Route path="/docs" element={<Docs />} />
             <Route path="/submit" element={<PublicSubmit />} />
             <Route path="/submit/success" element={<SubmitSuccess />} />

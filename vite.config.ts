@@ -64,6 +64,11 @@ export default defineConfig({
         target: process.env.VITE_API_PROXY_URL || 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
+      },
+      '/uploads': {
+        target: process.env.VITE_API_PROXY_URL || 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
       }
     }
   }

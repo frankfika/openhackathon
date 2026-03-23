@@ -26,6 +26,7 @@ interface SubmissionConfigBuilderProps {
 export function SubmissionConfigBuilder({ initialSchema = [], onSave }: SubmissionConfigBuilderProps) {
   const { t } = useTranslation()
   const [fields, setFields] = useState<SubmissionField[]>(initialSchema)
+  const [optionBulkInput, setOptionBulkInput] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setFields(initialSchema)
@@ -61,9 +62,70 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
     setFields(newFields)
   }
 
-  const optionsToText = (field: SubmissionField) => (field.options || []).join('\n')
-  const parseOptions = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean)
-  const hasSelectWithoutOptions = fields.some((field) => field.type === 'select' && (field.options || []).length === 0)
+  const normalizeOptions = (options?: string[]) => {
+    const deduped: string[] = []
+    const seen = new Set<string>()
+    for (const option of options || []) {
+      const normalized = option.trim()
+      if (!normalized || seen.has(normalized)) continue
+      seen.add(normalized)
+      deduped.push(normalized)
+    }
+    return deduped
+  }
+
+  const getEditableOptions = (field: SubmissionField) => (field.options && field.options.length > 0 ? field.options : [''])
+
+  const setEditableOptions = (fieldIndex: number, options: string[]) => {
+    updateField(fieldIndex, { options })
+  }
+
+  const addOption = (fieldIndex: number) => {
+    const current = [...getEditableOptions(fields[fieldIndex])]
+    current.push('')
+    setEditableOptions(fieldIndex, current)
+  }
+
+  const updateOption = (fieldIndex: number, optionIndex: number, value: string) => {
+    const current = [...getEditableOptions(fields[fieldIndex])]
+    current[optionIndex] = value
+    setEditableOptions(fieldIndex, current)
+  }
+
+  const removeOption = (fieldIndex: number, optionIndex: number) => {
+    const current = [...getEditableOptions(fields[fieldIndex])]
+    current.splice(optionIndex, 1)
+    setEditableOptions(fieldIndex, current.length > 0 ? current : [''])
+  }
+
+  const importOptions = (fieldIndex: number) => {
+    const field = fields[fieldIndex]
+    const raw = (optionBulkInput[field.id] || '').trim()
+    if (!raw) return
+
+    const imported = raw
+      .split(/\r?\n|,/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+    const merged = normalizeOptions([...(field.options || []), ...imported])
+    updateField(fieldIndex, { options: merged })
+    setOptionBulkInput((prev) => ({ ...prev, [field.id]: '' }))
+  }
+
+  const hasSelectWithoutOptions = fields.some(
+    (field) => field.type === 'select' && normalizeOptions(field.options).length === 0
+  )
+
+  const handleSave = () => {
+    const normalizedFields = fields.map((field) => {
+      if (field.type !== 'select') return field
+      return {
+        ...field,
+        options: normalizeOptions(field.options),
+      }
+    })
+    onSave(normalizedFields)
+  }
 
   return (
     <div className="space-y-8">
@@ -202,16 +264,49 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
                     </div>
 
                     {field.type === 'select' && (
-                      <div className="space-y-1.5">
+                      <div className="space-y-2">
                         <Label className="text-xs text-muted-foreground">{t('submission.field_options')}</Label>
-                        <Textarea
-                          value={optionsToText(field)}
-                          onChange={(e) => updateField(index, { options: parseOptions(e.target.value) })}
-                          placeholder={t('submission.field_options_placeholder')}
-                          className="min-h-[100px]"
-                        />
-                        <p className="text-[11px] text-muted-foreground">{t('submission.field_options_help')}</p>
-                        {(field.options || []).length === 0 && (
+                        <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+                          {getEditableOptions(field).map((option, optionIndex) => (
+                            <div key={`${field.id}-option-${optionIndex}`} className="flex items-center gap-2">
+                              <Input
+                                value={option}
+                                onChange={(e) => updateOption(index, optionIndex, e.target.value)}
+                                placeholder={t('submission.field_option_placeholder', 'Option value')}
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive/60 hover:text-destructive"
+                                onClick={() => removeOption(index, optionIndex)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+
+                          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => addOption(index)}>
+                            <Plus className="h-4 w-4" />
+                            {t('submission.add_option', 'Add Option')}
+                          </Button>
+
+                          <div className="space-y-1.5">
+                            <Textarea
+                              value={optionBulkInput[field.id] || ''}
+                              onChange={(e) => setOptionBulkInput((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                              placeholder={t('submission.field_options_placeholder')}
+                              className="min-h-[76px]"
+                            />
+                            <div className="flex justify-between gap-2">
+                              <p className="text-[11px] text-muted-foreground">{t('submission.field_options_help')}</p>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => importOptions(index)}>
+                                {t('submission.import_options', 'Import')}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                        {normalizeOptions(field.options).length === 0 && (
                           <p className="text-[11px] text-destructive">{t('submission.field_options_required')}</p>
                         )}
                       </div>
@@ -244,7 +339,7 @@ export function SubmissionConfigBuilder({ initialSchema = [], onSave }: Submissi
       </div>
 
       <div className="flex justify-end pt-2">
-        <Button onClick={() => onSave(fields)} disabled={hasSelectWithoutOptions}>
+        <Button onClick={handleSave} disabled={hasSelectWithoutOptions}>
           {t('common.save_changes')}
         </Button>
       </div>

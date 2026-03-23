@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+import { Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
@@ -5,9 +7,159 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { app, prisma } from '../server';
 
 const DEFAULT_PASSWORD = 'secret123';
+const TINY_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jm3sAAAAASUVORK5CYII=';
 type ProjectReportJudge = {
   status: 'pending' | 'in_progress' | 'completed';
 };
+type LegacyIdRow = { id: string };
+type LegacyBooleanRow = { exists: boolean };
+type LegacyProjectRow = {
+  id: string;
+  hackathonId: string;
+  sessionId: string | null;
+};
+
+async function supportsSessionScopedAssignments() {
+  const rows = await prisma.$queryRaw<LegacyBooleanRow[]>(Prisma.sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'Assignment'
+        AND column_name = 'sessionId'
+    ) AS "exists"
+  `);
+
+  return rows[0]?.exists === true;
+}
+
+async function ensureLegacySessionId(hackathonId: string) {
+  const existing = await prisma.$queryRaw<LegacyIdRow[]>(Prisma.sql`
+    SELECT "id"
+    FROM "Session"
+    WHERE "hackathonId" = ${hackathonId}
+    ORDER BY "startAt" ASC, "createdAt" ASC, "id" ASC
+    LIMIT 1
+  `);
+  if (existing[0]?.id) {
+    return existing[0].id;
+  }
+
+  const hackathon = await prisma.hackathon.findUnique({
+    where: { id: hackathonId },
+    select: { id: true, status: true, startAt: true, endAt: true },
+  });
+  if (!hackathon) {
+    throw new Error(`Hackathon ${hackathonId} not found`);
+  }
+
+  const now = new Date();
+  const created = await prisma.$queryRaw<LegacyIdRow[]>(Prisma.sql`
+    INSERT INTO "Session" (
+      "id",
+      "hackathonId",
+      "name",
+      "type",
+      "status",
+      "startAt",
+      "endAt",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${randomUUID()},
+      ${hackathon.id},
+      ${'Main Round'},
+      ${'preliminary'},
+      ${hackathon.status},
+      ${hackathon.startAt},
+      ${hackathon.endAt},
+      ${now},
+      ${now}
+    )
+    RETURNING "id"
+  `);
+
+  return created[0]!.id;
+}
+
+async function createAssignment(params: {
+  id?: string;
+  projectId: string;
+  judgeId: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  totalScore?: number;
+  comment?: string;
+}) {
+  if (!await supportsSessionScopedAssignments()) {
+    return prisma.assignment.create({
+      data: {
+        id: params.id,
+        projectId: params.projectId,
+        judgeId: params.judgeId,
+        status: params.status,
+        totalScore: params.totalScore,
+        comment: params.comment,
+      },
+    });
+  }
+
+  const projectRows = await prisma.$queryRaw<LegacyProjectRow[]>(Prisma.sql`
+    SELECT "id", "hackathonId", "sessionId"
+    FROM "Project"
+    WHERE "id" = ${params.projectId}
+    LIMIT 1
+  `);
+  const project = projectRows[0];
+  if (!project) {
+    throw new Error(`Project ${params.projectId} not found`);
+  }
+
+  const sessionId = project.sessionId ?? await ensureLegacySessionId(project.hackathonId);
+  if (!project.sessionId) {
+    await prisma.$executeRaw(Prisma.sql`
+      UPDATE "Project"
+      SET "sessionId" = ${sessionId}, "updatedAt" = NOW()
+      WHERE "id" = ${project.id} AND "sessionId" IS NULL
+    `);
+  }
+
+  const assignmentId = params.id ?? randomUUID();
+  await prisma.$queryRaw<LegacyIdRow[]>(Prisma.sql`
+    INSERT INTO "Assignment" (
+      "id",
+      "sessionId",
+      "projectId",
+      "judgeId",
+      "status",
+      "comment",
+      "totalScore",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${assignmentId},
+      ${sessionId},
+      ${params.projectId},
+      ${params.judgeId},
+      ${params.status},
+      ${params.comment ?? null},
+      ${params.totalScore ?? null},
+      NOW(),
+      NOW()
+    )
+    RETURNING "id"
+  `);
+
+  const assignment = await prisma.assignment.findUnique({
+    where: { id: assignmentId },
+  });
+  if (!assignment) {
+    throw new Error(`Assignment ${assignmentId} not found after insert`);
+  }
+
+  return assignment;
+}
 
 async function seedHackathon() {
   const hackathon = await prisma.hackathon.create({
@@ -184,8 +336,6 @@ describe('API integration tests (real database)', () => {
         .put('/api/site-settings')
         .set('x-test-role', 'admin')
         .send({
-          submissionSuccessHintText: 'Join the event group',
-          submissionSuccessHintImageUrl: 'https://example.com/qr.png',
           smtpHost: 'smtp.mail.example',
           smtpPort: 587,
           smtpSecure: false,
@@ -200,8 +350,6 @@ describe('API integration tests (real database)', () => {
         .set('x-test-role', 'admin')
         .expect(200);
 
-      expect(adminRes.body.submissionSuccessHintText).toBe('Join the event group');
-      expect(adminRes.body.submissionSuccessHintImageUrl).toBe('https://example.com/qr.png');
       expect(adminRes.body.smtpHost).toBe('smtp.mail.example');
       expect(adminRes.body.smtpUser).toBe('apikey');
       expect(adminRes.body.smtpPasswordConfigured).toBe(true);
@@ -214,6 +362,25 @@ describe('API integration tests (real database)', () => {
         .set('x-test-role', 'judge')
         .expect(403);
       expect(res.body.error).toBe('Admin access required');
+    });
+
+    it('uploads image for admin and serves it from static uploads path', async () => {
+      const imageBuffer = Buffer.from(TINY_PNG_BASE64, 'base64');
+      const uploadRes = await request(app)
+        .post('/api/uploads/images')
+        .set('x-test-role', 'admin')
+        .set('x-file-name', encodeURIComponent('site-logo.png'))
+        .set('content-type', 'image/png')
+        .send(imageBuffer)
+        .expect(200);
+
+      expect(uploadRes.body.url).toMatch(/^\/uploads\/images\/.+\.png$/);
+      expect(uploadRes.body.fileName).toMatch(/\.png$/);
+
+      const fileRes = await request(app)
+        .get(uploadRes.body.url)
+        .expect(200);
+      expect(String(fileRes.headers['content-type'])).toContain('image/png');
     });
 
     it('validates test email endpoint and reports missing smtp config', async () => {
@@ -245,6 +412,59 @@ describe('API integration tests (real database)', () => {
     });
   });
 
+  describe('Setup', () => {
+    it('validates setup payload for email, required fields, and date range', async () => {
+      const payload = {
+        admin: {
+          email: 'admin@example.com',
+          name: 'Admin User',
+          password: 'supersecret',
+        },
+        hackathon: {
+          title: 'Launch Event',
+          tagline: 'Build amazing things',
+          city: 'Shanghai',
+          startAt: '2026-04-01',
+          endAt: '2026-04-03',
+        },
+      };
+
+      await request(app)
+        .post('/api/setup')
+        .send({
+          ...payload,
+          admin: {
+            ...payload.admin,
+            email: 'invalid-email',
+          },
+        })
+        .expect(400);
+
+      await request(app)
+        .post('/api/setup')
+        .send({
+          ...payload,
+          hackathon: {
+            ...payload.hackathon,
+            startAt: '',
+          },
+        })
+        .expect(400);
+
+      await request(app)
+        .post('/api/setup')
+        .send({
+          ...payload,
+          hackathon: {
+            ...payload.hackathon,
+            startAt: '2026-04-05',
+            endAt: '2026-04-03',
+          },
+        })
+        .expect(400);
+    });
+  });
+
   describe('Hackathons', () => {
     it('creates and fetches hackathons with scoring criteria', async () => {
       const payload = {
@@ -256,6 +476,8 @@ describe('API integration tests (real database)', () => {
         status: 'draft',
         coverGradient: 'from-red-400 to-orange-500',
         submissionSchema: { sections: [{ key: 'pitch' }] },
+        submissionSuccessHintText: 'Join the event group',
+        submissionSuccessHintImageUrl: '/uploads/images/submit-success-qr.png',
         scoringCriteria: [
           { name: 'Impact', maxScore: 50, sortOrder: 0 },
           { name: 'Feasibility', maxScore: 50, sortOrder: 1 },
@@ -265,6 +487,8 @@ describe('API integration tests (real database)', () => {
       const createRes = await request(app).post('/api/hackathons').send(payload).expect(200);
       expect(createRes.body.title).toBe('City Hack');
       expect(createRes.body.scoringCriteria).toHaveLength(2);
+      expect(createRes.body.submissionSuccessHintText).toBe('Join the event group');
+      expect(createRes.body.submissionSuccessHintImageUrl).toBe('/uploads/images/submit-success-qr.png');
 
       const listRes = await request(app).get('/api/hackathons').expect(200);
       expect(listRes.body).toHaveLength(1);
@@ -275,6 +499,39 @@ describe('API integration tests (real database)', () => {
         .expect(200);
       expect(detailRes.body.id).toBe(createRes.body.id);
       expect(detailRes.body.scoringCriteria[0].name).toBe('Impact');
+    });
+
+    it('validates required fields and date range when creating hackathons', async () => {
+      await request(app)
+        .post('/api/hackathons')
+        .send({
+          title: 'City Hack',
+          tagline: '',
+          startAt: '2026-02-01',
+          endAt: '2026-02-03',
+          status: 'draft',
+        })
+        .expect(400);
+
+      await request(app)
+        .post('/api/hackathons')
+        .send({
+          title: 'City Hack',
+          tagline: 'Hack for good',
+          status: 'draft',
+        })
+        .expect(400);
+
+      await request(app)
+        .post('/api/hackathons')
+        .send({
+          title: 'City Hack',
+          tagline: 'Hack for good',
+          startAt: '2026-02-05',
+          endAt: '2026-02-03',
+          status: 'draft',
+        })
+        .expect(400);
     });
 
     it('updates hackathon fields and scoring criteria', async () => {
@@ -289,6 +546,8 @@ describe('API integration tests (real database)', () => {
         status: 'active',
         coverGradient: 'from-green-400 to-emerald-600',
         submissionSchema: { sections: [{ key: 'video' }] },
+        submissionSuccessHintText: 'Scan the event WeChat QR for updates',
+        submissionSuccessHintImageUrl: '/uploads/images/updated-qr.png',
         scoringCriteria: [
           { name: 'Novelty', maxScore: 70, sortOrder: 0 },
           { name: 'Quality', maxScore: 30, sortOrder: 1 },
@@ -302,12 +561,31 @@ describe('API integration tests (real database)', () => {
 
       expect(updateRes.body.title).toBe('OpenHack Updated');
       expect(updateRes.body.scoringCriteria).toHaveLength(2);
+      expect(updateRes.body.submissionSuccessHintText).toBe('Scan the event WeChat QR for updates');
+      expect(updateRes.body.submissionSuccessHintImageUrl).toBe('/uploads/images/updated-qr.png');
 
       const criteria = await prisma.scoringCriterion.findMany({
         where: { hackathonId: hackathon.id },
         orderBy: { sortOrder: 'asc' },
       });
       expect(criteria.map((c) => c.name)).toEqual(['Novelty', 'Quality']);
+    });
+
+    it('validates empty string updates and invalid date range when updating hackathons', async () => {
+      const { hackathon } = await seedHackathon();
+
+      await request(app)
+        .put(`/api/hackathons/${hackathon.id}`)
+        .send({ title: '   ' })
+        .expect(400);
+
+      await request(app)
+        .put(`/api/hackathons/${hackathon.id}`)
+        .send({
+          startAt: '2026-01-15',
+          endAt: '2026-01-11',
+        })
+        .expect(400);
     });
 
     it('stores, reads, and deletes local markdown documents for a hackathon', async () => {
@@ -340,6 +618,33 @@ describe('API integration tests (real database)', () => {
       await request(app)
         .get(`/api/hackathons/${hackathon.id}/markdown-doc`)
         .expect(404);
+    });
+
+    it('accepts large local pdf upload payloads for markdown doc endpoint', async () => {
+      const { hackathon } = await seedHackathon();
+      const largePdfBytes = Buffer.concat([
+        Buffer.from('%PDF-1.4\n'),
+        Buffer.alloc(2 * 1024 * 1024, 0x20),
+        Buffer.from('\n%%EOF'),
+      ]);
+      const largePdfBase64 = largePdfBytes.toString('base64');
+
+      const uploadRes = await request(app)
+        .put(`/api/hackathons/${hackathon.id}/markdown-doc`)
+        .send({
+          fileName: 'large-guide.pdf',
+          content: largePdfBase64,
+          isBase64: true,
+        })
+        .expect(200);
+
+      expect(uploadRes.body.fileName).toBe('large-guide.pdf');
+
+      const docRes = await request(app)
+        .get(`/api/hackathons/${hackathon.id}/markdown-doc`)
+        .expect(200);
+      expect(docRes.body.fileName).toBe('large-guide.pdf');
+      expect(docRes.body.contentType).toBe('application/pdf');
     });
 
     it('returns 404 for a non-existing hackathon', async () => {
@@ -405,12 +710,10 @@ describe('API integration tests (real database)', () => {
       expect(updateRes.body.submissionData.stack).toEqual(['react']);
       expect(updateRes.body.submissionData._receipt.id).toBe(createRes.body.receipt.id);
 
-      await prisma.assignment.create({
-        data: {
-          projectId,
-          judgeId: judge.id,
-          status: 'pending',
-        },
+      await createAssignment({
+        projectId,
+        judgeId: judge.id,
+        status: 'pending',
       });
 
       await request(app).delete(`/api/projects/${projectId}`).expect(200);
@@ -512,6 +815,56 @@ describe('API integration tests (real database)', () => {
         .expect(429);
 
       expect(limited.body.error).toBe('Too many submissions. Please try again later.');
+    });
+
+    it('filters projects by status and rejects invalid status filters', async () => {
+      const { hackathon } = await seedHackathon();
+
+      const submittedRes = await request(app)
+        .post('/api/projects')
+        .send({
+          hackathonId: hackathon.id,
+          title: 'Submitted Project',
+          submitterEmail: 'submitted@example.com',
+          submitterName: 'Submitted Owner',
+        })
+        .expect(200);
+
+      await request(app)
+        .post('/api/projects')
+        .send({
+          hackathonId: hackathon.id,
+          title: 'Draft Project',
+          submitterEmail: 'draft@example.com',
+          submitterName: 'Draft Owner',
+        })
+        .expect(200);
+
+      await request(app)
+        .put(`/api/projects/${submittedRes.body.id}`)
+        .send({ status: 'draft' })
+        .expect(200);
+
+      const submittedList = await request(app)
+        .get('/api/projects')
+        .query({ hackathonId: hackathon.id, status: 'submitted' })
+        .expect(200);
+      expect(submittedList.body).toHaveLength(1);
+      expect(submittedList.body[0].title).toBe('Draft Project');
+      expect(submittedList.body[0].status).toBe('submitted');
+
+      const draftList = await request(app)
+        .get('/api/projects')
+        .query({ hackathonId: hackathon.id, status: 'draft' })
+        .expect(200);
+      expect(draftList.body).toHaveLength(1);
+      expect(draftList.body[0].title).toBe('Submitted Project');
+      expect(draftList.body[0].status).toBe('draft');
+
+      await request(app)
+        .get('/api/projects')
+        .query({ hackathonId: hackathon.id, status: 'invalid' })
+        .expect(400);
     });
   });
 
@@ -634,13 +987,11 @@ describe('API integration tests (real database)', () => {
         title: 'Cascade Project',
       });
 
-      const assignment = await prisma.assignment.create({
-        data: {
-          projectId: project.id,
-          judgeId: judge.id,
-          status: 'completed',
-          totalScore: 88,
-        },
+      const assignment = await createAssignment({
+        projectId: project.id,
+        judgeId: judge.id,
+        status: 'completed',
+        totalScore: 88,
       });
 
       await prisma.score.create({
@@ -704,12 +1055,10 @@ describe('API integration tests (real database)', () => {
         title: 'Membership Locked Project',
       });
 
-      await prisma.assignment.create({
-        data: {
-          projectId: project.id,
-          judgeId: judge.id,
-          status: 'pending',
-        },
+      await createAssignment({
+        projectId: project.id,
+        judgeId: judge.id,
+        status: 'pending',
       });
 
       const res = await request(app)
@@ -811,12 +1160,10 @@ describe('API integration tests (real database)', () => {
         title: 'Status Project',
       });
 
-      const assignment = await prisma.assignment.create({
-        data: {
-          projectId: project.id,
-          judgeId: judge.id,
-          status: 'pending',
-        },
+      const assignment = await createAssignment({
+        projectId: project.id,
+        judgeId: judge.id,
+        status: 'pending',
       });
 
       const updateRes = await request(app)
@@ -844,12 +1191,10 @@ describe('API integration tests (real database)', () => {
         title: 'Score Project',
       });
 
-      const assignment = await prisma.assignment.create({
-        data: {
-          projectId: project.id,
-          judgeId: judge.id,
-          status: 'pending',
-        },
+      const assignment = await createAssignment({
+        projectId: project.id,
+        judgeId: judge.id,
+        status: 'pending',
       });
 
       const submitRes = await request(app)
@@ -892,12 +1237,10 @@ describe('API integration tests (real database)', () => {
         title: 'Permission Boundary Project',
       });
 
-      const assignment = await prisma.assignment.create({
-        data: {
-          projectId: project.id,
-          judgeId: judge.id,
-          status: 'pending',
-        },
+      const assignment = await createAssignment({
+        projectId: project.id,
+        judgeId: judge.id,
+        status: 'pending',
       });
 
       await request(app)
@@ -942,28 +1285,22 @@ describe('API integration tests (real database)', () => {
         title: 'Stats Project 2',
       });
 
-      await prisma.assignment.create({
-        data: {
-          projectId: project1.id,
-          judgeId: judge1.id,
-          status: 'completed',
-          totalScore: 80,
-        },
+      await createAssignment({
+        projectId: project1.id,
+        judgeId: judge1.id,
+        status: 'completed',
+        totalScore: 80,
       });
-      await prisma.assignment.create({
-        data: {
-          projectId: project2.id,
-          judgeId: judge1.id,
-          status: 'pending',
-        },
+      await createAssignment({
+        projectId: project2.id,
+        judgeId: judge1.id,
+        status: 'pending',
       });
-      await prisma.assignment.create({
-        data: {
-          projectId: project1.id,
-          judgeId: judge2.id,
-          status: 'completed',
-          totalScore: 90,
-        },
+      await createAssignment({
+        projectId: project1.id,
+        judgeId: judge2.id,
+        status: 'completed',
+        totalScore: 90,
       });
 
       const adminStats = await request(app)
@@ -1000,21 +1337,17 @@ describe('API integration tests (real database)', () => {
         title: 'Leaderboard B',
       });
 
-      await prisma.assignment.create({
-        data: {
-          projectId: projectA.id,
-          judgeId: judge.id,
-          status: 'completed',
-          totalScore: 72,
-        },
+      await createAssignment({
+        projectId: projectA.id,
+        judgeId: judge.id,
+        status: 'completed',
+        totalScore: 72,
       });
-      await prisma.assignment.create({
-        data: {
-          projectId: projectB.id,
-          judgeId: judge.id,
-          status: 'completed',
-          totalScore: 91,
-        },
+      await createAssignment({
+        projectId: projectB.id,
+        judgeId: judge.id,
+        status: 'completed',
+        totalScore: 91,
       });
 
       const scoresBased = await request(app)
@@ -1066,14 +1399,12 @@ describe('API integration tests (real database)', () => {
         title: 'Report Pending',
       });
 
-      const completed = await prisma.assignment.create({
-        data: {
-          projectId: projectDone.id,
-          judgeId: judge.id,
-          status: 'completed',
-          comment: 'Great work',
-          totalScore: 95,
-        },
+      const completed = await createAssignment({
+        projectId: projectDone.id,
+        judgeId: judge.id,
+        status: 'completed',
+        comment: 'Great work',
+        totalScore: 95,
       });
       await prisma.score.create({
         data: {
@@ -1090,12 +1421,10 @@ describe('API integration tests (real database)', () => {
         },
       });
 
-      await prisma.assignment.create({
-        data: {
-          projectId: projectPending.id,
-          judgeId: judge.id,
-          status: 'pending',
-        },
+      await createAssignment({
+        projectId: projectPending.id,
+        judgeId: judge.id,
+        status: 'pending',
       });
 
       const report = await request(app)
@@ -1120,20 +1449,16 @@ describe('API integration tests (real database)', () => {
         title: 'Project Report Target',
       });
 
-      await prisma.assignment.create({
-        data: {
-          projectId: project.id,
-          judgeId: judgeA.id,
-          status: 'completed',
-          totalScore: 84,
-        },
+      await createAssignment({
+        projectId: project.id,
+        judgeId: judgeA.id,
+        status: 'completed',
+        totalScore: 84,
       });
-      await prisma.assignment.create({
-        data: {
-          projectId: project.id,
-          judgeId: judgeB.id,
-          status: 'in_progress',
-        },
+      await createAssignment({
+        projectId: project.id,
+        judgeId: judgeB.id,
+        status: 'in_progress',
       });
 
       const reportRes = await request(app)

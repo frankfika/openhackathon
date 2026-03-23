@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useTranslation } from 'react-i18next'
 import { useActiveHackathon } from '@/lib/active-hackathon'
-import { useSiteBranding } from '@/lib/site-branding'
 
 type SubmitSuccessState = {
   receiptId?: string
@@ -18,7 +17,6 @@ export function SubmitSuccess() {
   const { t } = useTranslation()
   const location = useLocation()
   const { activeHackathon: hackathon } = useActiveHackathon()
-  const { settings } = useSiteBranding()
   const state = (location.state || {}) as SubmitSuccessState
   const receiptId = typeof state.receiptId === 'string' && state.receiptId.trim().length > 0 ? state.receiptId : null
   const submitterEmail =
@@ -26,11 +24,11 @@ export function SubmitSuccess() {
       ? state.submitterEmail
       : null
   const emailSent = typeof state.emailSent === 'boolean' ? state.emailSent : null
-  const successHintText = typeof settings.submissionSuccessHintText === 'string'
-    ? settings.submissionSuccessHintText.trim()
+  const successHintText = typeof hackathon.submissionSuccessHintText === 'string'
+    ? hackathon.submissionSuccessHintText.trim()
     : ''
-  const successHintImageUrl = typeof settings.submissionSuccessHintImageUrl === 'string'
-    ? settings.submissionSuccessHintImageUrl.trim()
+  const successHintImageUrl = typeof hackathon.submissionSuccessHintImageUrl === 'string'
+    ? hackathon.submissionSuccessHintImageUrl.trim()
     : ''
 
   return (

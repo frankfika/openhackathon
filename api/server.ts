@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import { Prisma, PrismaClient, SiteSetting } from '@prisma/client';
 import nodemailer from 'nodemailer';
@@ -28,6 +28,7 @@ const CORS_ORIGINS = (process.env.CORS_ORIGIN || process.env.CORS_ORIGINS || '')
   .map((origin) => origin.trim())
   .filter(Boolean);
 const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '1mb';
+const MARKDOWN_DOC_BODY_LIMIT = process.env.MARKDOWN_DOC_BODY_LIMIT || '25mb';
 const API_RATE_LIMIT_WINDOW_MS = readPositiveInteger(process.env.API_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
 const API_RATE_LIMIT_MAX = readPositiveInteger(process.env.API_RATE_LIMIT_MAX, 1200);
 const AUTH_RATE_LIMIT_WINDOW_MS = readPositiveInteger(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
@@ -47,6 +48,9 @@ const SUBMISSION_EMAIL_SUBJECT_TEMPLATE = process.env.SUBMISSION_RECEIPT_SUBJECT
 const SUBMISSION_EMAIL_TIMEOUT_MS = Number(process.env.SUBMISSION_EMAIL_TIMEOUT_MS || 10000);
 const EMAIL_SETTINGS_SECRET = process.env.EMAIL_SETTINGS_SECRET || JWT_SECRET;
 const HACKATHON_DOCS_ROOT = path.resolve(process.cwd(), process.env.HACKATHON_DOCS_DIR || 'content/hackathons');
+const UPLOADS_ROOT = path.resolve(process.cwd(), process.env.UPLOADS_DIR || 'content/uploads');
+const UPLOAD_IMAGES_DIR = path.join(UPLOADS_ROOT, 'images');
+const IMAGE_UPLOAD_LIMIT = process.env.IMAGE_UPLOAD_LIMIT || '5mb';
 const SINGLE_HACKATHON_MODE = process.env.SINGLE_HACKATHON_MODE !== 'false';
 const HACKATHON_STATUS_PRIORITY: Record<string, number> = {
   active: 0,
@@ -57,6 +61,18 @@ const HACKATHON_STATUS_PRIORITY: Record<string, number> = {
   published: 5,
 };
 const DEFAULT_HACKATHON_COVER_GRADIENT = 'from-blue-500/20 via-sky-500/10 to-indigo-500/20';
+const DEFAULT_LEGACY_SESSION_NAME = 'Main Round';
+const DEFAULT_LEGACY_SESSION_TYPE = 'preliminary';
+const ALLOWED_UPLOAD_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.ico']);
+const MIME_TO_IMAGE_EXTENSION: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'image/svg+xml': '.svg',
+  'image/x-icon': '.ico',
+  'image/vnd.microsoft.icon': '.ico',
+};
 
 let submissionEmailTransporterCache: { key: string; transporter: nodemailer.Transporter } | null = null;
 
@@ -177,6 +193,22 @@ const submissionRateLimiter = rateLimit({
   message: { error: 'Too many submissions. Please try again later.' },
 });
 
+function isMarkdownDocUploadRequest(req: express.Request): boolean {
+  if (req.method !== 'PUT') return false;
+  if (req.path === '/api/hackathon/markdown-doc') return true;
+  return /^\/api\/hackathons\/[^/]+\/markdown-doc$/.test(req.path);
+}
+
+function shouldParseJsonBody(req: express.Request): boolean {
+  if (isMarkdownDocUploadRequest(req)) return false;
+  const contentTypeHeader = req.headers['content-type'];
+  const contentType = Array.isArray(contentTypeHeader) ? contentTypeHeader[0] : contentTypeHeader;
+  if (!contentType) return false;
+  return /\bapplication\/([a-z0-9.+-]*\+)?json\b/i.test(contentType);
+}
+
+const markdownDocJsonParser = express.json({ limit: MARKDOWN_DOC_BODY_LIMIT });
+
 app.disable('x-powered-by');
 if (TRUST_PROXY !== undefined) {
   app.set('trust proxy', TRUST_PROXY);
@@ -186,7 +218,8 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 app.use(cors(corsOptions));
-app.use(express.json({ limit: JSON_BODY_LIMIT }));
+app.use(express.json({ limit: JSON_BODY_LIMIT, type: shouldParseJsonBody }));
+app.use('/uploads', express.static(UPLOADS_ROOT));
 app.use('/api', apiRateLimiter);
 app.use('/api/auth/login', authRateLimiter);
 
@@ -283,6 +316,25 @@ function sanitizePathSegment(value: string): string {
 function sanitizeFileStem(value: string): string {
   // eslint-disable-next-line no-control-regex
   return value.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
+}
+
+function normalizeUploadedImageFileName(value: string | undefined): string {
+  const fallback = 'image';
+  const baseName = path.basename(value?.trim() || fallback);
+  const parsed = path.parse(baseName);
+  const safeStem = sanitizeFileStem(parsed.name) || fallback;
+  const ext = parsed.ext.toLowerCase();
+  return `${safeStem}${ext}`;
+}
+
+function resolveUploadedImageExtension(fileName: string, contentType: string | undefined): string | null {
+  const nameExt = path.extname(fileName).toLowerCase();
+  if (ALLOWED_UPLOAD_IMAGE_EXTENSIONS.has(nameExt)) return nameExt;
+
+  const normalizedType = contentType?.split(';')[0]?.trim().toLowerCase();
+  if (!normalizedType) return null;
+
+  return MIME_TO_IMAGE_EXTENSION[normalizedType] || null;
 }
 
 function isMarkdownFileName(value: string): boolean {
@@ -424,6 +476,20 @@ function normalizeEmail(value: unknown): string | undefined {
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isValidHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isValidHttpOrRootRelativeUrl(url: string): boolean {
+  if (isValidHttpUrl(url)) return true;
+  return url.startsWith('/') && !url.startsWith('//');
 }
 
 function isValidPassword(password: string): boolean {
@@ -845,6 +911,21 @@ type PrismaLikeClient = PrismaClient | Prisma.TransactionClient;
 type HackathonWithRelations = Prisma.HackathonGetPayload<{
   include: { scoringCriteria: true }
 }>;
+type LegacyIdRow = { id: string };
+type LegacyBooleanRow = { exists: boolean };
+type LegacyProjectRow = {
+  id: string;
+  hackathonId: string;
+  title: string;
+  sessionId: string | null;
+};
+type LegacyHackathonRow = {
+  id: string;
+  title: string;
+  status: string;
+  startAt: Date;
+  endAt: Date;
+};
 
 function compareHackathonsByPriority(a: HackathonWithRelations, b: HackathonWithRelations): number {
   const aPriority = HACKATHON_STATUS_PRIORITY[a.status] ?? Number.MAX_SAFE_INTEGER;
@@ -878,6 +959,75 @@ async function getScopedHackathonId(input: unknown): Promise<string | undefined>
   return current?.id;
 }
 
+async function supportsSessionScopedAssignments(client: PrismaLikeClient): Promise<boolean> {
+  const rows = await client.$queryRaw<LegacyBooleanRow[]>(Prisma.sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'Assignment'
+        AND column_name = 'sessionId'
+    ) AS "exists"
+  `);
+
+  return rows[0]?.exists === true;
+}
+
+async function loadProjectsWithSession(client: PrismaLikeClient, projectIds: string[]): Promise<LegacyProjectRow[]> {
+  if (projectIds.length === 0) return [];
+
+  return client.$queryRaw<LegacyProjectRow[]>(Prisma.sql`
+    SELECT "id", "hackathonId", "title", "sessionId"
+    FROM "Project"
+    WHERE "id" IN (${Prisma.join(projectIds)})
+  `);
+}
+
+async function ensureLegacyHackathonSessionId(
+  client: PrismaLikeClient,
+  hackathon: LegacyHackathonRow,
+): Promise<string> {
+  const existing = await client.$queryRaw<LegacyIdRow[]>(Prisma.sql`
+    SELECT "id"
+    FROM "Session"
+    WHERE "hackathonId" = ${hackathon.id}
+    ORDER BY "startAt" ASC, "createdAt" ASC, "id" ASC
+    LIMIT 1
+  `);
+
+  const existingId = existing[0]?.id;
+  if (existingId) return existingId;
+
+  const now = new Date();
+  const created = await client.$queryRaw<LegacyIdRow[]>(Prisma.sql`
+    INSERT INTO "Session" (
+      "id",
+      "hackathonId",
+      "name",
+      "type",
+      "status",
+      "startAt",
+      "endAt",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${randomUUID()},
+      ${hackathon.id},
+      ${DEFAULT_LEGACY_SESSION_NAME},
+      ${DEFAULT_LEGACY_SESSION_TYPE},
+      ${hackathon.status},
+      ${hackathon.startAt},
+      ${hackathon.endAt},
+      ${now},
+      ${now}
+    )
+    RETURNING "id"
+  `);
+
+  return created[0]!.id;
+}
+
 const DEFAULT_SITE_SETTINGS = {
   siteName: 'OpenHackathon',
   adminBasePath: normalizeAdminBasePath(process.env.ADMIN_BASE_PATH || process.env.VITE_ADMIN_BASE_PATH || '/admin'),
@@ -888,8 +1038,6 @@ const DEFAULT_SITE_SETTINGS = {
   showPoweredBy: true,
   poweredByText: 'Powered by OpenHackathon',
   poweredByUrl: 'https://openhackathon.dev',
-  submissionSuccessHintText: null as string | null,
-  submissionSuccessHintImageUrl: null as string | null,
   submissionEmailEnabled: SUBMISSION_EMAIL_ENABLED,
   smtpHost: null as string | null,
   smtpPort: resolveSubmissionEmailPort(SUBMISSION_EMAIL_PORT, 587),
@@ -923,8 +1071,6 @@ function serializePublicSiteSettings(settings: SiteSetting) {
     showPoweredBy: settings.showPoweredBy,
     poweredByText: settings.poweredByText,
     poweredByUrl: settings.poweredByUrl,
-    submissionSuccessHintText: settings.submissionSuccessHintText,
-    submissionSuccessHintImageUrl: settings.submissionSuccessHintImageUrl,
     createdAt: settings.createdAt,
     updatedAt: settings.updatedAt,
   };
@@ -970,10 +1116,6 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
   const logoUrl = typeof body.logoUrl === 'string' ? body.logoUrl.trim() : undefined;
   const poweredByText = typeof body.poweredByText === 'string' ? body.poweredByText.trim() : undefined;
   const poweredByUrl = typeof body.poweredByUrl === 'string' ? body.poweredByUrl.trim() : undefined;
-  const submissionSuccessHintText =
-    typeof body.submissionSuccessHintText === 'string' ? body.submissionSuccessHintText.trim() : undefined;
-  const submissionSuccessHintImageUrl =
-    typeof body.submissionSuccessHintImageUrl === 'string' ? body.submissionSuccessHintImageUrl.trim() : undefined;
   const smtpHost = typeof body.smtpHost === 'string' ? body.smtpHost.trim() : undefined;
   const smtpUser = typeof body.smtpUser === 'string' ? body.smtpUser.trim() : undefined;
   const submissionEmailFrom = typeof body.submissionEmailFrom === 'string' ? body.submissionEmailFrom.trim() : undefined;
@@ -1020,12 +1162,6 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
       : {}),
     ...(poweredByText !== undefined ? { poweredByText: poweredByText || DEFAULT_SITE_SETTINGS.poweredByText } : {}),
     ...(poweredByUrl !== undefined ? { poweredByUrl: poweredByUrl || DEFAULT_SITE_SETTINGS.poweredByUrl } : {}),
-    ...(body.submissionSuccessHintText !== undefined
-      ? { submissionSuccessHintText: submissionSuccessHintText || null }
-      : {}),
-    ...(body.submissionSuccessHintImageUrl !== undefined
-      ? { submissionSuccessHintImageUrl: submissionSuccessHintImageUrl || null }
-      : {}),
     ...(body.submissionEmailEnabled !== undefined && typeof body.submissionEmailEnabled === 'boolean'
       ? { submissionEmailEnabled: body.submissionEmailEnabled }
       : {}),
@@ -1056,14 +1192,6 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
     showPoweredBy: typeof body.showPoweredBy === 'boolean' ? body.showPoweredBy : DEFAULT_SITE_SETTINGS.showPoweredBy,
     poweredByText: poweredByText || DEFAULT_SITE_SETTINGS.poweredByText,
     poweredByUrl: poweredByUrl || DEFAULT_SITE_SETTINGS.poweredByUrl,
-    submissionSuccessHintText:
-      body.submissionSuccessHintText !== undefined
-        ? (submissionSuccessHintText || null)
-        : DEFAULT_SITE_SETTINGS.submissionSuccessHintText,
-    submissionSuccessHintImageUrl:
-      body.submissionSuccessHintImageUrl !== undefined
-        ? (submissionSuccessHintImageUrl || null)
-        : DEFAULT_SITE_SETTINGS.submissionSuccessHintImageUrl,
     submissionEmailEnabled:
       typeof body.submissionEmailEnabled === 'boolean'
         ? body.submissionEmailEnabled
@@ -1124,6 +1252,53 @@ app.post('/api/site-settings/email/test', requireAdmin, async (req, res) => {
   });
 });
 
+app.post(
+  '/api/uploads/images',
+  requireAdmin,
+  express.raw({ type: ['image/*', 'application/octet-stream'], limit: IMAGE_UPLOAD_LIMIT }),
+  async (req, res) => {
+    const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (payload.length === 0) {
+      return res.status(400).json({ error: 'Image file content is required' });
+    }
+
+    const contentType = req.header('content-type')?.split(';')[0]?.trim().toLowerCase();
+    if (contentType && contentType !== 'application/octet-stream' && !contentType.startsWith('image/')) {
+      return res.status(400).json({ error: 'Only image content types are allowed' });
+    }
+
+    const rawFileName = req.header('x-file-name');
+    let decodedFileName = rawFileName || '';
+    if (rawFileName) {
+      try {
+        decodedFileName = decodeURIComponent(rawFileName);
+      } catch {
+        decodedFileName = rawFileName;
+      }
+    }
+
+    const normalizedFileName = normalizeUploadedImageFileName(decodedFileName);
+    const extension = resolveUploadedImageExtension(normalizedFileName, contentType);
+    if (!extension || !ALLOWED_UPLOAD_IMAGE_EXTENSIONS.has(extension)) {
+      return res.status(400).json({ error: 'Only PNG/JPG/WebP/GIF/SVG/ICO images are supported' });
+    }
+
+    try {
+      await fs.mkdir(UPLOAD_IMAGES_DIR, { recursive: true });
+      const savedFileName = `${Date.now()}-${randomBytes(4).toString('hex')}${extension}`;
+      await fs.writeFile(path.join(UPLOAD_IMAGES_DIR, savedFileName), payload);
+
+      return res.json({
+        url: `/uploads/images/${savedFileName}`,
+        fileName: savedFileName,
+        size: payload.length,
+      });
+    } catch (error: unknown) {
+      return res.status(500).json({ error: getErrorMessage(error, 'Failed to save image') });
+    }
+  }
+);
+
 // ===== Hackathons =====
 
 app.get('/api/hackathon', async (_req, res) => {
@@ -1163,6 +1338,8 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
     scoringCriteria,
     prizePool,
     docsUrl,
+    submissionSuccessHintText,
+    submissionSuccessHintImageUrl,
     judgesPerProject,
   } = req.body;
   const hasScoringCriteriaInput = Array.isArray(scoringCriteria);
@@ -1188,13 +1365,29 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'title is required' });
   }
   const taglineValue = typeof tagline === 'string' ? tagline.trim() : '';
+  if (!taglineValue) {
+    return res.status(400).json({ error: 'tagline is required' });
+  }
+  const startAtValue = asString(startAt);
+  const endAtValue = asString(endAt);
+  if (!startAtValue || !endAtValue) {
+    return res.status(400).json({ error: 'startAt and endAt are required' });
+  }
+  const docsUrlValue = asString(docsUrl);
+  if (docsUrlValue && !isValidHttpUrl(docsUrlValue)) {
+    return res.status(400).json({ error: 'docsUrl must be a valid http(s) URL' });
+  }
+  const submissionSuccessHintTextValue = asString(submissionSuccessHintText) || null;
+  const submissionSuccessHintImageUrlValue = asString(submissionSuccessHintImageUrl);
+  if (submissionSuccessHintImageUrlValue && !isValidHttpOrRootRelativeUrl(submissionSuccessHintImageUrlValue)) {
+    return res.status(400).json({ error: 'submissionSuccessHintImageUrl must be a valid http(s) URL or root-relative path' });
+  }
   const statusValue = typeof status === 'string' && status.trim() ? status.trim() : 'draft';
   const coverGradientValue = resolveHackathonCoverGradient(coverGradient);
-
-  const defaultStartAt = new Date();
-  const defaultEndAt = new Date(defaultStartAt.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const hackathonStartAt = startAt ? new Date(startAt) : defaultStartAt;
-  const hackathonEndAt = endAt ? new Date(endAt) : defaultEndAt;
+  const cityValue = asString(city) || null;
+  const prizePoolValue = asString(prizePool) || null;
+  const hackathonStartAt = new Date(startAtValue);
+  const hackathonEndAt = new Date(endAtValue);
 
   if (Number.isNaN(hackathonStartAt.getTime()) || Number.isNaN(hackathonEndAt.getTime())) {
     return res.status(400).json({ error: 'startAt and endAt must be valid dates' });
@@ -1207,13 +1400,15 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
     data: {
       title: titleValue,
       tagline: taglineValue,
-      city,
+      city: cityValue,
       startAt: hackathonStartAt,
       endAt: hackathonEndAt,
       status: statusValue,
       coverGradient: coverGradientValue,
-      prizePool: prizePool || null,
-      docsUrl: docsUrl || null,
+      prizePool: prizePoolValue,
+      docsUrl: docsUrlValue || null,
+      submissionSuccessHintText: submissionSuccessHintTextValue,
+      submissionSuccessHintImageUrl: submissionSuccessHintImageUrlValue || null,
       submissionSchema: submissionSchema || {},
       judgesPerProject: typeof judgesPerProject === 'number' && judgesPerProject > 0 ? judgesPerProject : 2,
       scoringCriteria: hasScoringCriteriaInput ? {
@@ -1242,6 +1437,8 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
     scoringCriteria,
     prizePool,
     docsUrl,
+    submissionSuccessHintText,
+    submissionSuccessHintImageUrl,
     judgesPerProject,
   } = req.body;
   const hasScoringCriteriaInput = Array.isArray(scoringCriteria);
@@ -1284,8 +1481,41 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
     return res.status(403).json({ error: 'Cannot update settings after hackathon has started' });
   }
 
-  const nextStartAt = startAt !== undefined ? new Date(startAt) : existingHackathon.startAt;
-  const nextEndAt = endAt !== undefined ? new Date(endAt) : existingHackathon.endAt;
+  const titleValue = title !== undefined ? asString(title) : undefined;
+  if (title !== undefined && !titleValue) {
+    return res.status(400).json({ error: 'title cannot be empty' });
+  }
+  const taglineValue = tagline !== undefined ? asString(tagline) : undefined;
+  if (tagline !== undefined && !taglineValue) {
+    return res.status(400).json({ error: 'tagline cannot be empty' });
+  }
+
+  const startAtValue = startAt !== undefined ? asString(startAt) : undefined;
+  if (startAt !== undefined && !startAtValue) {
+    return res.status(400).json({ error: 'startAt cannot be empty' });
+  }
+  const endAtValue = endAt !== undefined ? asString(endAt) : undefined;
+  if (endAt !== undefined && !endAtValue) {
+    return res.status(400).json({ error: 'endAt cannot be empty' });
+  }
+
+  const docsUrlValue = docsUrl !== undefined ? asString(docsUrl) : undefined;
+  if (docsUrlValue && !isValidHttpUrl(docsUrlValue)) {
+    return res.status(400).json({ error: 'docsUrl must be a valid http(s) URL' });
+  }
+  const submissionSuccessHintTextValue =
+    submissionSuccessHintText !== undefined ? (asString(submissionSuccessHintText) || null) : undefined;
+  const submissionSuccessHintImageUrlValue =
+    submissionSuccessHintImageUrl !== undefined ? asString(submissionSuccessHintImageUrl) : undefined;
+  if (submissionSuccessHintImageUrlValue && !isValidHttpOrRootRelativeUrl(submissionSuccessHintImageUrlValue)) {
+    return res.status(400).json({ error: 'submissionSuccessHintImageUrl must be a valid http(s) URL or root-relative path' });
+  }
+
+  const cityValue = city !== undefined ? (asString(city) || null) : undefined;
+  const prizePoolValue = prizePool !== undefined ? (asString(prizePool) || null) : undefined;
+
+  const nextStartAt = startAtValue ? new Date(startAtValue) : existingHackathon.startAt;
+  const nextEndAt = endAtValue ? new Date(endAtValue) : existingHackathon.endAt;
   if (Number.isNaN(nextStartAt.getTime()) || Number.isNaN(nextEndAt.getTime())) {
     return res.status(400).json({ error: 'startAt and endAt must be valid dates' });
   }
@@ -1299,15 +1529,18 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
     await tx.hackathon.update({
       where: { id: req.params.id },
       data: {
-        title,
-        tagline,
-        city,
-        startAt: startAt ? new Date(startAt) : undefined,
-        endAt: endAt ? new Date(endAt) : undefined,
+        title: titleValue,
+        tagline: taglineValue,
+        city: cityValue,
+        startAt: startAtValue ? new Date(startAtValue) : undefined,
+        endAt: endAtValue ? new Date(endAtValue) : undefined,
         status,
         coverGradient: coverGradient !== undefined ? resolveHackathonCoverGradient(coverGradient) : undefined,
-        prizePool: prizePool !== undefined ? (prizePool || null) : undefined,
-        docsUrl: docsUrl !== undefined ? (docsUrl || null) : undefined,
+        prizePool: prizePoolValue,
+        docsUrl: docsUrl !== undefined ? (docsUrlValue || null) : undefined,
+        submissionSuccessHintText: submissionSuccessHintTextValue,
+        submissionSuccessHintImageUrl:
+          submissionSuccessHintImageUrl !== undefined ? (submissionSuccessHintImageUrlValue || null) : undefined,
         submissionSchema: submissionSchema !== undefined ? submissionSchema : undefined,
         judgesPerProject: typeof judgesPerProject === 'number' && judgesPerProject > 0 ? judgesPerProject : undefined,
       },
@@ -1350,7 +1583,7 @@ app.get('/api/hackathon/markdown-doc', async (_req, res) => {
   res.json(doc);
 });
 
-app.put('/api/hackathon/markdown-doc', requireAdmin, async (req, res) => {
+app.put('/api/hackathon/markdown-doc', requireAdmin, markdownDocJsonParser, async (req, res) => {
   const currentHackathon = await getCurrentHackathon();
   if (!currentHackathon) {
     return res.status(404).json({ error: 'Hackathon not found' });
@@ -1407,7 +1640,7 @@ app.get('/api/hackathons/:id/markdown-doc', async (req, res) => {
   res.json(doc);
 });
 
-app.put('/api/hackathons/:id/markdown-doc', requireAdmin, async (req, res) => {
+app.put('/api/hackathons/:id/markdown-doc', requireAdmin, markdownDocJsonParser, async (req, res) => {
   const hackathon = await prisma.hackathon.findUnique({
     where: { id: req.params.id },
     select: { id: true },
@@ -1457,15 +1690,22 @@ app.delete('/api/hackathons/:id/markdown-doc', requireAdmin, async (req, res) =>
 // ===== Projects =====
 
 app.get('/api/projects', async (req, res) => {
-  const { hackathonId, lite, page, pageSize, search } = req.query;
+  const { hackathonId, lite, page, pageSize, search, status } = req.query;
   const hackathonIdValue = await getScopedHackathonId(hackathonId);
 
   const pageNum = page ? Math.max(1, parseInt(String(page), 10)) : null;
   const pageSizeNum = pageSize ? Math.min(200, Math.max(1, parseInt(String(pageSize), 10))) : null;
   const searchStr = search ? String(search).trim() : null;
+  const statusStr = typeof status === 'string' ? status.trim() : '';
+  const statusValue = statusStr ? statusStr : null;
+
+  if (statusValue && statusValue !== 'draft' && statusValue !== 'submitted') {
+    return res.status(400).json({ error: 'Invalid project status' });
+  }
 
   const where = {
     ...(hackathonIdValue ? { hackathonId: hackathonIdValue } : {}),
+    ...(statusValue ? { status: statusValue } : {}),
     ...(searchStr ? {
       OR: [
         { title: { contains: searchStr, mode: 'insensitive' as const } },
@@ -1887,16 +2127,20 @@ app.post('/api/assignments', requireAdmin, async (req, res) => {
     const uniqueProjectIds = dedupeIds(parsed.map((a) => a.projectId));
 
     const created = await prisma.$transaction(async (tx) => {
+      const useSessionScopedAssignments = await supportsSessionScopedAssignments(tx);
+
       // Batch-validate judges and projects in two queries instead of N*3
       const [judges, projects] = await Promise.all([
         tx.user.findMany({
           where: { id: { in: uniqueJudgeIds }, role: 'judge' },
           select: { id: true, name: true },
         }),
-        tx.project.findMany({
-          where: { id: { in: uniqueProjectIds } },
-          select: { id: true, hackathonId: true, title: true },
-        }),
+        useSessionScopedAssignments
+          ? loadProjectsWithSession(tx, uniqueProjectIds)
+          : tx.project.findMany({
+              where: { id: { in: uniqueProjectIds } },
+              select: { id: true, hackathonId: true, title: true },
+            }).then((rows) => rows.map((row) => ({ ...row, sessionId: null }))),
       ]);
 
       const judgeMap = new Map(judges.map((j) => [j.id, j]));
@@ -1915,7 +2159,7 @@ app.post('/api/assignments', requireAdmin, async (req, res) => {
         const project = projectMap.get(projectId)!;
         membershipKeys.add(`${project.hackathonId}:${judgeId}`);
       }
-      const hackathonIds = [...new Set([...membershipKeys].map((k) => k.split(':')[0]))];
+      const hackathonIds = dedupeIds(projects.map((p) => p.hackathonId));
       const memberships = await tx.hackathonJudge.findMany({
         where: {
           hackathonId: { in: hackathonIds },
@@ -1933,18 +2177,103 @@ app.post('/api/assignments', requireAdmin, async (req, res) => {
       }
 
       // Upsert assignments (still sequential due to unique constraint handling)
-      const rows = [];
-      for (const { judgeId, projectId } of parsed) {
-        const assignment = await tx.assignment.upsert({
-          where: { projectId_judgeId: { projectId, judgeId } },
-          update: {},
-          create: { projectId, judgeId, status: 'pending' },
-          include: { project: true, judge: true, scores: true },
-        });
-        rows.push(assignment);
+      if (!useSessionScopedAssignments) {
+        const rows = [];
+        for (const { judgeId, projectId } of parsed) {
+          const assignment = await tx.assignment.upsert({
+            where: { projectId_judgeId: { projectId, judgeId } },
+            update: {},
+            create: { projectId, judgeId, status: 'pending' },
+            include: { project: true, judge: true, scores: true },
+          });
+          rows.push(assignment);
+        }
+
+        return rows;
       }
 
-      return rows;
+      const hackathons = await tx.hackathon.findMany({
+        where: { id: { in: hackathonIds } },
+        select: { id: true, title: true, status: true, startAt: true, endAt: true },
+      });
+      const hackathonMap = new Map(hackathons.map((hackathon) => [hackathon.id, hackathon]));
+
+      const sessionIdByHackathon = new Map<string, string>();
+      const assignmentIds: string[] = [];
+      for (const { judgeId, projectId } of parsed) {
+        const project = projectMap.get(projectId)!;
+        let sessionId = project.sessionId;
+
+        if (!sessionId) {
+          if (!sessionIdByHackathon.has(project.hackathonId)) {
+            const hackathon = hackathonMap.get(project.hackathonId);
+            if (!hackathon) {
+              throw new Error(`Hackathon ${project.hackathonId} not found for project ${projectId}`);
+            }
+            sessionIdByHackathon.set(
+              project.hackathonId,
+              await ensureLegacyHackathonSessionId(tx, hackathon),
+            );
+          }
+
+          sessionId = sessionIdByHackathon.get(project.hackathonId)!;
+          await tx.$executeRaw(Prisma.sql`
+            UPDATE "Project"
+            SET "sessionId" = ${sessionId}, "updatedAt" = NOW()
+            WHERE "id" = ${projectId} AND "sessionId" IS NULL
+          `);
+          project.sessionId = sessionId;
+        }
+
+        const rows = await tx.$queryRaw<LegacyIdRow[]>(Prisma.sql`
+          WITH inserted AS (
+            INSERT INTO "Assignment" (
+              "id",
+              "sessionId",
+              "projectId",
+              "judgeId",
+              "status",
+              "createdAt",
+              "updatedAt"
+            )
+            VALUES (
+              ${randomUUID()},
+              ${sessionId},
+              ${projectId},
+              ${judgeId},
+              'pending',
+              NOW(),
+              NOW()
+            )
+            ON CONFLICT ("sessionId", "projectId", "judgeId") DO NOTHING
+            RETURNING "id"
+          )
+          SELECT "id" FROM inserted
+          UNION ALL
+          SELECT "id"
+          FROM "Assignment"
+          WHERE "sessionId" = ${sessionId}
+            AND "projectId" = ${projectId}
+            AND "judgeId" = ${judgeId}
+          LIMIT 1
+        `);
+
+        const assignmentId = rows[0]?.id;
+        if (!assignmentId) {
+          throw new Error(`Failed to upsert assignment for project ${projectId} and judge ${judgeId}`);
+        }
+        assignmentIds.push(assignmentId);
+      }
+
+      const createdAssignments = await tx.assignment.findMany({
+        where: { id: { in: assignmentIds } },
+        include: { project: true, judge: true, scores: true },
+      });
+      const assignmentMap = new Map(createdAssignments.map((assignment) => [assignment.id, assignment]));
+
+      return assignmentIds
+        .map((assignmentId) => assignmentMap.get(assignmentId))
+        .filter((assignment): assignment is NonNullable<typeof assignment> => Boolean(assignment));
     });
 
     // Log assignment creation
@@ -2884,29 +3213,52 @@ app.post('/api/setup', async (req, res) => {
   }
 
   const { admin, hackathon } = req.body;
-  if (!admin?.email || !admin?.name || !admin?.password) {
+  const adminNameValue = asString(admin?.name);
+  const adminPasswordValue = asString(admin?.password);
+  const emailValue = normalizeEmail(admin?.email);
+  if (!emailValue || !adminNameValue || !adminPasswordValue) {
     return res.status(400).json({ error: 'Admin email, name, and password are required' });
   }
-  if (!hackathon?.title) {
-    return res.status(400).json({ error: 'Hackathon title is required' });
+
+  const hackathonTitleValue = asString(hackathon?.title);
+  const hackathonTaglineValue = asString(hackathon?.tagline);
+  const hackathonCityValue = asString(hackathon?.city);
+  const startAtValue = asString(hackathon?.startAt);
+  const endAtValue = asString(hackathon?.endAt);
+
+  if (!hackathonTitleValue || !hackathonTaglineValue || !startAtValue || !endAtValue) {
+    return res.status(400).json({ error: 'Hackathon title, tagline, startAt, and endAt are required' });
   }
 
-  const emailValue = normalizeEmail(admin.email);
   if (!emailValue || !isValidEmail(emailValue)) {
     return res.status(400).json({ error: 'Invalid admin email' });
   }
-  if (!isValidPassword(admin.password)) {
+  if (!isValidPassword(adminPasswordValue)) {
     return res.status(400).json({ error: 'Password must be between 8 and 72 characters' });
   }
 
+  const hackathonStartAt = new Date(startAtValue);
+  const hackathonEndAt = new Date(endAtValue);
+  if (Number.isNaN(hackathonStartAt.getTime()) || Number.isNaN(hackathonEndAt.getTime())) {
+    return res.status(400).json({ error: 'startAt and endAt must be valid dates' });
+  }
+  if (hackathonStartAt.getTime() > hackathonEndAt.getTime()) {
+    return res.status(400).json({ error: 'startAt must be earlier than or equal to endAt' });
+  }
+
   try {
-    const hashedPassword = await bcrypt.hash(admin.password, 10);
+    const existing = await prisma.user.findUnique({ where: { email: emailValue } });
+    if (existing) {
+      return res.status(409).json({ error: 'A user with this email already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(adminPasswordValue, 10);
 
     const result = await prisma.$transaction(async (tx) => {
       const adminUser = await tx.user.create({
         data: {
           email: emailValue,
-          name: admin.name,
+          name: adminNameValue,
           password: hashedPassword,
           role: 'admin',
         },
@@ -2914,12 +3266,12 @@ app.post('/api/setup', async (req, res) => {
 
       const newHackathon = await tx.hackathon.create({
         data: {
-          title: hackathon.title,
-          tagline: hackathon.tagline || '',
-          coverGradient: resolveHackathonCoverGradient(hackathon.coverGradient),
-          city: hackathon.city || null,
-          startAt: hackathon.startAt ? new Date(hackathon.startAt) : new Date(),
-          endAt: hackathon.endAt ? new Date(hackathon.endAt) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          title: hackathonTitleValue,
+          tagline: hackathonTaglineValue,
+          coverGradient: resolveHackathonCoverGradient(hackathon?.coverGradient),
+          city: hackathonCityValue || null,
+          startAt: hackathonStartAt,
+          endAt: hackathonEndAt,
           status: 'draft',
         },
       });

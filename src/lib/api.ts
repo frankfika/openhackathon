@@ -80,6 +80,16 @@ export const api = {
     const res = await axios.post<{ sent: boolean; messageId?: string; reason?: string }>(`${API_URL}/site-settings/email/test`, { to })
     return res.data
   },
+  uploadImage: async (file: File) => {
+    const buffer = await file.arrayBuffer()
+    const res = await axios.post<{ url: string; fileName: string; size: number }>(`${API_URL}/uploads/images`, buffer, {
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'x-file-name': encodeURIComponent(file.name || 'image'),
+      },
+    })
+    return res.data
+  },
 
   // Hackathons
   getCurrentHackathon: async () => {
@@ -123,7 +133,13 @@ export const api = {
     const res = await axios.get<Project[]>(`${API_URL}/projects`, { params })
     return res.data
   },
-  getProjectsPaginated: async (params: { hackathonId?: string; page: number; pageSize: number; search?: string }) => {
+  getProjectsPaginated: async (params: {
+    hackathonId?: string
+    page: number
+    pageSize: number
+    search?: string
+    status?: 'draft' | 'submitted'
+  }) => {
     const res = await axios.get<{ data: Project[]; total: number; page: number; pageSize: number }>(
       `${API_URL}/projects`, { params }
     )
@@ -306,7 +322,7 @@ export const api = {
   },
   setup: async (data: {
     admin: { email: string; name: string; password: string }
-    hackathon: { title: string; tagline?: string; city?: string; startAt?: string; endAt?: string }
+    hackathon: { title: string; tagline: string; city?: string; startAt: string; endAt: string }
   }) => {
     const res = await axios.post<{
       admin: AdminUser & { token?: string }

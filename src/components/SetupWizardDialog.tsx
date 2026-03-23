@@ -22,6 +22,7 @@ import {
 import { formatDateRange, ScoringCriterion, SubmissionField } from '@/lib/types'
 import { getFieldLabel } from '@/lib/submission-fields'
 import { ArrowLeft, ArrowRight, Check, Filter, ListChecks, Loader2, Sparkles, Wand2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 type SetupWizardApplyPayload = {
   title: string
@@ -248,6 +249,41 @@ export function SetupWizardDialog({
   }
 
   const handleApply = async () => {
+    if (!profile.title.trim()) {
+      toast.error(t('submission.validation.field_required', { field: t('hackathons.title') }))
+      return
+    }
+    if (!profile.tagline.trim()) {
+      toast.error(t('submission.validation.field_required', { field: t('hackathons.tagline') }))
+      return
+    }
+    if (!profile.startAt) {
+      toast.error(t('submission.validation.field_required', { field: t('hackathons.start_date') }))
+      return
+    }
+    if (!profile.endAt) {
+      toast.error(t('submission.validation.field_required', { field: t('hackathons.end_date') }))
+      return
+    }
+    if (profile.startAt > profile.endAt) {
+      toast.error(t('submission.validation.date_order_invalid'))
+      return
+    }
+
+    const docsUrlValue = profile.docsUrl.trim()
+    if (docsUrlValue) {
+      try {
+        const parsed = new URL(docsUrlValue)
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          toast.error(t('submission.validation.url_invalid'))
+          return
+        }
+      } catch {
+        toast.error(t('submission.validation.url_invalid'))
+        return
+      }
+    }
+
     const submissionSchema = {
       fields: blueprint.submissionFields.map((field) => ({
         id: field.id,
@@ -272,15 +308,14 @@ export function SetupWizardDialog({
       prizePool: profile.prizePool.trim() || undefined,
       startAt: profile.startAt,
       endAt: profile.endAt,
-      docsUrl: profile.docsUrl.trim() || undefined,
+      docsUrl: docsUrlValue || undefined,
       submissionSchema,
       scoringCriteria,
     })
   }
 
-  const canProceedStep1 = profile.title.trim() && profile.tagline.trim() && profile.startAt && profile.endAt
-
-  const configuredDocs = [profile.docsUrl].filter(Boolean)
+  const hasInvalidDateRange = Boolean(profile.startAt && profile.endAt && profile.startAt > profile.endAt)
+  const canProceedStep1 = profile.title.trim() && profile.tagline.trim() && profile.startAt && profile.endAt && !hasInvalidDateRange
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -313,25 +348,41 @@ export function SetupWizardDialog({
                 <Sparkles className="h-4 w-4 text-primary" />
                 <h3 className="font-semibold">{t('settings.setup_wizard.profile_title', 'Event Profile')}</h3>
               </div>
+              <p className="text-xs text-muted-foreground">{t('common.required_fields_hint')}</p>
 
               <div className="space-y-2">
-                <Label htmlFor="wizard-title">{t('hackathons.title')}</Label>
+                <Label htmlFor="wizard-title">
+                  {t('hackathons.title')}
+                  <span className="ml-1 text-destructive">*</span>
+                </Label>
                 <Input id="wizard-title" value={profile.title} onChange={(e) => handleProfileChange('title', e.target.value)} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="wizard-tagline">{t('hackathons.tagline')}</Label>
+                <Label htmlFor="wizard-tagline">
+                  {t('hackathons.tagline')}
+                  <span className="ml-1 text-destructive">*</span>
+                </Label>
                 <Input id="wizard-tagline" value={profile.tagline} onChange={(e) => handleProfileChange('tagline', e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="wizard-start">{t('hackathons.start_date')}</Label>
+                  <Label htmlFor="wizard-start">
+                    {t('hackathons.start_date')}
+                    <span className="ml-1 text-destructive">*</span>
+                  </Label>
                   <Input id="wizard-start" type="date" value={profile.startAt} onChange={(e) => handleProfileChange('startAt', e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="wizard-end">{t('hackathons.end_date')}</Label>
+                  <Label htmlFor="wizard-end">
+                    {t('hackathons.end_date')}
+                    <span className="ml-1 text-destructive">*</span>
+                  </Label>
                   <Input id="wizard-end" type="date" value={profile.endAt} onChange={(e) => handleProfileChange('endAt', e.target.value)} />
                 </div>
               </div>
+              {hasInvalidDateRange && (
+                <p className="text-sm text-destructive">{t('submission.validation.date_order_invalid')}</p>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="wizard-city">{t('hackathons.city')}</Label>

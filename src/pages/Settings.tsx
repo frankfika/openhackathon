@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,7 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
-import { Eye, EyeOff, Save, Key, Server, Cpu, Loader2, RotateCcw, Trash2 } from 'lucide-react'
+import { Eye, EyeOff, Save, Key, Server, Cpu, Loader2, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -47,12 +48,14 @@ export function Settings() {
     showPoweredBy: true,
     poweredByText: '',
     poweredByUrl: '',
-    submissionSuccessHintText: '',
-    submissionSuccessHintImageUrl: '',
   })
   const [showSmtpPassword, setShowSmtpPassword] = useState(false)
   const [clearSmtpPassword, setClearSmtpPassword] = useState(false)
   const [testRecipient, setTestRecipient] = useState('')
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false)
+  const [isUploadingFavicon, setIsUploadingFavicon] = useState(false)
+  const logoFileInputRef = useRef<HTMLInputElement>(null)
+  const faviconFileInputRef = useRef<HTMLInputElement>(null)
   const [emailForm, setEmailForm] = useState({
     submissionEmailEnabled: false,
     smtpHost: '',
@@ -84,8 +87,6 @@ export function Settings() {
       showPoweredBy: !!siteSettings.showPoweredBy,
       poweredByText: siteSettings.poweredByText || '',
       poweredByUrl: siteSettings.poweredByUrl || '',
-      submissionSuccessHintText: siteSettings.submissionSuccessHintText || '',
-      submissionSuccessHintImageUrl: siteSettings.submissionSuccessHintImageUrl || '',
     })
   }, [siteSettings])
 
@@ -122,8 +123,6 @@ export function Settings() {
         showPoweredBy: brandingForm.showPoweredBy,
         poweredByText: brandingForm.poweredByText,
         poweredByUrl: brandingForm.poweredByUrl,
-        submissionSuccessHintText: brandingForm.submissionSuccessHintText,
-        submissionSuccessHintImageUrl: brandingForm.submissionSuccessHintImageUrl,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['site-settings'] })
@@ -256,6 +255,29 @@ export function Settings() {
     })
   }
 
+  const uploadBrandingImage = async (file: File, field: 'logoUrl' | 'faviconUrl') => {
+    if (!file) return
+
+    const setUploading = field === 'logoUrl' ? setIsUploadingLogo : setIsUploadingFavicon
+    setUploading(true)
+    try {
+      const uploaded = await api.uploadImage(file)
+      setBrandingForm((prev) => ({ ...prev, [field]: uploaded.url }))
+      toast.success(t('settings.image_uploaded', 'Image uploaded'))
+    } catch (error: unknown) {
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as { response?: { data?: { error?: string } } }).response?.data?.error === 'string'
+          ? (error as { response?: { data?: { error?: string } } }).response?.data?.error
+          : t('settings.image_upload_failed', 'Failed to upload image')
+      toast.error(message || t('settings.image_upload_failed', 'Failed to upload image'))
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <div className="space-y-4 md:space-y-6">
       <div className="space-y-2">
@@ -277,8 +299,24 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      {/* Branding & SEO */}
-      <Card className="surface-panel border-none shadow-none">
+      <Tabs defaultValue="branding" className="space-y-4">
+        <TabsList className="flex h-auto w-full flex-wrap gap-1 p-1">
+          <TabsTrigger value="branding" className="min-w-[120px] flex-1">
+            {t('settings.tab_branding', 'Branding')}
+          </TabsTrigger>
+          <TabsTrigger value="email" className="min-w-[120px] flex-1">
+            {t('settings.tab_email', 'Email')}
+          </TabsTrigger>
+          <TabsTrigger value="ai" className="min-w-[120px] flex-1">
+            {t('settings.tab_ai', 'AI')}
+          </TabsTrigger>
+          <TabsTrigger value="system" className="min-w-[120px] flex-1">
+            {t('settings.tab_system', 'System Tools')}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="branding" className="space-y-4">
+          <Card className="surface-panel border-none shadow-none">
         <CardHeader>
           <CardTitle>{t('settings.branding_title', 'Branding & SEO')}</CardTitle>
           <CardDescription>
@@ -310,12 +348,39 @@ export function Settings() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="logoUrl">{t('settings.logo_url', 'Logo URL')}</Label>
-              <Input
-                id="logoUrl"
-                placeholder="/openhackathon-logo.svg"
-                value={brandingForm.logoUrl}
-                onChange={(e) => setBrandingForm((prev) => ({ ...prev, logoUrl: e.target.value }))}
+              <input
+                ref={logoFileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon,.ico"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (file) await uploadBrandingImage(file, 'logoUrl')
+                  e.target.value = ''
+                }}
               />
+              <div className="flex gap-2">
+                <Input
+                  id="logoUrl"
+                  placeholder="/openhackathon-logo.svg"
+                  value={brandingForm.logoUrl}
+                  onChange={(e) => setBrandingForm((prev) => ({ ...prev, logoUrl: e.target.value }))}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => logoFileInputRef.current?.click()}
+                  disabled={isUploadingLogo}
+                >
+                  {isUploadingLogo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                  {t('settings.upload_image', 'Upload')}
+                </Button>
+              </div>
+              {brandingForm.logoUrl ? (
+                <div className="rounded-md border border-border/60 bg-muted/20 p-2">
+                  <img src={brandingForm.logoUrl} alt={t('settings.logo_url', 'Logo URL')} className="h-8 w-auto object-contain" />
+                </div>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="tabTitle">{t('settings.tab_title', 'Browser Tab Title')}</Label>
@@ -328,12 +393,39 @@ export function Settings() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="faviconUrl">{t('settings.favicon_url', 'Favicon URL')}</Label>
-              <Input
-                id="faviconUrl"
-                placeholder="/favicon.svg"
-                value={brandingForm.faviconUrl}
-                onChange={(e) => setBrandingForm((prev) => ({ ...prev, faviconUrl: e.target.value }))}
+              <input
+                ref={faviconFileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon,.ico"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (file) await uploadBrandingImage(file, 'faviconUrl')
+                  e.target.value = ''
+                }}
               />
+              <div className="flex gap-2">
+                <Input
+                  id="faviconUrl"
+                  placeholder="/favicon.svg"
+                  value={brandingForm.faviconUrl}
+                  onChange={(e) => setBrandingForm((prev) => ({ ...prev, faviconUrl: e.target.value }))}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => faviconFileInputRef.current?.click()}
+                  disabled={isUploadingFavicon}
+                >
+                  {isUploadingFavicon ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                  {t('settings.upload_image', 'Upload')}
+                </Button>
+              </div>
+              {brandingForm.faviconUrl ? (
+                <div className="flex h-10 w-10 items-center justify-center rounded-md border border-border/60 bg-muted/20">
+                  <img src={brandingForm.faviconUrl} alt={t('settings.favicon_url', 'Favicon URL')} className="h-5 w-5 object-contain" />
+                </div>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="seoTitle">{t('settings.seo_title', 'SEO Title')}</Label>
@@ -353,38 +445,6 @@ export function Settings() {
                 value={brandingForm.seoDescription}
                 onChange={(e) => setBrandingForm((prev) => ({ ...prev, seoDescription: e.target.value }))}
               />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="submissionSuccessHintText">
-                {t('settings.success_hint_text', 'Submission Success Tip Text')}
-              </Label>
-              <Textarea
-                id="submissionSuccessHintText"
-                rows={3}
-                placeholder={t(
-                  'settings.success_hint_text_placeholder',
-                  'Example: Join the event community and follow updates. You can scan the QR code below.'
-                )}
-                value={brandingForm.submissionSuccessHintText}
-                onChange={(e) => setBrandingForm((prev) => ({ ...prev, submissionSuccessHintText: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="submissionSuccessHintImageUrl">
-                {t('settings.success_hint_image_url', 'Submission Success Image / QR URL')}
-              </Label>
-              <Input
-                id="submissionSuccessHintImageUrl"
-                placeholder="https://example.com/qr.png"
-                value={brandingForm.submissionSuccessHintImageUrl}
-                onChange={(e) => setBrandingForm((prev) => ({ ...prev, submissionSuccessHintImageUrl: e.target.value }))}
-              />
-              <p className="text-xs text-muted-foreground">
-                {t(
-                  'settings.success_hint_image_desc',
-                  'Supports PNG/JPG/SVG image links. Recommended for event QR code or support channel poster.'
-                )}
-              </p>
             </div>
           </div>
 
@@ -428,9 +488,11 @@ export function Settings() {
             </Button>
           </div>
         </CardContent>
-      </Card>
+          </Card>
+        </TabsContent>
 
-      <Card className="surface-panel border-none shadow-none">
+        <TabsContent value="email" className="space-y-4">
+          <Card className="surface-panel border-none shadow-none">
         <CardHeader>
           <CardTitle>{t('settings.email_title', 'Submission Email Delivery')}</CardTitle>
           <CardDescription>
@@ -613,9 +675,11 @@ export function Settings() {
             </Button>
           </div>
         </CardContent>
-      </Card>
+          </Card>
+        </TabsContent>
 
-      <Card className="surface-panel border-none shadow-none">
+        <TabsContent value="ai" className="space-y-4">
+          <Card className="surface-panel border-none shadow-none">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Cpu className="h-5 w-5 text-primary" />
@@ -684,10 +748,11 @@ export function Settings() {
             </Button>
           </div>
         </CardContent>
-      </Card>
+          </Card>
+        </TabsContent>
 
-      {/* System Tools */}
-      <Card className="surface-panel border-none shadow-none">
+        <TabsContent value="system" className="space-y-4">
+          <Card className="surface-panel border-none shadow-none">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-destructive">
             <RotateCcw className="h-5 w-5" />
@@ -717,7 +782,9 @@ export function Settings() {
             </Button>
           </div>
         </CardContent>
-      </Card>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Reset Confirmation Dialog */}
       <AlertDialog open={!!resetMode} onOpenChange={(open) => { if (!open) { setResetMode(null); setResetConfirmText('') } }}>

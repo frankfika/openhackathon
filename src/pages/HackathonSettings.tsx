@@ -37,6 +37,16 @@ const GRADIENT_PRESETS = [
   { name: 'Midnight Blue', value: 'from-blue-800/20 via-indigo-700/10 to-slate-800/20' },
 ]
 
+function isValidHttpOrRootRelativeUrl(value: string): boolean {
+  if (value.startsWith('/') && !value.startsWith('//')) return true
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 type HackathonFormValues = {
   title: string
   tagline: string
@@ -45,6 +55,8 @@ type HackathonFormValues = {
   startAt: string
   endAt: string
   docsUrl?: string
+  submissionSuccessHintText?: string
+  submissionSuccessHintImageUrl?: string
 }
 
 type HackathonUpdateValues = Partial<HackathonFormValues> & {
@@ -62,15 +74,33 @@ export function HackathonSettings() {
   const queryClient = useQueryClient()
   const hackathonSchema = useMemo(
     () =>
-      z.object({
-        title: z.string().min(1, t('submission.validation.field_required', { field: t('hackathons.title') })),
-        tagline: z.string().min(1, t('submission.validation.field_required', { field: t('hackathons.tagline') })),
-        city: z.string().optional(),
-        prizePool: z.string().max(50).optional(),
-        startAt: z.string(),
-        endAt: z.string(),
-        docsUrl: z.string().url(t('submission.validation.url_invalid')).optional().or(z.literal('')),
-      }),
+      z
+        .object({
+          title: z.string().trim().min(1, t('submission.validation.field_required', { field: t('hackathons.title') })),
+          tagline: z.string().trim().min(1, t('submission.validation.field_required', { field: t('hackathons.tagline') })),
+          city: z.string().optional(),
+          prizePool: z.string().max(50).optional(),
+          startAt: z.string().min(1, t('submission.validation.field_required', { field: t('hackathons.start_date') })),
+          endAt: z.string().min(1, t('submission.validation.field_required', { field: t('hackathons.end_date') })),
+          docsUrl: z.string().url(t('submission.validation.url_invalid')).optional().or(z.literal('')),
+          submissionSuccessHintText: z.string().max(2000).optional(),
+          submissionSuccessHintImageUrl: z
+            .string()
+            .optional()
+            .or(z.literal(''))
+            .refine((value) => !value || isValidHttpOrRootRelativeUrl(value), {
+              message: t('submission.validation.url_invalid'),
+            }),
+        })
+        .superRefine((values, ctx) => {
+          if (values.startAt && values.endAt && values.startAt > values.endAt) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: t('submission.validation.date_order_invalid'),
+              path: ['endAt'],
+            })
+          }
+        }),
     [t]
   )
 
@@ -119,8 +149,9 @@ export function HackathonSettings() {
     handleSubmit,
     formState: { errors },
     reset,
+    setValue,
     watch,
-  } = useForm({
+  } = useForm<HackathonFormValues>({
     resolver: zodResolver(hackathonSchema),
     defaultValues: {
       title: '',
@@ -130,11 +161,14 @@ export function HackathonSettings() {
       startAt: '',
       endAt: '',
       docsUrl: '',
+      submissionSuccessHintText: '',
+      submissionSuccessHintImageUrl: '',
     }
   })
 
   const watchedStartAt = watch('startAt')
   const watchedEndAt = watch('endAt')
+  const watchedSubmissionSuccessHintImageUrl = watch('submissionSuccessHintImageUrl')
 
   const shouldSuggestWizard = useMemo(() => {
     if (!hackathon) return false
@@ -155,6 +189,8 @@ export function HackathonSettings() {
         startAt: hackathon.startAt ? new Date(hackathon.startAt).toISOString().split('T')[0] : '',
         endAt: hackathon.endAt ? new Date(hackathon.endAt).toISOString().split('T')[0] : '',
         docsUrl: hackathon.docsUrl || '',
+        submissionSuccessHintText: hackathon.submissionSuccessHintText || '',
+        submissionSuccessHintImageUrl: hackathon.submissionSuccessHintImageUrl || '',
       })
     }
   }, [hackathon, reset])
@@ -271,14 +307,41 @@ export function HackathonSettings() {
     submissionSchema: SubmissionSchemaConfig
     scoringCriteria: ScoringCriterion[]
   }) => {
-    await updateMutation.mutateAsync(data)
+    const normalized = {
+      title: data.title.trim(),
+      tagline: data.tagline.trim(),
+      city: data.city?.trim() || '',
+      prizePool: data.prizePool?.trim() || '',
+      startAt: data.startAt || '',
+      endAt: data.endAt || '',
+      docsUrl: data.docsUrl?.trim() || '',
+    }
+
+    const validation = hackathonSchema.safeParse(normalized)
+    if (!validation.success) {
+      toast.error(validation.error.issues[0]?.message || t('settings.save_error'))
+      return
+    }
+
+    await updateMutation.mutateAsync({
+      ...data,
+      title: validation.data.title,
+      tagline: validation.data.tagline,
+      city: validation.data.city || undefined,
+      prizePool: validation.data.prizePool || undefined,
+      startAt: validation.data.startAt,
+      endAt: validation.data.endAt,
+      docsUrl: validation.data.docsUrl || undefined,
+    })
     setSubmissionSchema(data.submissionSchema.fields || [])
     setScoringCriteria(data.scoringCriteria)
     setIsSetupWizardOpen(false)
   }
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const successHintImageInputRef = useRef<HTMLInputElement>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [isUploadingSuccessHintImage, setIsUploadingSuccessHintImage] = useState(false)
 
   const processMarkdownFile = useCallback(async (file: File) => {
     // Check if file is markdown or PDF
@@ -286,15 +349,27 @@ export function HackathonSettings() {
     const isPDF = file.name.match(/\.pdf$/i)
 
     if (!isMarkdown && !isPDF) {
-      toast.error(t('settings.invalid_file_type', 'Only .md, .markdown, or .pdf files are supported'))
+      toast.error(t('settings.invalid_file_type', 'Only Markdown (.md/.markdown) or PDF (.pdf) files are supported'))
       return
     }
 
     try {
       if (isPDF) {
-        // For PDF files, read as base64
-        const arrayBuffer = await file.arrayBuffer()
-        const base64Content = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+        // For PDF files, read as data URL and extract base64 payload
+        const base64Content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            const result = typeof reader.result === 'string' ? reader.result : ''
+            const commaIndex = result.indexOf(',')
+            if (commaIndex < 0) {
+              reject(new Error('Invalid PDF payload'))
+              return
+            }
+            resolve(result.slice(commaIndex + 1))
+          }
+          reader.onerror = () => reject(reader.error || new Error('Failed to read PDF file'))
+          reader.readAsDataURL(file)
+        })
         await uploadMarkdownMutation.mutateAsync({ fileName: file.name, content: base64Content, isBase64: true })
       } else {
         // For markdown files, read as text
@@ -317,6 +392,34 @@ export function HackathonSettings() {
     const file = e.dataTransfer.files[0]
     if (file) processMarkdownFile(file)
   }, [processMarkdownFile])
+
+  const handleSuccessHintImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setIsUploadingSuccessHintImage(true)
+    try {
+      const uploaded = await api.uploadImage(file)
+      setValue('submissionSuccessHintImageUrl', uploaded.url, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      })
+      toast.success(t('settings.image_uploaded', 'Image uploaded'))
+    } catch (error: unknown) {
+      const message =
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as { response?: { data?: { error?: string } } }).response?.data?.error === 'string'
+          ? (error as { response?: { data?: { error?: string } } }).response?.data?.error
+          : t('settings.image_upload_failed', 'Failed to upload image')
+      toast.error(message || t('settings.image_upload_failed', 'Failed to upload image'))
+    } finally {
+      setIsUploadingSuccessHintImage(false)
+      event.target.value = ''
+    }
+  }
 
   if (isLoadingHackathon) {
     return (
@@ -430,26 +533,41 @@ export function HackathonSettings() {
             <CardContent>
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <fieldset disabled={isLocked} className="space-y-4">
+                <p className="text-xs text-muted-foreground">{t('common.required_fields_hint')}</p>
                 <div className="space-y-2">
-                  <Label htmlFor="title">{t('hackathons.title')}</Label>
+                  <Label htmlFor="title">
+                    {t('hackathons.title')}
+                    <span className="ml-1 text-destructive">*</span>
+                  </Label>
                   <Input id="title" {...register('title')} />
                   {errors.title && <p className="text-sm text-destructive">{errors.title.message as string}</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="tagline">{t('hackathons.tagline')}</Label>
+                  <Label htmlFor="tagline">
+                    {t('hackathons.tagline')}
+                    <span className="ml-1 text-destructive">*</span>
+                  </Label>
                   <Input id="tagline" {...register('tagline')} />
                   {errors.tagline && <p className="text-sm text-destructive">{errors.tagline.message as string}</p>}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="startAt">{t('hackathons.start_date')}</Label>
+                    <Label htmlFor="startAt">
+                      {t('hackathons.start_date')}
+                      <span className="ml-1 text-destructive">*</span>
+                    </Label>
                     <Input id="startAt" type="date" {...register('startAt')} />
+                    {errors.startAt && <p className="text-sm text-destructive">{errors.startAt.message as string}</p>}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="endAt">{t('hackathons.end_date')}</Label>
+                    <Label htmlFor="endAt">
+                      {t('hackathons.end_date')}
+                      <span className="ml-1 text-destructive">*</span>
+                    </Label>
                     <Input id="endAt" type="date" {...register('endAt')} />
+                    {errors.endAt && <p className="text-sm text-destructive">{errors.endAt.message as string}</p>}
                   </div>
                 </div>
 
@@ -458,6 +576,75 @@ export function HackathonSettings() {
                   <Input id="docsUrl" type="url" placeholder="https://docs.example.com" {...register('docsUrl')} />
                   <p className="text-xs text-muted-foreground">{t('settings.docs_url_desc')}</p>
                   {errors.docsUrl && <p className="text-sm text-destructive">{errors.docsUrl.message as string}</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="submissionSuccessHintText">{t('settings.success_hint_text', 'Submission Success Tip Text')}</Label>
+                  <Textarea
+                    id="submissionSuccessHintText"
+                    rows={3}
+                    placeholder={t(
+                      'settings.success_hint_text_placeholder',
+                      'Example: Join the event community and follow updates. You can scan the QR code below.'
+                    )}
+                    {...register('submissionSuccessHintText')}
+                  />
+                  {errors.submissionSuccessHintText && (
+                    <p className="text-sm text-destructive">{errors.submissionSuccessHintText.message as string}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t('settings.success_hint_image_url', 'Submission Success Image / QR')}</Label>
+                  <input
+                    ref={successHintImageInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon,.ico"
+                    className="hidden"
+                    onChange={handleSuccessHintImageUpload}
+                    disabled={isLocked || isUploadingSuccessHintImage}
+                  />
+                  <input type="hidden" {...register('submissionSuccessHintImageUrl')} />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => successHintImageInputRef.current?.click()}
+                      disabled={isLocked || isUploadingSuccessHintImage}
+                    >
+                      {isUploadingSuccessHintImage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                      {t('settings.upload_image', 'Upload')}
+                    </Button>
+                    {watchedSubmissionSuccessHintImageUrl ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setValue('submissionSuccessHintImageUrl', '', { shouldDirty: true, shouldTouch: true, shouldValidate: true })}
+                        disabled={isLocked || isUploadingSuccessHintImage}
+                      >
+                        {t('settings.remove_image', 'Remove Image')}
+                      </Button>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      'settings.success_hint_image_desc',
+                      'Upload PNG/JPG/SVG images. Recommended for event QR code or support channel poster.'
+                    )}
+                  </p>
+                  {watchedSubmissionSuccessHintImageUrl ? (
+                    <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-2">
+                      <p className="break-all text-xs text-muted-foreground">{watchedSubmissionSuccessHintImageUrl}</p>
+                      <img
+                        src={watchedSubmissionSuccessHintImageUrl}
+                        alt={t('submission.success_hint_image_alt', 'Submission success hint image')}
+                        className="max-h-28 w-auto object-contain"
+                      />
+                    </div>
+                  ) : null}
+                  {errors.submissionSuccessHintImageUrl && (
+                    <p className="text-sm text-destructive">{errors.submissionSuccessHintImageUrl.message as string}</p>
+                  )}
                 </div>
 
                 <div className="space-y-3">
@@ -509,11 +696,21 @@ export function HackathonSettings() {
                           </Button>
                         </div>
                       </div>
-                      <Textarea
-                        readOnly
-                        value={markdownDoc.contentType === 'application/pdf' ? t('settings.pdf_preview_not_available', '[PDF file - content not previewable]') : markdownDoc.content}
-                        className="min-h-[200px] resize-y bg-background/80 font-mono text-xs"
-                      />
+                      {markdownDoc.contentType === 'application/pdf' || markdownDoc.fileName.toLowerCase().endsWith('.pdf') ? (
+                        <div className="overflow-hidden rounded-xl border border-border/60 bg-background">
+                          <iframe
+                            src={`data:application/pdf;base64,${markdownDoc.content}`}
+                            title={markdownDoc.fileName}
+                            className="h-[420px] w-full border-0"
+                          />
+                        </div>
+                      ) : (
+                        <Textarea
+                          readOnly
+                          value={markdownDoc.content}
+                          className="min-h-[200px] resize-y bg-background/80 font-mono text-xs"
+                        />
+                      )}
                     </div>
                   ) : (
                     <button
@@ -538,7 +735,7 @@ export function HackathonSettings() {
                       )}
                       <div className="text-center">
                         <p className="text-sm font-medium">{t('settings.markdown_upload_hint', 'Click to upload or drag & drop')}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{t('settings.markdown_upload_accept', '.md, .markdown, or .pdf files')}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{t('settings.markdown_upload_accept', 'Markdown (.md/.markdown) or PDF (.pdf) files')}</p>
                       </div>
                     </button>
                   )}

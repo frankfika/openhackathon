@@ -59,11 +59,12 @@ export function Projects() {
   const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
   const debouncedQuery = useDebounce(query, 300)
+  const [statusFilter, setStatusFilter] = useState<'all' | Project['status']>('all')
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
   const [submissionFilters, setSubmissionFilters] = useState<Record<string, string>>({})
 
-  // Reset to page 1 when search changes
-  useEffect(() => { setPage(1) }, [debouncedQuery, submissionFilters])
+  // Reset to page 1 when search/filter changes
+  useEffect(() => { setPage(1) }, [debouncedQuery, statusFilter, submissionFilters])
 
   // Lite query for filter-option population (all projects, no nested data)
   const { data: allProjectsLite = [] } = useQuery<Project[]>({
@@ -92,18 +93,22 @@ export function Projects() {
 
   // Main paginated query (server search)
   const { data: pageResult, isLoading, isError } = useQuery({
-    queryKey: ['projects', activeHackathon.id, 'paginated', page, debouncedQuery],
+    queryKey: ['projects', activeHackathon.id, 'paginated', page, debouncedQuery, statusFilter],
     queryFn: () => api.getProjectsPaginated({
       hackathonId: activeHackathon.id,
       page,
       pageSize: PAGE_SIZE,
       search: debouncedQuery || undefined,
+      status: statusFilter === 'all' ? undefined : statusFilter,
     }),
     enabled: !!activeHackathon.id,
     placeholderData: (prev) => prev,
   })
 
-  const projects: ProjectWithAssignments[] = pageResult?.data ?? []
+  const projects = useMemo<ProjectWithAssignments[]>(
+    () => pageResult?.data ?? [],
+    [pageResult?.data]
+  )
   const total = pageResult?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
@@ -119,11 +124,22 @@ export function Projects() {
 
   // Client-side submission field filter on current page
   const filteredProjects = useMemo(() => projects.filter((project) => {
+    if (statusFilter !== 'all' && project.status !== statusFilter) return false
     for (const [fieldId, val] of Object.entries(submissionFilters)) {
       if (val && getProjectSubmissionFieldValue(project, fieldId) !== val) return false
     }
     return true
-  }), [projects, submissionFilters])
+  }), [projects, statusFilter, submissionFilters])
+
+  const activeFilterCount = (query.trim() ? 1 : 0)
+    + (statusFilter !== 'all' ? 1 : 0)
+    + Object.values(submissionFilters).filter(Boolean).length
+
+  const clearFilters = () => {
+    setQuery('')
+    setStatusFilter('all')
+    setSubmissionFilters({})
+  }
 
   return (
     <div className="space-y-4">
@@ -143,6 +159,19 @@ export function Projects() {
               className="pl-9 w-60"
             />
           </div>
+          <Select
+            value={statusFilter}
+            onValueChange={(value) => setStatusFilter(value as 'all' | Project['status'])}
+          >
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder={t('projects.status')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('assignments.all_filter_values')}</SelectItem>
+              <SelectItem value="submitted">{t('projects.status_options.submitted')}</SelectItem>
+              <SelectItem value="draft">{t('projects.status_options.draft')}</SelectItem>
+            </SelectContent>
+          </Select>
           {filterableFields.map((field) => (
             <Select
               key={field.id}
@@ -160,6 +189,11 @@ export function Projects() {
               </SelectContent>
             </Select>
           ))}
+          {activeFilterCount > 0 && (
+            <Button variant="ghost" size="sm" className="h-9 text-xs" onClick={clearFilters}>
+              {t('assignments.clear_filters')}
+            </Button>
+          )}
         </div>
       </div>
 

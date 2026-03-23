@@ -39,6 +39,8 @@ model Hackathon {
   leaderboardPublished Boolean @default(false)
   docsUrl       String?
   prizePool     String?
+  submissionSuccessHintText String?
+  submissionSuccessHintImageUrl String?
   judgesPerProject Int @default(2)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -148,8 +150,6 @@ model SiteSetting {
   showPoweredBy  Boolean  @default(true)
   poweredByText  String   @default("Powered by OpenHackathon")
   poweredByUrl   String   @default("https://openhackathon.dev")
-  submissionSuccessHintText String?
-  submissionSuccessHintImageUrl String?
   submissionEmailEnabled Boolean @default(false)
   smtpHost       String?
   smtpPort       Int      @default(587)

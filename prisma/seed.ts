@@ -1,4 +1,5 @@
-import { PrismaClient } from '@prisma/client'
+import { randomUUID } from 'crypto'
+import { Prisma, PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 import { DEV_USERS, DEV_USER_PASSWORD } from './dev-users'
@@ -18,17 +19,156 @@ type AssignmentSeed = {
   scores?: Record<string, number>
 }
 
-async function createAssignment(seed: AssignmentSeed) {
-  const assignment = await prisma.assignment.create({
-    data: {
-      id: seed.id,
-      projectId: seed.projectId,
-      judgeId: seed.judgeId,
-      status: seed.status,
-      totalScore: seed.totalScore,
-      comment: seed.comment,
-    },
+type LegacyIdRow = { id: string }
+type LegacyBooleanRow = { exists: boolean }
+type LegacyProjectRow = {
+  id: string
+  hackathonId: string
+  sessionId: string | null
+}
+
+async function supportsSessionScopedAssignments() {
+  const rows = await prisma.$queryRaw<LegacyBooleanRow[]>(Prisma.sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'Assignment'
+        AND column_name = 'sessionId'
+    ) AS "exists"
+  `)
+
+  return rows[0]?.exists === true
+}
+
+async function ensureLegacySessionId(hackathonId: string) {
+  const existing = await prisma.$queryRaw<LegacyIdRow[]>(Prisma.sql`
+    SELECT "id"
+    FROM "Session"
+    WHERE "hackathonId" = ${hackathonId}
+    ORDER BY "startAt" ASC, "createdAt" ASC, "id" ASC
+    LIMIT 1
+  `)
+  if (existing[0]?.id) {
+    return existing[0].id
+  }
+
+  const hackathon = await prisma.hackathon.findUnique({
+    where: { id: hackathonId },
+    select: { id: true, status: true, startAt: true, endAt: true },
   })
+  if (!hackathon) {
+    throw new Error(`Hackathon ${hackathonId} not found`)
+  }
+
+  const now = new Date()
+  const created = await prisma.$queryRaw<LegacyIdRow[]>(Prisma.sql`
+    INSERT INTO "Session" (
+      "id",
+      "hackathonId",
+      "name",
+      "type",
+      "status",
+      "startAt",
+      "endAt",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${randomUUID()},
+      ${hackathon.id},
+      ${'Main Round'},
+      ${'preliminary'},
+      ${hackathon.status},
+      ${hackathon.startAt},
+      ${hackathon.endAt},
+      ${now},
+      ${now}
+    )
+    RETURNING "id"
+  `)
+
+  return created[0]!.id
+}
+
+async function createAssignment(seed: AssignmentSeed) {
+  if (!await supportsSessionScopedAssignments()) {
+    const assignment = await prisma.assignment.create({
+      data: {
+        id: seed.id,
+        projectId: seed.projectId,
+        judgeId: seed.judgeId,
+        status: seed.status,
+        totalScore: seed.totalScore,
+        comment: seed.comment,
+      },
+    })
+
+    if (seed.scores && Object.keys(seed.scores).length > 0) {
+      await prisma.score.createMany({
+        data: Object.entries(seed.scores).map(([criterionId, score]) => ({
+          assignmentId: assignment.id,
+          criterionId,
+          score,
+        })),
+      })
+    }
+
+    return
+  }
+
+  const projectRows = await prisma.$queryRaw<LegacyProjectRow[]>(Prisma.sql`
+    SELECT "id", "hackathonId", "sessionId"
+    FROM "Project"
+    WHERE "id" = ${seed.projectId}
+    LIMIT 1
+  `)
+  const project = projectRows[0]
+  if (!project) {
+    throw new Error(`Project ${seed.projectId} not found`)
+  }
+
+  const sessionId = project.sessionId ?? await ensureLegacySessionId(project.hackathonId)
+  if (!project.sessionId) {
+    await prisma.$executeRaw(Prisma.sql`
+      UPDATE "Project"
+      SET "sessionId" = ${sessionId}, "updatedAt" = NOW()
+      WHERE "id" = ${project.id} AND "sessionId" IS NULL
+    `)
+  }
+
+  await prisma.$queryRaw<LegacyIdRow[]>(Prisma.sql`
+    INSERT INTO "Assignment" (
+      "id",
+      "sessionId",
+      "projectId",
+      "judgeId",
+      "status",
+      "comment",
+      "totalScore",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${seed.id},
+      ${sessionId},
+      ${seed.projectId},
+      ${seed.judgeId},
+      ${seed.status},
+      ${seed.comment ?? null},
+      ${seed.totalScore ?? null},
+      NOW(),
+      NOW()
+    )
+    RETURNING "id"
+  `)
+
+  const assignment = await prisma.assignment.findUnique({
+    where: { id: seed.id },
+  })
+  if (!assignment) {
+    throw new Error(`Assignment ${seed.id} not found after insert`)
+  }
 
   if (seed.scores && Object.keys(seed.scores).length > 0) {
     await prisma.score.createMany({

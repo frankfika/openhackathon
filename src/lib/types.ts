@@ -43,6 +43,8 @@ export type Hackathon = {
   scoringCriteria?: ScoringCriterion[]
   docsUrl?: string
   prizePool?: string
+  submissionSuccessHintText?: string
+  submissionSuccessHintImageUrl?: string
   judgesPerProject?: number
 }
 
@@ -64,8 +66,6 @@ export type SiteSettings = {
   showPoweredBy: boolean
   poweredByText: string
   poweredByUrl: string
-  submissionSuccessHintText?: string | null
-  submissionSuccessHintImageUrl?: string | null
   submissionEmailEnabled?: boolean
   smtpHost?: string | null
   smtpPort?: number

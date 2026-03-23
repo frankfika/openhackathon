@@ -68,6 +68,16 @@ export function DashboardLayout() {
     startAt: '',
     endAt: '',
   })
+  const hasInvalidCreateDateRange = Boolean(
+    newHackathon.startAt && newHackathon.endAt && newHackathon.startAt > newHackathon.endAt
+  )
+  const canCreateHackathon = Boolean(
+    newHackathon.title.trim()
+      && newHackathon.tagline.trim()
+      && newHackathon.startAt
+      && newHackathon.endAt
+      && !hasInvalidCreateDateRange
+  )
 
   const isAdmin = user?.role === 'admin'
   const roleLabel = isAdmin ? t('auth.admin') : t('auth.judge')
@@ -85,14 +95,19 @@ export function DashboardLayout() {
   }
 
   const handleCreate = async () => {
-    if (!newHackathon.title.trim() || !newHackathon.tagline.trim()) return
+    if (!canCreateHackathon) {
+      if (hasInvalidCreateDateRange) {
+        toast.error(t('submission.validation.date_order_invalid'))
+      }
+      return
+    }
     setCreating(true)
     try {
       const created = await api.createHackathon({
         title: newHackathon.title.trim(),
         tagline: newHackathon.tagline.trim(),
-        startAt: newHackathon.startAt || undefined,
-        endAt: newHackathon.endAt || undefined,
+        startAt: newHackathon.startAt,
+        endAt: newHackathon.endAt,
         status: 'draft',
       })
       refreshHackathons()
@@ -313,8 +328,12 @@ export function DashboardLayout() {
             <DialogDescription>{t('hackathons.create_desc')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <p className="text-xs text-muted-foreground">{t('common.required_fields_hint')}</p>
             <div className="space-y-2">
-              <Label htmlFor="new-title">{t('hackathons.title')}</Label>
+              <Label htmlFor="new-title">
+                {t('hackathons.title')}
+                <span className="ml-1 text-destructive">*</span>
+              </Label>
               <Input
                 id="new-title"
                 placeholder={t('hackathons.title')}
@@ -323,7 +342,10 @@ export function DashboardLayout() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="new-tagline">{t('hackathons.tagline')}</Label>
+              <Label htmlFor="new-tagline">
+                {t('hackathons.tagline')}
+                <span className="ml-1 text-destructive">*</span>
+              </Label>
               <Input
                 id="new-tagline"
                 placeholder={t('hackathons.tagline')}
@@ -333,7 +355,10 @@ export function DashboardLayout() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="new-start">{t('hackathons.start_date')}</Label>
+                <Label htmlFor="new-start">
+                  {t('hackathons.start_date')}
+                  <span className="ml-1 text-destructive">*</span>
+                </Label>
                 <Input
                   id="new-start"
                   type="date"
@@ -342,7 +367,10 @@ export function DashboardLayout() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-end">{t('hackathons.end_date')}</Label>
+                <Label htmlFor="new-end">
+                  {t('hackathons.end_date')}
+                  <span className="ml-1 text-destructive">*</span>
+                </Label>
                 <Input
                   id="new-end"
                   type="date"
@@ -351,6 +379,9 @@ export function DashboardLayout() {
                 />
               </div>
             </div>
+            {hasInvalidCreateDateRange && (
+              <p className="text-sm text-destructive">{t('submission.validation.date_order_invalid')}</p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
@@ -358,7 +389,7 @@ export function DashboardLayout() {
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={creating || !newHackathon.title.trim() || !newHackathon.tagline.trim()}
+              disabled={creating || !canCreateHackathon}
             >
               {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t('hackathons.create', 'Create Hackathon')}

@@ -27,6 +27,24 @@ describe('api client', () => {
       expect(mockedAxios.put).toHaveBeenCalledWith('/api/site-settings', payload)
       expect(result).toEqual(payload)
     })
+
+    it('uploadImage calls POST /api/uploads/images with binary payload', async () => {
+      const file = new File([new Uint8Array([1, 2, 3])], 'logo.png', { type: 'image/png' })
+      mockedAxios.post.mockResolvedValue({ data: { url: '/uploads/images/logo.png', fileName: 'logo.png', size: 3 } })
+
+      const result = await api.uploadImage(file)
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        '/api/uploads/images',
+        expect.any(ArrayBuffer),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Content-Type': 'image/png',
+            'x-file-name': 'logo.png',
+          }),
+        })
+      )
+      expect(result.url).toBe('/uploads/images/logo.png')
+    })
   })
 
   describe('hackathons', () => {
@@ -117,6 +135,30 @@ describe('api client', () => {
 
       const result = await api.getProjects({ hackathonId: 'h1' })
       expect(mockedAxios.get).toHaveBeenCalledWith('/api/projects', { params: { hackathonId: 'h1' } })
+      expect(result).toEqual(data)
+    })
+
+    it('getProjectsPaginated calls GET /api/projects with pagination and status filters', async () => {
+      const data = { data: [{ id: 'p1' }], total: 1, page: 1, pageSize: 50 }
+      mockedAxios.get.mockResolvedValue({ data })
+
+      const result = await api.getProjectsPaginated({
+        hackathonId: 'h1',
+        page: 1,
+        pageSize: 50,
+        search: 'vision',
+        status: 'submitted',
+      })
+
+      expect(mockedAxios.get).toHaveBeenCalledWith('/api/projects', {
+        params: {
+          hackathonId: 'h1',
+          page: 1,
+          pageSize: 50,
+          search: 'vision',
+          status: 'submitted',
+        },
+      })
       expect(result).toEqual(data)
     })
 
