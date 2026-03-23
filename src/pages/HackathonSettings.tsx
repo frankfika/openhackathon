@@ -16,7 +16,8 @@ import { SetupWizardDialog } from '@/components/SetupWizardDialog'
 import { SubmissionField, ScoringCriterion, SubmissionSchemaConfig } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ArrowLeft, Loader2, Check, FileText, Trash2, Wand2, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Loader2, Check, FileText, Trash2, Wand2, ChevronDown, Lock, Play, AlertTriangle } from 'lucide-react'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -219,7 +220,27 @@ export function HackathonSettings() {
     },
   })
 
+  const LOCKED_STATUSES = new Set(['active', 'judging', 'completed'])
+  const isLocked = hackathon ? LOCKED_STATUSES.has(hackathon.status) : false
+
+  const startHackathonMutation = useMutation({
+    mutationFn: async () => {
+      if (!id) throw new Error('No hackathon ID')
+      return api.updateHackathon(id, { status: 'active' } as unknown as HackathonUpdateValues)
+    },
+    onSuccess: () => {
+      toast.success(t('settings.started_success'))
+      queryClient.invalidateQueries({ queryKey: ['hackathon', id] })
+      queryClient.invalidateQueries({ queryKey: ['hackathons'] })
+      queryClient.invalidateQueries({ queryKey: ['current-hackathon'] })
+    },
+    onError: () => {
+      toast.error(t('settings.save_error'))
+    },
+  })
+
   const onSubmit = async (data: HackathonFormValues) => {
+    if (isLocked) return
     updateMutation.mutate(data)
   }
 
@@ -294,13 +315,63 @@ export function HackathonSettings() {
 
       <div className="flex items-center justify-between gap-3 mb-6">
         <h1 className="text-3xl font-bold tracking-tight">{t('settings.hackathon_settings')}</h1>
-        <Button type="button" variant="outline" className="gap-2" onClick={() => setIsSetupWizardOpen(true)}>
-          <Wand2 className="h-4 w-4" />
-          {t('settings.setup_wizard.open')}
-        </Button>
+        <div className="flex items-center gap-2">
+          {hackathon.status === 'draft' && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="default" className="gap-2">
+                  <Play className="h-4 w-4" />
+                  {t('settings.start_hackathon')}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-amber-500" />
+                    {t('settings.start_hackathon')}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t('settings.start_confirm')}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => startHackathonMutation.mutate()}
+                    disabled={startHackathonMutation.isPending}
+                  >
+                    {startHackathonMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {t('settings.start_hackathon')}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+          {!isLocked && (
+            <Button type="button" variant="outline" className="gap-2" onClick={() => setIsSetupWizardOpen(true)}>
+              <Wand2 className="h-4 w-4" />
+              {t('settings.setup_wizard.open')}
+            </Button>
+          )}
+        </div>
       </div>
 
-      {shouldSuggestWizard ? (
+      {/* Status banner */}
+      {hackathon.status !== 'draft' && (
+        <div className={cn(
+          'mb-6 flex items-center gap-3 rounded-xl border px-4 py-3',
+          hackathon.status === 'active' && 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200',
+          hackathon.status === 'judging' && 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-200',
+          hackathon.status === 'completed' && 'border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-200',
+        )}>
+          <Lock className="h-4 w-4 shrink-0" />
+          <span className="text-sm font-medium">
+            {t(`settings.status_banner.${hackathon.status}`)}
+          </span>
+        </div>
+      )}
+
+      {shouldSuggestWizard && !isLocked ? (
         <Card className="mb-6 border border-primary/20 bg-primary/5 shadow-none">
           <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
             <div>
@@ -332,6 +403,7 @@ export function HackathonSettings() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <fieldset disabled={isLocked} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="title">{t('hackathons.title')}</Label>
                   <Input id="title" {...register('title')} />
@@ -466,28 +538,41 @@ export function HackathonSettings() {
                   </div>
                 )}
 
-                <div className="pt-4">
-                  <Button type="submit" disabled={updateMutation.isPending}>
-                    {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {t('common.save_changes')}
-                  </Button>
-                </div>
+                {!isLocked && (
+                  <div className="pt-4">
+                    <Button type="submit" disabled={updateMutation.isPending}>
+                      {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {t('common.save_changes')}
+                    </Button>
+                  </div>
+                )}
+                </fieldset>
               </form>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="submission">
-          <SubmissionConfigBuilder
-            initialSchema={submissionSchema}
-            onSave={(schema) => {
-              setSubmissionSchema(schema)
-              onSaveSubmissionSchema(schema)
-            }}
-          />
+          {isLocked ? (
+            <div className="pointer-events-none opacity-60">
+              <SubmissionConfigBuilder
+                initialSchema={submissionSchema}
+                onSave={() => {}}
+              />
+            </div>
+          ) : (
+            <SubmissionConfigBuilder
+              initialSchema={submissionSchema}
+              onSave={(schema) => {
+                setSubmissionSchema(schema)
+                onSaveSubmissionSchema(schema)
+              }}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="scoring">
+          <fieldset disabled={isLocked}>
           <div className="mb-6 space-y-3">
             <div>
               <h3 className="text-lg font-medium">{t('settings.judges_per_project')}</h3>
@@ -505,25 +590,37 @@ export function HackathonSettings() {
                   if (v > 0) setJudgesPerProject(v)
                 }}
               />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={async () => {
-                  await updateMutation.mutateAsync({ judgesPerProject })
-                }}
-                disabled={updateMutation.isPending}
-              >
-                {t('common.save_changes')}
-              </Button>
+              {!isLocked && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    await updateMutation.mutateAsync({ judgesPerProject })
+                  }}
+                  disabled={updateMutation.isPending}
+                >
+                  {t('common.save_changes')}
+                </Button>
+              )}
             </div>
           </div>
-          <ScoringCriteriaBuilder
-            initialCriteria={scoringCriteria}
-            onSave={(criteria) => {
-              setScoringCriteria(criteria)
-              onSaveScoringCriteria(criteria)
-            }}
-          />
+          </fieldset>
+          {isLocked ? (
+            <div className="pointer-events-none opacity-60">
+              <ScoringCriteriaBuilder
+                initialCriteria={scoringCriteria}
+                onSave={() => {}}
+              />
+            </div>
+          ) : (
+            <ScoringCriteriaBuilder
+              initialCriteria={scoringCriteria}
+              onSave={(criteria) => {
+                setScoringCriteria(criteria)
+                onSaveScoringCriteria(criteria)
+              }}
+            />
+          )}
         </TabsContent>
 
       </Tabs>

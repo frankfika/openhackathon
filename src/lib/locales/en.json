@@ -236,6 +236,17 @@
     "basic_info_desc": "Manage the core details of your hackathon.",
     "save_error": "Failed to save settings",
     "more_options": "More Options",
+    "status_banner": {
+      "draft": "This hackathon is in draft mode. You can edit all settings freely.",
+      "active": "This hackathon is active. Settings are locked and cannot be modified.",
+      "judging": "Judging is in progress. Settings are locked.",
+      "completed": "This hackathon has ended. Settings are locked."
+    },
+    "start_hackathon": "Start Hackathon",
+    "start_confirm": "Once started, all settings (submission form, scoring criteria, dates, etc.) will be locked and cannot be modified. Are you sure?",
+    "started_success": "Hackathon started successfully!",
+    "locked_tooltip": "Settings are locked because the hackathon has started.",
+    "update_locked": "Cannot update settings after hackathon has started",
     "setup_wizard": {
       "open": "Setup Wizard",
       "title": "Quick Hackathon Setup",
@@ -668,5 +679,21 @@
   "activity_log": {
     "title": "Activity Log",
     "subtitle": "View operation records from users, judges, and administrators"
+  },
+  "initial_setup": {
+    "title": "Welcome to OpenHackathon",
+    "subtitle": "Let's set up your first admin account and hackathon.",
+    "admin_section": "Administrator Account",
+    "hackathon_section": "First Hackathon",
+    "hackathon_title": "Hackathon Title",
+    "hackathon_tagline": "Tagline",
+    "hackathon_city": "City",
+    "start_date": "Start Date",
+    "end_date": "End Date",
+    "password_warning": "Please remember this password. Admin passwords cannot be reset.",
+    "complete_setup": "Complete Setup",
+    "setting_up": "Setting up...",
+    "success": "Setup complete! Redirecting to admin dashboard...",
+    "already_initialized": "System is already initialized. Redirecting..."
   }
 }

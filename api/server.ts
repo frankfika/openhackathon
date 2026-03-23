@@ -845,6 +845,7 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
     where: { id: req.params.id },
     select: {
       id: true,
+      status: true,
       startAt: true,
       endAt: true,
     },
@@ -852,6 +853,15 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
 
   if (!existingHackathon) {
     return res.status(404).json({ error: 'Hackathon not found' });
+  }
+
+  // Allow status transition (e.g. draft → active), but block all other field edits once active+
+  const LOCKED_STATUSES = new Set(['active', 'judging', 'completed']);
+  const isLocked = LOCKED_STATUSES.has(existingHackathon.status);
+  const isStatusChangeOnly = status && Object.keys(req.body).filter(k => req.body[k] !== undefined).length === 1;
+
+  if (isLocked && !isStatusChangeOnly) {
+    return res.status(403).json({ error: 'Cannot update settings after hackathon has started' });
   }
 
   const nextStartAt = startAt !== undefined ? new Date(startAt) : existingHackathon.startAt;
@@ -2400,6 +2410,83 @@ app.delete('/api/users/:id', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('Delete user error:', error);
     res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// ===== Setup (first-time initialization) =====
+
+/** Check if the system needs initial setup (no admin user exists) */
+app.get('/api/setup/status', async (_req, res) => {
+  const adminCount = await prisma.user.count({ where: { role: 'admin' } });
+  res.json({ needsSetup: adminCount === 0 });
+});
+
+/** First-time setup: create admin account + first hackathon */
+app.post('/api/setup', async (req, res) => {
+  // Only allow if no admin exists yet
+  const adminCount = await prisma.user.count({ where: { role: 'admin' } });
+  if (adminCount > 0) {
+    return res.status(403).json({ error: 'System is already initialized' });
+  }
+
+  const { admin, hackathon } = req.body;
+  if (!admin?.email || !admin?.name || !admin?.password) {
+    return res.status(400).json({ error: 'Admin email, name, and password are required' });
+  }
+  if (!hackathon?.title) {
+    return res.status(400).json({ error: 'Hackathon title is required' });
+  }
+
+  const emailValue = normalizeEmail(admin.email);
+  if (!emailValue || !isValidEmail(emailValue)) {
+    return res.status(400).json({ error: 'Invalid admin email' });
+  }
+  if (!isValidPassword(admin.password)) {
+    return res.status(400).json({ error: 'Password must be between 8 and 72 characters' });
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(admin.password, 10);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const adminUser = await tx.user.create({
+        data: {
+          email: emailValue,
+          name: admin.name,
+          password: hashedPassword,
+          role: 'admin',
+        },
+      });
+
+      const newHackathon = await tx.hackathon.create({
+        data: {
+          title: hackathon.title,
+          tagline: hackathon.tagline || '',
+          coverGradient: '',
+          city: hackathon.city || null,
+          startAt: hackathon.startAt ? new Date(hackathon.startAt) : new Date(),
+          endAt: hackathon.endAt ? new Date(hackathon.endAt) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          status: 'draft',
+        },
+      });
+
+      return { admin: adminUser, hackathon: newHackathon };
+    });
+
+    const authUser: AuthUser = {
+      id: result.admin.id,
+      role: 'admin',
+      email: result.admin.email,
+      name: result.admin.name,
+    };
+    const token = signTokenForUser(authUser);
+    const adminWithoutPassword = { ...result.admin } as Record<string, unknown>;
+    delete adminWithoutPassword.password;
+
+    res.json({ admin: { ...adminWithoutPassword, token }, hackathon: result.hackathon });
+  } catch (error) {
+    console.error('Setup error:', error);
+    res.status(500).json({ error: 'Setup failed' });
   }
 });
 

@@ -233,6 +233,17 @@
     "judge_delete_confirm": "确定删除评委「{{name}}」？其所有评审任务也将一并删除。",
     "hackathon_settings": "赛事设置",
     "basic_info": "基础信息",
+    "status_banner": {
+      "draft": "赛事处于草稿状态，可自由编辑所有设置。",
+      "active": "赛事已开始，所有设置已锁定，不可修改。",
+      "judging": "评审进行中，所有设置已锁定。",
+      "completed": "赛事已结束，所有设置已锁定。"
+    },
+    "start_hackathon": "开始比赛",
+    "start_confirm": "比赛开始后，所有设置（提交表单、评分标准、日期等）将被锁定且不可修改。确定要开始吗？",
+    "started_success": "赛事已成功启动！",
+    "locked_tooltip": "赛事已开始，设置已锁定。",
+    "update_locked": "赛事已开始，无法修改设置",
     "basic_info_desc": "管理赛事的核心信息。",
     "save_error": "保存设置失败",
     "more_options": "更多选项",
@@ -669,5 +680,21 @@
   "activity_log": {
     "title": "操作日志",
     "subtitle": "查看用户、评委和管理员的所有操作记录"
+  },
+  "initial_setup": {
+    "title": "欢迎使用 OpenHackathon",
+    "subtitle": "请创建第一个管理员账号和赛事。",
+    "admin_section": "管理员账号",
+    "hackathon_section": "第一个赛事",
+    "hackathon_title": "赛事名称",
+    "hackathon_tagline": "赛事标语",
+    "hackathon_city": "举办城市",
+    "start_date": "开始日期",
+    "end_date": "结束日期",
+    "password_warning": "请牢记此密码，管理员密码无法重置。",
+    "complete_setup": "完成设置",
+    "setting_up": "正在初始化...",
+    "success": "设置完成！正在跳转到管理后台...",
+    "already_initialized": "系统已初始化，正在跳转..."
   }
 }

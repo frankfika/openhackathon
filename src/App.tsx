@@ -28,6 +28,7 @@ const Landing = lazy(() => import('./pages/Landing').then((mod) => ({ default: m
 const Docs = lazy(() => import('./pages/Docs').then((mod) => ({ default: mod.Docs })))
 const Settings = lazy(() => import('./pages/Settings').then((mod) => ({ default: mod.Settings })))
 const ActivityLog = lazy(() => import('./pages/ActivityLog').then((mod) => ({ default: mod.ActivityLogPage })))
+const SetupPage = lazy(() => import('./pages/SetupPage').then((mod) => ({ default: mod.SetupPage })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -76,6 +77,7 @@ function AppRoutes() {
             <Route path="/leaderboard" element={<Leaderboard />} />
           </Route>
 
+          <Route path="/setup" element={<SetupPage />} />
           <Route path="/login" element={<Navigate to={adminLoginPath} replace />} />
           <Route path="/dashboard/*" element={<LegacyDashboardRedirect adminBasePath={adminBasePath} />} />
 

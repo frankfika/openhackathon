@@ -291,6 +291,22 @@ export const api = {
     return res.data
   },
 
+  // Setup (first-time initialization)
+  getSetupStatus: async () => {
+    const res = await axios.get<{ needsSetup: boolean }>(`${API_URL}/setup/status`)
+    return res.data
+  },
+  setup: async (data: {
+    admin: { email: string; name: string; password: string }
+    hackathon: { title: string; tagline?: string; city?: string; startAt?: string; endAt?: string }
+  }) => {
+    const res = await axios.post<{
+      admin: AdminUser & { token?: string }
+      hackathon: Hackathon
+    }>(`${API_URL}/setup`, data)
+    return res.data
+  },
+
   // Activity Logs
   getActivityLogs: async (params?: {
     hackathonId?: string
@@ -315,4 +331,5 @@ export const api = {
     )
     return res.data
   },
+
 }

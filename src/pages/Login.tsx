@@ -12,6 +12,7 @@ import { Loader2, ShieldCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/lib/auth';
 import { useAdminRoutes } from '@/lib/admin-routing'
+import { api } from '@/lib/api'
 
 type LoginFormValues = {
   email: string
@@ -24,6 +25,13 @@ export function Login() {
   const { login } = useAuth();
   const { adminBasePath } = useAdminRoutes()
   const [isLoading, setIsLoading] = useState(false);
+
+  // Check if first-time setup is needed
+  React.useEffect(() => {
+    api.getSetupStatus().then(({ needsSetup }) => {
+      if (needsSetup) navigate('/setup', { replace: true })
+    }).catch(() => {})
+  }, [navigate])
   const loginSchema = useMemo(
     () =>
       z.object({
