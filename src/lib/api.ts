@@ -13,11 +13,17 @@ import {
 } from './types'
 
 const API_URL = '/api'
-const AUTH_TOKEN_KEY = 'openhackathon_token'
+
+// Lazy import to avoid circular dependency — auth.tsx exports these helpers
+function getActiveToken(): string | null {
+  const isJudgePath = window.location.pathname.startsWith('/judge')
+  const key = isJudgePath ? 'openhackathon_judge_token' : 'openhackathon_admin_token'
+  return localStorage.getItem(key)
+}
 
 if (axios.interceptors?.request?.use) {
   axios.interceptors.request.use((config) => {
-    const token = localStorage.getItem(AUTH_TOKEN_KEY)
+    const token = getActiveToken()
     if (token) {
       if (config.headers && typeof (config.headers as { set?: unknown }).set === 'function') {
         (config.headers as { set: (key: string, value: string) => void }).set('Authorization', `Bearer ${token}`)
@@ -30,6 +36,30 @@ if (axios.interceptors?.request?.use) {
     }
     return config
   })
+
+  let isRedirecting = false
+  axios.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (error?.response?.status === 401 && !isRedirecting) {
+        const token = getActiveToken()
+        if (token) {
+          isRedirecting = true
+          const isJudge = window.location.pathname.startsWith('/judge')
+          // Clear only the relevant role's auth
+          if (isJudge) {
+            localStorage.removeItem('openhackathon_judge_token')
+            localStorage.removeItem('openhackathon_judge_user')
+          } else {
+            localStorage.removeItem('openhackathon_admin_token')
+            localStorage.removeItem('openhackathon_admin_user')
+          }
+          window.location.href = isJudge ? '/judge/login' : '/admin/login'
+        }
+      }
+      return Promise.reject(error)
+    }
+  )
 }
 
 export const api = {
