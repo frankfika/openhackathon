@@ -558,7 +558,8 @@ type ActivityAction =
   | 'create' | 'update' | 'delete'
   | 'submit' | 'assign' | 'unassign'
   | 'score' | 'update_score' | 'complete_review'
-  | 'login' | 'logout' | 'invite';
+  | 'login' | 'logout' | 'invite'
+  | 'bulk_reset';
 
 type ActivityEntityType =
   | 'project' | 'assignment' | 'score' | 'hackathon'
@@ -1024,13 +1025,13 @@ app.delete('/api/hackathons/:id/markdown-doc', requireAdmin, async (req, res) =>
 // ===== Projects =====
 
 app.get('/api/projects', async (req, res) => {
-  const { hackathonId } = req.query;
+  const { hackathonId, lite } = req.query;
   const hackathonIdValue = await getScopedHackathonId(hackathonId);
   const projects = await prisma.project.findMany({
     where: {
       ...(hackathonIdValue ? { hackathonId: hackathonIdValue } : {}),
     },
-    include: {
+    include: lite ? undefined : {
       user: true,
       assignments: {
         include: { judge: true, scores: true }
@@ -1314,7 +1315,7 @@ app.post('/api/projects/:id/receipt/resend', requireAdmin, async (req, res) => {
 // ===== Assignments =====
 
 app.get('/api/assignments', requireAuth, async (req, res) => {
-  const { projectId, judgeId, status, hackathonId } = req.query;
+  const { projectId, judgeId, status, hackathonId, lite } = req.query;
   const hackathonIdValue = await getScopedHackathonId(hackathonId);
   const viewer = req.authUser!;
   const effectiveJudgeId = viewer.role === 'judge' ? viewer.id : (judgeId ? String(judgeId) : undefined);
@@ -1325,7 +1326,7 @@ app.get('/api/assignments', requireAuth, async (req, res) => {
       ...(status ? { status: String(status) } : {}),
       ...(hackathonIdValue ? { project: { hackathonId: hackathonIdValue } } : {}),
     },
-    include: {
+    include: lite ? undefined : {
       project: true,
       judge: true,
       scores: true,
@@ -1473,6 +1474,40 @@ app.post('/api/assignments', requireAdmin, async (req, res) => {
     res.json(created);
   } catch (error: unknown) {
     res.status(400).json({ error: getErrorMessage(error, 'Failed to create assignments') });
+  }
+});
+
+// Bulk-delete pending assignments for a hackathon
+app.delete('/api/assignments/bulk', requireAdmin, async (req, res) => {
+  try {
+    const { hackathonId } = req.body;
+    if (!hackathonId) {
+      return res.status(400).json({ error: 'hackathonId is required' });
+    }
+
+    const result = await prisma.assignment.deleteMany({
+      where: {
+        status: 'pending',
+        project: { hackathonId },
+      },
+    });
+
+    const actor = getActorInfo(req);
+    await logActivity({
+      hackathonId,
+      actorId: actor?.actorId,
+      actorRole: actor?.actorRole ?? 'system',
+      actorName: actor?.actorName ?? 'System',
+      action: 'bulk_reset',
+      entityType: 'assignment',
+      entityId: hackathonId,
+      metadata: { deleted: result.count },
+      ipAddress: req.ip,
+    });
+
+    res.json({ deleted: result.count });
+  } catch {
+    res.status(500).json({ error: 'Failed to reset assignments' });
   }
 });
 
@@ -2372,7 +2407,12 @@ app.get('/api/hackathon/activity-logs', requireAdmin, async (req, res) => {
     if (entityType) where.entityType = entityType as string;
     if (actorId) where.actorId = actorId as string;
 
-    const [logs, total] = await Promise.all([
+    // Include stats on first page to avoid a separate round trip
+    const includeStats = offsetNum === 0 && !action && !entityType && !actorId;
+    const since = new Date();
+    since.setDate(since.getDate() - 7);
+
+    const [logs, total, ...statsResults] = await Promise.all([
       prisma.activityLog.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -2380,9 +2420,27 @@ app.get('/api/hackathon/activity-logs', requireAdmin, async (req, res) => {
         skip: offsetNum,
       }),
       prisma.activityLog.count({ where }),
+      ...(includeStats ? [
+        prisma.activityLog.count({ where: { hackathonId, createdAt: { gte: since } } }),
+        prisma.activityLog.groupBy({ by: ['actorRole'], where: { hackathonId }, _count: { actorRole: true } }),
+        prisma.activityLog.groupBy({ by: ['entityType'], where: { hackathonId }, _count: { entityType: true } }),
+      ] : []),
     ]);
 
-    res.json({ logs, total, limit: limitNum, offset: offsetNum });
+    const result: Record<string, unknown> = { logs, total, limit: limitNum, offset: offsetNum };
+    if (includeStats) {
+      const [recentActions, byRoleRaw, byEntityRaw] = statsResults;
+      result.stats = {
+        totalActions: total,
+        recentActions: recentActions as number,
+        byRole: (byRoleRaw as { actorRole: string; _count: { actorRole: number } }[])
+          .reduce((acc: Record<string, number>, r) => ({ ...acc, [r.actorRole]: r._count.actorRole }), {}),
+        byEntity: (byEntityRaw as { entityType: string; _count: { entityType: number } }[])
+          .reduce((acc: Record<string, number>, e) => ({ ...acc, [e.entityType]: e._count.entityType }), {}),
+      };
+    }
+
+    res.json(result);
   } catch (error) {
     console.error('Error fetching activity logs:', error);
     res.status(500).json({ error: 'Failed to fetch activity logs' });

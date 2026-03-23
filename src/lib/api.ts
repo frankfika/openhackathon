@@ -10,7 +10,6 @@ import {
   HackathonUpsertInput,
   AdminUser,
   ActivityLog,
-  ActivityStats,
 } from './types'
 
 const API_URL = '/api'
@@ -82,7 +81,7 @@ export const api = {
   },
 
   // Projects
-  getProjects: async (params?: { hackathonId?: string }) => {
+  getProjects: async (params?: { hackathonId?: string; lite?: boolean }) => {
     const res = await axios.get<Project[]>(`${API_URL}/projects`, { params })
     return res.data
   },
@@ -104,7 +103,7 @@ export const api = {
   },
 
   // Assignments
-  getAssignments: async (params?: { projectId?: string; judgeId?: string; status?: string; hackathonId?: string }) => {
+  getAssignments: async (params?: { projectId?: string; judgeId?: string; status?: string; hackathonId?: string; lite?: boolean }) => {
     const res = await axios.get<Assignment[]>(`${API_URL}/assignments`, { params })
     return res.data
   },
@@ -118,6 +117,10 @@ export const api = {
   },
   deleteAssignment: async (id: string, force?: boolean) => {
     const res = await axios.delete(`${API_URL}/assignments/${id}`, { params: force ? { force: 'true' } : undefined })
+    return res.data
+  },
+  resetAssignments: async (hackathonId: string) => {
+    const res = await axios.delete<{ deleted: number }>(`${API_URL}/assignments/bulk`, { data: { hackathonId } })
     return res.data
   },
 
@@ -270,12 +273,6 @@ export const api = {
       `${API_URL}/hackathon/activity-logs/${entityType}/${entityId}`,
       { params: hackathonId ? { hackathonId } : undefined }
     )
-    return res.data
-  },
-  getActivityStats: async (hackathonId?: string) => {
-    const res = await axios.get<ActivityStats>(`${API_URL}/hackathon/activity-stats`, {
-      params: hackathonId ? { hackathonId } : undefined,
-    })
     return res.data
   },
 }

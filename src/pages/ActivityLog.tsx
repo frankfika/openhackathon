@@ -198,16 +198,13 @@ export function ActivityLogPage() {
         actorId: actorFilter || undefined,
       }),
     enabled: !!hackathonId,
-  })
-
-  const { data: stats } = useQuery({
-    queryKey: ['activity-stats', hackathonId],
-    queryFn: () => api.getActivityStats(hackathonId),
-    enabled: !!hackathonId,
+    staleTime: 30_000,
   })
 
   const logs = logsData?.logs ?? []
   const total = logsData?.total ?? 0
+  // Stats are inlined in the first unfiltered page response
+  const stats = (logsData as { stats?: { totalActions: number; recentActions: number; byRole: Record<string, number>; byEntity: Record<string, number> } })?.stats
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
   const uniqueActors = useMemo(() => {
@@ -265,12 +262,12 @@ export function ActivityLogPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={actionFilter} onValueChange={setActionFilter}>
+        <Select value={actionFilter || 'all'} onValueChange={(v) => setActionFilter(v === 'all' ? '' : v)}>
           <SelectTrigger className="h-8 w-[130px]">
             <SelectValue placeholder="操作类型" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">全部操作</SelectItem>
+            <SelectItem value="all">全部操作</SelectItem>
             {Object.entries(actionLabels).map(([key, label]) => (
               <SelectItem key={key} value={key}>
                 {label}
@@ -279,12 +276,12 @@ export function ActivityLogPage() {
           </SelectContent>
         </Select>
 
-        <Select value={entityFilter} onValueChange={setEntityFilter}>
+        <Select value={entityFilter || 'all'} onValueChange={(v) => setEntityFilter(v === 'all' ? '' : v)}>
           <SelectTrigger className="h-8 w-[130px]">
             <SelectValue placeholder="对象类型" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">全部对象</SelectItem>
+            <SelectItem value="all">全部对象</SelectItem>
             {Object.entries(entityLabels).map(([key, label]) => (
               <SelectItem key={key} value={key}>
                 {label}
@@ -293,12 +290,12 @@ export function ActivityLogPage() {
           </SelectContent>
         </Select>
 
-        <Select value={actorFilter} onValueChange={setActorFilter}>
+        <Select value={actorFilter || 'all'} onValueChange={(v) => setActorFilter(v === 'all' ? '' : v)}>
           <SelectTrigger className="h-8 w-[150px]">
             <SelectValue placeholder="操作人" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">全部人员</SelectItem>
+            <SelectItem value="all">全部人员</SelectItem>
             {uniqueActors.map((actor) => (
               <SelectItem key={actor.name} value={actor.id ?? actor.name}>
                 {actor.name} ({actor.role})

@@ -173,8 +173,9 @@ model ActivityLog {
 
   createdAt    DateTime @default(now())
 
-  @@index([hackathonId])
+  @@index([hackathonId, createdAt])
+  @@index([hackathonId, action])
+  @@index([hackathonId, entityType])
   @@index([actorId])
   @@index([entityType, entityId])
-  @@index([createdAt])
 }

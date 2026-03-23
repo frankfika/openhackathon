@@ -1,22 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { toast } from 'sonner'
 import {
-  Users, Loader2, ChevronDown, ChevronUp, Shuffle, Wand2, Search, Download,
-  Plus, X, Grid3X3, List,
+  Loader2, Shuffle, Search, Download,
+  Plus, X, Grid3X3, List, RotateCcw,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { api } from '@/lib/api'
-import { planBalancedRandomAssignments, planBulkAssignments } from '@/lib/assignment-planner'
+import { planBalancedRandomAssignments } from '@/lib/assignment-planner'
 import { getFilterableSubmissionFields, getFieldLabel, getProjectSubmissionFieldValue, getSubmissionFieldFilterOptions } from '@/lib/submission-fields'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
@@ -35,31 +31,34 @@ export function AssignmentManager() {
   const [searchParams] = useSearchParams()
   const [projectQuery, setProjectQuery] = useState('')
   const [submissionFilters, setSubmissionFilters] = useState<Record<string, string>>({})
-  const [autoAssignOpen, setAutoAssignOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [judgesPerProject, setJudgesPerProject] = useState<number | null>(null)
   const focusedJudgeId = searchParams.get('judgeId') || ''
   const hackathonId = activeHackathon?.id
 
   const { data: projects = [], isLoading: isLoadingProjects } = useQuery({
-    queryKey: ['projects', hackathonId],
-    queryFn: () => api.getProjects({ hackathonId }),
+    queryKey: ['projects', hackathonId, 'lite'],
+    queryFn: () => api.getProjects({ hackathonId, lite: true }),
     enabled: !!hackathonId,
+    staleTime: 30_000,
   })
 
   const { data: judges = [], isLoading: isLoadingJudges } = useQuery({
     queryKey: ['hackathon-judges', hackathonId],
     queryFn: () => api.getHackathonJudges(activeHackathon.id),
     enabled: !!hackathonId,
+    staleTime: 30_000,
   })
 
   const { data: assignments = [], isLoading: isLoadingAssignments } = useQuery({
-    queryKey: ['assignments', hackathonId],
+    queryKey: ['assignments', hackathonId, 'lite'],
     queryFn: async () => {
       if (!hackathonId) return []
-      return api.getAssignments({ hackathonId })
+      return api.getAssignments({ hackathonId, lite: true })
     },
     enabled: !!hackathonId,
+    staleTime: 30_000,
   })
 
   const judgeMap = useMemo(() => new Map(judges.map(j => [j.id, j])), [judges])
@@ -87,11 +86,26 @@ export function AssignmentManager() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['assignments'] }) },
   })
 
-  const getAssignment = (projectId: string, judgeId: string) =>
-    assignments.find(a => a.projectId === projectId && a.judgeId === judgeId)
+  const resetMutation = useMutation({
+    mutationFn: (hId: string) => api.resetAssignments(hId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['assignments'] })
+      toast.success(t('assignments.reset_success', { count: data.deleted }))
+    },
+    onError: () => { toast.error(t('assignments.reset_failed')) },
+  })
 
-  const getJudgeAssignmentCount = (judgeId: string, projectIds: Set<string>) =>
-    assignments.filter(a => a.judgeId === judgeId && projectIds.has(a.projectId)).length
+  // O(1) assignment lookup by project+judge key
+  const assignmentIndex = useMemo(() => {
+    const map = new Map<string, typeof assignments[number]>()
+    for (const a of assignments) {
+      map.set(`${a.projectId}:${a.judgeId}`, a)
+    }
+    return map
+  }, [assignments])
+
+  const getAssignment = (projectId: string, judgeId: string) =>
+    assignmentIndex.get(`${projectId}:${judgeId}`)
 
   const updateSubmissionFilter = (fieldId: string, value: string) =>
     setSubmissionFilters(prev => value ? { ...prev, [fieldId]: value } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== fieldId)))
@@ -122,6 +136,17 @@ export function AssignmentManager() {
     [filteredProjects]
   )
 
+  // Precomputed judge assignment counts (scoped to filtered projects)
+  const judgeAssignmentCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const a of assignments) {
+      if (filteredProjectIds.has(a.projectId)) {
+        counts.set(a.judgeId, (counts.get(a.judgeId) || 0) + 1)
+      }
+    }
+    return counts
+  }, [assignments, filteredProjectIds])
+
   // Per-project assignments lookup
   const projectAssignmentsMap = useMemo(() => {
     const map = new Map<string, typeof assignments>()
@@ -133,7 +158,7 @@ export function AssignmentManager() {
     return map
   }, [assignments])
 
-  // Per-project stats
+  // Per-project stats (single pass per project)
   const projectStats = useMemo(() => {
     const map = new Map<string, {
       totalAssignments: number; completedAssignments: number
@@ -142,15 +167,16 @@ export function AssignmentManager() {
     }>()
     for (const project of filteredProjects) {
       const pa = projectAssignmentsMap.get(project.id) || []
-      const completed = pa.filter(a => a.status === 'completed')
-      const totalScore = completed.reduce((sum, a) => sum + (a.totalScore || 0), 0)
+      let completedCount = 0, pendingCount = 0, inProgressCount = 0, totalScore = 0
+      for (const a of pa) {
+        if (a.status === 'completed') { completedCount++; totalScore += a.totalScore || 0 }
+        else if (a.status === 'pending') pendingCount++
+        else if (a.status === 'in_progress') inProgressCount++
+      }
       map.set(project.id, {
-        totalAssignments: pa.length,
-        completedAssignments: completed.length,
-        pendingAssignments: pa.filter(a => a.status === 'pending').length,
-        inProgressAssignments: pa.filter(a => a.status === 'in_progress').length,
-        totalScore,
-        averageScore: completed.length > 0 ? totalScore / completed.length : 0,
+        totalAssignments: pa.length, completedAssignments: completedCount,
+        pendingAssignments: pendingCount, inProgressAssignments: inProgressCount,
+        totalScore, averageScore: completedCount > 0 ? totalScore / completedCount : 0,
       })
     }
     return map
@@ -179,12 +205,17 @@ export function AssignmentManager() {
     })
   }, [filteredProjects, statusFilter, projectStats])
 
-  const filterCounts = useMemo(() => ({
-    all: filteredProjects.length,
-    pending: filteredProjects.filter(p => { const s = projectStats.get(p.id); return s && s.pendingAssignments > 0 }).length,
-    in_progress: filteredProjects.filter(p => { const s = projectStats.get(p.id); return s && s.inProgressAssignments > 0 }).length,
-    completed: filteredProjects.filter(p => { const s = projectStats.get(p.id); return s && s.totalAssignments > 0 && s.completedAssignments === s.totalAssignments }).length,
-  }), [filteredProjects, projectStats])
+  const filterCounts = useMemo(() => {
+    let pending = 0, in_progress = 0, completed = 0
+    for (const p of filteredProjects) {
+      const s = projectStats.get(p.id)
+      if (!s) continue
+      if (s.pendingAssignments > 0) pending++
+      if (s.inProgressAssignments > 0) in_progress++
+      if (s.totalAssignments > 0 && s.completedAssignments === s.totalAssignments) completed++
+    }
+    return { all: filteredProjects.length, pending, in_progress, completed }
+  }, [filteredProjects, projectStats])
 
   const sortedProjects = useMemo(() => {
     return [...statusFilteredProjects].sort((a, b) => {
@@ -251,6 +282,21 @@ export function AssignmentManager() {
   const isMutating = createMutation.isPending || deleteMutation.isPending
   const activeFilterCount = (projectQuery.trim() ? 1 : 0) + Object.values(submissionFilters).filter(Boolean).length
   const isLoading = isLoadingProjects || isLoadingJudges || isLoadingAssignments
+  // Count all pending assignments in hackathon (not just filtered), since reset is hackathon-wide
+  const pendingCount = useMemo(() => {
+    let count = 0
+    for (const a of assignments) if (a.status === 'pending') count++
+    return count
+  }, [assignments])
+
+  const effectiveJudgesPerProject = judgesPerProject ?? activeHackathon?.judgesPerProject ?? 2
+
+  const randomPlan = useMemo(() => planBalancedRandomAssignments({
+    projects,
+    judgeIds: judges.map(j => j.id),
+    existingAssignments: assignments,
+    judgesPerProject: effectiveJudgesPerProject,
+  }), [projects, judges, assignments, effectiveJudgesPerProject])
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin" /></div>
@@ -269,10 +315,38 @@ export function AssignmentManager() {
             <Download className="mr-1.5 h-3.5 w-3.5" />
             {t('reports.download_csv')}
           </Button>
-          <Button size="sm" onClick={() => setAutoAssignOpen(true)} className="gap-1.5">
-            <Wand2 className="h-3.5 w-3.5" />
-            {t('assignments.auto_title')}
+          <Button variant="outline" size="sm"
+            disabled={isMutating || resetMutation.isPending || pendingCount === 0}
+            onClick={() => {
+              if (window.confirm(t('assignments.reset_confirm', { count: pendingCount }))) {
+                resetMutation.mutate(hackathonId!)
+              }
+            }}
+            className="gap-1.5 text-destructive hover:text-destructive">
+            <RotateCcw className="h-3.5 w-3.5" />
+            {t('assignments.reset_title')}
           </Button>
+          <div className="flex items-center gap-1">
+            <Input
+              type="number" min={1} max={Math.max(judges.length, 1)}
+              value={effectiveJudgesPerProject}
+              onChange={(e) => {
+                const v = Number.parseInt(e.target.value, 10)
+                setJudgesPerProject(Number.isFinite(v) && v > 0 ? v : null)
+              }}
+              className="h-8 w-16 text-center text-sm tabular-nums"
+              title={t('assignments.judges_per_project')}
+            />
+            <Button size="sm"
+              disabled={isMutating || !hackathonId || judges.length === 0 || projects.length === 0 || randomPlan.assignments.length === 0}
+              onClick={() => {
+                createAssignments(randomPlan.assignments, t('assignments.random_created', { count: randomPlan.assignments.length, judgesPerProject: effectiveJudgesPerProject }))
+              }}
+              className="gap-1.5">
+              <Shuffle className="h-3.5 w-3.5" />
+              {t('assignments.random_assign')}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -458,7 +532,7 @@ export function AssignmentManager() {
                     <div className="flex flex-col items-center gap-0.5">
                       <span className="text-xs font-medium">{judge.name}</span>
                       <span className="text-[10px] text-muted-foreground tabular-nums">
-                        {getJudgeAssignmentCount(judge.id, filteredProjectIds)}
+                        {judgeAssignmentCounts.get(judge.id) || 0}
                       </span>
                     </div>
                   </TableHead>
@@ -504,33 +578,6 @@ export function AssignmentManager() {
         </div>
       )}
 
-      {/* Auto-assign Dialog */}
-      <Dialog open={autoAssignOpen} onOpenChange={setAutoAssignOpen}>
-        <DialogContent className="max-w-lg flex flex-col max-h-[90vh]">
-          <DialogHeader className="flex-shrink-0">
-            <DialogTitle className="flex items-center gap-2">
-              <Wand2 className="h-5 w-5" />
-              {t('assignments.auto_title')}
-            </DialogTitle>
-            <DialogDescription>{t('assignments.auto_desc')}</DialogDescription>
-          </DialogHeader>
-          {autoAssignOpen && (
-            <div className="overflow-y-auto flex-1 pr-1 -mr-1">
-              <AutoAssignDialogBody
-                judges={judges}
-                filteredProjects={filteredProjects}
-                filteredProjectIds={filteredProjectIds}
-                assignments={assignments}
-                hackathonId={hackathonId}
-                defaultJudgesPerProject={activeHackathon?.judgesPerProject ?? 2}
-                isMutating={isMutating}
-                createAssignments={createAssignments}
-                t={t}
-              />
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
@@ -668,129 +715,3 @@ function MatrixCell({
   )
 }
 
-/* ── Auto-assign dialog ── */
-
-function AutoAssignDialogBody({
-  judges, filteredProjects, filteredProjectIds, assignments, hackathonId,
-  defaultJudgesPerProject, isMutating, createAssignments, t,
-}: {
-  judges: { id: string; name: string; email: string }[]
-  filteredProjects: { id: string; title: string }[]
-  filteredProjectIds: Set<string>
-  assignments: { id: string; projectId: string; judgeId: string; status: string }[]
-  hackathonId: string | undefined
-  defaultJudgesPerProject: number
-  isMutating: boolean
-  createAssignments: (rows: { projectId: string; judgeId: string }[], msg: string) => Promise<void>
-  t: (key: string, opts?: Record<string, unknown>) => string
-}) {
-  const [selectedJudgeIds, setSelectedJudgeIds] = useState<string[]>(() => judges.map((j) => j.id))
-  const [showBulk, setShowBulk] = useState(false)
-
-  // Default to the current max judges-per-project so auto-assign "tops up" correctly
-  const inferredDefault = useMemo(() => {
-    if (filteredProjects.length === 0) return defaultJudgesPerProject
-    let max = 0
-    for (const p of filteredProjects) {
-      const count = assignments.filter((a) => a.projectId === p.id).length
-      if (count > max) max = count
-    }
-    return Math.max(max, defaultJudgesPerProject)
-  }, [filteredProjects, assignments, defaultJudgesPerProject])
-
-  const [judgesPerProject, setJudgesPerProject] = useState(String(inferredDefault))
-
-  const parsedJudgesPerProject = Number.parseInt(judgesPerProject, 10)
-  const autoAssignTarget = Number.isFinite(parsedJudgesPerProject) && parsedJudgesPerProject > 0 ? parsedJudgesPerProject : 1
-  const effectiveJudgesPerProject = Math.min(autoAssignTarget, Math.max(selectedJudgeIds.length, 1))
-
-  const getJudgeAssignmentCount = (judgeId: string) =>
-    assignments.filter((a) => a.judgeId === judgeId && filteredProjectIds.has(a.projectId)).length
-
-  const toggleJudge = (judgeId: string) =>
-    setSelectedJudgeIds((prev) => prev.includes(judgeId) ? prev.filter((id) => id !== judgeId) : [...prev, judgeId])
-
-  const balancedPlan = planBalancedRandomAssignments({
-    projects: filteredProjects, judgeIds: selectedJudgeIds,
-    existingAssignments: assignments, judgesPerProject: autoAssignTarget,
-  })
-
-  const bulkPlan = planBulkAssignments({
-    projects: filteredProjects, judgeIds: selectedJudgeIds, existingAssignments: assignments,
-  })
-
-  return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>{t('assignments.auto_judges')}</Label>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" className="h-7 text-xs"
-              onClick={() => setSelectedJudgeIds(judges.map((j) => j.id))}
-              disabled={isMutating || judges.length === 0}>{t('common.select_all')}</Button>
-            <Button variant="ghost" size="sm" className="h-7 text-xs"
-              onClick={() => setSelectedJudgeIds([])}
-              disabled={isMutating || selectedJudgeIds.length === 0}>{t('assignments.clear_selection')}</Button>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {judges.map((judge) => (
-            <label key={judge.id} className="flex cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-sm">
-              <Checkbox checked={selectedJudgeIds.includes(judge.id)} onCheckedChange={() => toggleJudge(judge.id)} disabled={isMutating} />
-              <span>{judge.name}</span>
-              <Badge variant="outline" className="rounded-full">{getJudgeAssignmentCount(judge.id)}</Badge>
-            </label>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="dialogJudgesPerProject">{t('assignments.judges_per_project')}</Label>
-        <Input id="dialogJudgesPerProject" type="number" min={1} max={Math.max(judges.length, 1)}
-          value={judgesPerProject} onChange={(e) => setJudgesPerProject(e.target.value)} disabled={isMutating} />
-        <p className="text-xs text-muted-foreground">{t('assignments.judges_per_project_desc')}</p>
-      </div>
-
-      <div className="rounded-2xl border border-border/60 bg-background/75 p-4">
-        <div className="flex items-center gap-2">
-          <Shuffle className="h-4 w-4 text-primary" />
-          <p className="text-sm font-semibold">{t('assignments.random_mode_title')}</p>
-          <Badge variant="outline" className="rounded-full">{t('assignments.recommended')}</Badge>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t('assignments.random_mode_desc', { judgesPerProject: effectiveJudgesPerProject, count: balancedPlan.assignments.length })}
-        </p>
-        <Button className="mt-3 gap-2"
-          onClick={() => createAssignments(balancedPlan.assignments, t('assignments.random_created', { count: balancedPlan.assignments.length, judgesPerProject: effectiveJudgesPerProject }))}
-          disabled={isMutating || !hackathonId || balancedPlan.assignments.length === 0 || selectedJudgeIds.length === 0}>
-          <Shuffle className="h-4 w-4" />
-          {t('assignments.random_assign_button', { count: balancedPlan.assignments.length })}
-        </Button>
-      </div>
-
-      <div className="space-y-2">
-        <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => setShowBulk((prev) => !prev)}>
-          {showBulk ? <ChevronUp className="mr-1 h-3.5 w-3.5" /> : <ChevronDown className="mr-1 h-3.5 w-3.5" />}
-          {showBulk ? t('assignments.hide_advanced_auto') : t('assignments.show_advanced_auto')}
-        </Button>
-        {showBulk && (
-          <div className="rounded-2xl border border-border/60 bg-background/75 p-4">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" />
-              <p className="text-sm font-semibold">{t('assignments.bulk_mode_title')}</p>
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t('assignments.bulk_mode_desc', { judges: selectedJudgeIds.length, count: bulkPlan.assignments.length })}
-            </p>
-            <Button variant="secondary" className="mt-3 gap-2"
-              onClick={() => createAssignments(bulkPlan.assignments, t('assignments.bulk_created', { count: bulkPlan.assignments.length, judges: selectedJudgeIds.length }))}
-              disabled={isMutating || !hackathonId || bulkPlan.assignments.length === 0 || selectedJudgeIds.length === 0}>
-              <Users className="h-4 w-4" />
-              {t('assignments.bulk_assign_button', { count: bulkPlan.assignments.length })}
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}

@@ -42,6 +42,7 @@ export function JudgeManagement() {
   const { data: allJudges = [], isLoading: isLoadingAllJudges } = useQuery({
     queryKey: ['users', 'judge'],
     queryFn: () => api.getUsers({ role: 'judge' }),
+    staleTime: 30_000,
   })
 
   const {
@@ -51,6 +52,7 @@ export function JudgeManagement() {
     queryKey: ['hackathon-judges', activeHackathon.id],
     queryFn: () => api.getHackathonJudges(activeHackathon.id),
     enabled: !!activeHackathon.id,
+    staleTime: 30_000,
   })
 
   const registerMutation = useMutation({
