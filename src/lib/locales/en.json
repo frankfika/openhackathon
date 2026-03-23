@@ -27,7 +27,10 @@
     "english": "English",
     "chinese": "中文",
     "profile": "Profile",
-    "close": "Close"
+    "close": "Close",
+    "showing_range": "Showing {{from}}–{{to}} of {{total}}",
+    "page_prev": "Previous",
+    "page_next": "Next"
   },
   "nav": {
     "home": "Home",

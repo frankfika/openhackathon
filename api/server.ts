@@ -1025,12 +1025,56 @@ app.delete('/api/hackathons/:id/markdown-doc', requireAdmin, async (req, res) =>
 // ===== Projects =====
 
 app.get('/api/projects', async (req, res) => {
-  const { hackathonId, lite } = req.query;
+  const { hackathonId, lite, page, pageSize, search } = req.query;
   const hackathonIdValue = await getScopedHackathonId(hackathonId);
+
+  const pageNum = page ? Math.max(1, parseInt(String(page), 10)) : null;
+  const pageSizeNum = pageSize ? Math.min(200, Math.max(1, parseInt(String(pageSize), 10))) : null;
+  const searchStr = search ? String(search).trim() : null;
+
+  const where = {
+    ...(hackathonIdValue ? { hackathonId: hackathonIdValue } : {}),
+    ...(searchStr ? {
+      OR: [
+        { title: { contains: searchStr, mode: 'insensitive' as const } },
+        { oneLiner: { contains: searchStr, mode: 'insensitive' as const } },
+        { submitterName: { contains: searchStr, mode: 'insensitive' as const } },
+        { submitterEmail: { contains: searchStr, mode: 'insensitive' as const } },
+        { tags: { has: searchStr } },
+      ],
+    } : {}),
+  };
+
+  // Paginated response
+  if (pageNum !== null && pageSizeNum !== null) {
+    const [total, projects] = await Promise.all([
+      prisma.project.count({ where }),
+      prisma.project.findMany({
+        where,
+        skip: (pageNum - 1) * pageSizeNum,
+        take: pageSizeNum,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: true,
+          assignments: {
+            select: {
+              id: true,
+              projectId: true,
+              judgeId: true,
+              status: true,
+              totalScore: true,
+              judge: { select: { id: true, name: true } },
+            }
+          },
+        },
+      }),
+    ]);
+    return res.json({ data: projects, total, page: pageNum, pageSize: pageSizeNum });
+  }
+
+  // Legacy: return plain array (used by AssignmentManager lite=true, leaderboard picker, etc.)
   const projects = await prisma.project.findMany({
-    where: {
-      ...(hackathonIdValue ? { hackathonId: hackathonIdValue } : {}),
-    },
+    where,
     include: lite ? undefined : {
       user: true,
       assignments: {

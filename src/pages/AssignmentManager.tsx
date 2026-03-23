@@ -6,7 +6,7 @@ import { useActiveHackathon } from '@/lib/active-hackathon'
 import { toast } from 'sonner'
 import {
   Loader2, Shuffle, Search, Download,
-  Plus, X, Grid3X3, List, RotateCcw,
+  Plus, X, Grid3X3, List, RotateCcw, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -34,6 +34,8 @@ export function AssignmentManager() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [judgesPerProject, setJudgesPerProject] = useState<number | null>(null)
+  const [displayPage, setDisplayPage] = useState(1)
+  const DISPLAY_PAGE_SIZE = 50
   const focusedJudgeId = searchParams.get('judgeId') || ''
   const hackathonId = activeHackathon?.id
 
@@ -224,6 +226,15 @@ export function AssignmentManager() {
       return (sb?.averageScore ?? 0) - (sa?.averageScore ?? 0)
     })
   }, [statusFilteredProjects, projectStats])
+
+  // Reset display page when filters change
+  useEffect(() => { setDisplayPage(1) }, [projectQuery, submissionFilters, statusFilter])
+
+  const displayTotalPages = Math.max(1, Math.ceil(sortedProjects.length / DISPLAY_PAGE_SIZE))
+  const pagedProjects = useMemo(
+    () => sortedProjects.slice((displayPage - 1) * DISPLAY_PAGE_SIZE, displayPage * DISPLAY_PAGE_SIZE),
+    [sortedProjects, displayPage]
+  )
 
   const createAssignments = async (rows: { projectId: string; judgeId: string }[], successMessage: string) => {
     if (rows.length === 0) { toast.message(t('assignments.no_changes')); return }
@@ -451,14 +462,15 @@ export function AssignmentManager() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedProjects.map((project, index) => {
+              {pagedProjects.map((project, index) => {
+                const globalIndex = (displayPage - 1) * DISPLAY_PAGE_SIZE + index
                 const s = projectStats.get(project.id)
                 const pa = projectAssignmentsMap.get(project.id) || []
                 const unassignedJudges = judges.filter(j => !pa.some(a => a.judgeId === j.id))
 
                 return (
                   <TableRow key={project.id}>
-                    <TableCell className="text-center text-muted-foreground text-xs tabular-nums">{index + 1}</TableCell>
+                    <TableCell className="text-center text-muted-foreground text-xs tabular-nums">{globalIndex + 1}</TableCell>
                     <TableCell>
                       <button type="button"
                         onClick={() => navigate(`${buildAdminPath(adminBasePath, `projects/${project.id}`)}?tab=scores`)}
@@ -542,11 +554,12 @@ export function AssignmentManager() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedProjects.map((project, index) => {
+              {pagedProjects.map((project, index) => {
+                const globalIndex = (displayPage - 1) * DISPLAY_PAGE_SIZE + index
                 const s = projectStats.get(project.id)
                 return (
                   <TableRow key={project.id} className="h-10">
-                    <TableCell className="sticky left-0 z-10 bg-background text-center text-muted-foreground text-xs tabular-nums">{index + 1}</TableCell>
+                    <TableCell className="sticky left-0 z-10 bg-background text-center text-muted-foreground text-xs tabular-nums">{globalIndex + 1}</TableCell>
                     <TableCell className="sticky left-10 z-10 bg-background">
                       <button type="button"
                         onClick={() => navigate(`${buildAdminPath(adminBasePath, `projects/${project.id}`)}?tab=scores`)}
@@ -575,6 +588,30 @@ export function AssignmentManager() {
               })}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {/* Pagination controls */}
+      {sortedProjects.length > DISPLAY_PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground pt-1">
+          <span>
+            {t('common.showing_range', {
+              from: (displayPage - 1) * DISPLAY_PAGE_SIZE + 1,
+              to: Math.min(displayPage * DISPLAY_PAGE_SIZE, sortedProjects.length),
+              total: sortedProjects.length,
+            })}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="icon" className="h-7 w-7"
+              disabled={displayPage <= 1} onClick={() => setDisplayPage(p => p - 1)}>
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <span className="px-2 tabular-nums">{displayPage} / {displayTotalPages}</span>
+            <Button variant="outline" size="icon" className="h-7 w-7"
+              disabled={displayPage >= displayTotalPages} onClick={() => setDisplayPage(p => p + 1)}>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       )}
 

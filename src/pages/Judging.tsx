@@ -5,7 +5,7 @@ import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { CheckCircle2, ExternalLink, Github, Save, FileText, ChevronRight } from 'lucide-react'
+import { CheckCircle2, ExternalLink, Github, Save, FileText, ChevronRight, ChevronLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth'
@@ -40,6 +40,8 @@ export function Judging() {
   const isJudge = user?.role === 'judge'
   const [status, setStatus] = useState<(typeof statuses)[number]>(isJudge ? 'pending' : 'in_progress')
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null)
+  const [sidebarPage, setSidebarPage] = useState(1)
+  const SIDEBAR_PAGE_SIZE = 50
 
   // Fetch assignments from API
   const { data: assignments = [], isLoading: isLoadingAssignments } = useQuery({
@@ -75,6 +77,15 @@ export function Judging() {
   const filteredAssignments = useMemo(() => {
     return assignments.filter((a) => a.status === status)
   }, [assignments, status])
+
+  // Reset sidebar page when tab changes
+  useEffect(() => { setSidebarPage(1) }, [status])
+
+  const sidebarTotalPages = Math.max(1, Math.ceil(filteredAssignments.length / SIDEBAR_PAGE_SIZE))
+  const pagedAssignments = useMemo(
+    () => filteredAssignments.slice((sidebarPage - 1) * SIDEBAR_PAGE_SIZE, sidebarPage * SIDEBAR_PAGE_SIZE),
+    [filteredAssignments, sidebarPage]
+  )
 
   const selectedAssignment = useMemo(() => {
     return assignments.find((a) => a.id === selectedAssignmentId) || filteredAssignments[0]
@@ -192,56 +203,83 @@ export function Judging() {
           </div>
 
           {/* Assignment List */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto flex flex-col">
             {filteredAssignments.length === 0 ? (
               <div className="p-4 text-center text-sm text-muted-foreground">
                 {t('judging.no_assignments', 'No assignments found')}
               </div>
             ) : (
-              <div className="divide-y">
-                {filteredAssignments.map((assignment) => {
-                  const project = projects.find((p) => p.id === assignment.projectId)
-                  const isSelected = selectedAssignment?.id === assignment.id
+              <>
+                <div className="divide-y flex-1">
+                  {pagedAssignments.map((assignment) => {
+                    const project = projects.find((p) => p.id === assignment.projectId)
+                    const isSelected = selectedAssignment?.id === assignment.id
 
-                  return (
-                    <button
-                      key={assignment.id}
-                      onClick={() => setSelectedAssignmentId(assignment.id)}
-                      className={cn(
-                        'w-full text-left p-3 transition-colors hover:bg-muted/50',
-                        isSelected && 'bg-primary/5 border-l-2 border-l-primary'
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium text-sm truncate">
-                            {project?.title || 'Unknown Project'}
+                    return (
+                      <button
+                        key={assignment.id}
+                        onClick={() => setSelectedAssignmentId(assignment.id)}
+                        className={cn(
+                          'w-full text-left p-3 transition-colors hover:bg-muted/50',
+                          isSelected && 'bg-primary/5 border-l-2 border-l-primary'
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium text-sm truncate">
+                              {project?.title || 'Unknown Project'}
+                            </div>
+                            <div className="text-xs text-muted-foreground truncate mt-0.5">
+                              {project?.oneLiner}
+                            </div>
                           </div>
-                          <div className="text-xs text-muted-foreground truncate mt-0.5">
-                            {project?.oneLiner}
+                          <div className="shrink-0">
+                            {assignment.status === 'completed' ? (
+                              <span className="inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30">
+                                <CheckCircle2 className="h-3 w-3 mr-0.5" />
+                                {assignment.totalScore}
+                              </span>
+                            ) : assignment.status === 'in_progress' ? (
+                              <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30">
+                                {t('judging.status.in_progress')}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:bg-slate-800">
+                                {t('judging.status.pending')}
+                              </span>
+                            )}
                           </div>
                         </div>
-                        <div className="shrink-0">
-                          {assignment.status === 'completed' ? (
-                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30">
-                              <CheckCircle2 className="h-3 w-3 mr-0.5" />
-                              {assignment.totalScore}
-                            </span>
-                          ) : assignment.status === 'in_progress' ? (
-                            <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30">
-                              {t('judging.status.in_progress')}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 dark:bg-slate-800">
-                              {t('judging.status.pending')}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
+                      </button>
+                    )
+                  })}
+                </div>
+                {/* Sidebar pagination */}
+                {sidebarTotalPages > 1 && (
+                  <div className="border-t p-2 flex items-center justify-between bg-background shrink-0">
+                    <span className="text-[11px] text-muted-foreground tabular-nums">
+                      {(sidebarPage - 1) * SIDEBAR_PAGE_SIZE + 1}–{Math.min(sidebarPage * SIDEBAR_PAGE_SIZE, filteredAssignments.length)} / {filteredAssignments.length}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setSidebarPage(p => p - 1)}
+                        disabled={sidebarPage <= 1}
+                        className="rounded p-1 hover:bg-muted disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </button>
+                      <span className="text-[11px] tabular-nums px-1">{sidebarPage}/{sidebarTotalPages}</span>
+                      <button
+                        onClick={() => setSidebarPage(p => p + 1)}
+                        disabled={sidebarPage >= sidebarTotalPages}
+                        className="rounded p-1 hover:bg-muted disabled:opacity-30 disabled:pointer-events-none"
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

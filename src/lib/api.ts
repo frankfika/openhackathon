@@ -85,6 +85,12 @@ export const api = {
     const res = await axios.get<Project[]>(`${API_URL}/projects`, { params })
     return res.data
   },
+  getProjectsPaginated: async (params: { hackathonId?: string; page: number; pageSize: number; search?: string }) => {
+    const res = await axios.get<{ data: Project[]; total: number; page: number; pageSize: number }>(
+      `${API_URL}/projects`, { params }
+    )
+    return res.data
+  },
   getProject: async (id: string) => {
     const res = await axios.get<Project>(`${API_URL}/projects/${id}`)
     return res.data

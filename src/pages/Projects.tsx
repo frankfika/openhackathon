@@ -31,10 +31,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Search, Pencil, Trash2, Eye, Loader2, BarChart3 } from 'lucide-react'
+import { Search, Pencil, Trash2, Eye, Loader2, BarChart3, ChevronLeft, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
 import { getFilterableSubmissionFields, getFieldLabel, getProjectSubmissionFieldValue, getSubmissionFieldFilterOptions } from '@/lib/submission-fields'
+import { useDebounce } from '@/lib/use-debounce'
+
+const PAGE_SIZE = 50
 
 type ProjectWithAssignments = Project & {
   assignments?: Assignment[]
@@ -53,9 +56,22 @@ export function Projects() {
   const { activeHackathon } = useActiveHackathon()
   const queryClient = useQueryClient()
 
+  const [page, setPage] = useState(1)
   const [query, setQuery] = useState('')
+  const debouncedQuery = useDebounce(query, 300)
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null)
   const [submissionFilters, setSubmissionFilters] = useState<Record<string, string>>({})
+
+  // Reset to page 1 when search changes
+  useEffect(() => { setPage(1) }, [debouncedQuery, submissionFilters])
+
+  // Lite query for filter-option population (all projects, no nested data)
+  const { data: allProjectsLite = [] } = useQuery<Project[]>({
+    queryKey: ['projects', activeHackathon.id, 'lite'],
+    queryFn: () => api.getProjects({ hackathonId: activeHackathon.id, lite: true }),
+    enabled: !!activeHackathon.id,
+    staleTime: 2 * 60 * 1000,
+  })
 
   const filterableFields = useMemo(
     () => getFilterableSubmissionFields(activeHackathon?.submissionSchema),
@@ -74,11 +90,22 @@ export function Projects() {
       value ? { ...prev, [fieldId]: value } : Object.fromEntries(Object.entries(prev).filter(([k]) => k !== fieldId))
     )
 
-  const { data: projects, isLoading, isError } = useQuery<ProjectWithAssignments[]>({
-    queryKey: ['projects', activeHackathon.id],
-    queryFn: () => api.getProjects({ hackathonId: activeHackathon.id }) as Promise<ProjectWithAssignments[]>,
+  // Main paginated query (server search)
+  const { data: pageResult, isLoading, isError } = useQuery({
+    queryKey: ['projects', activeHackathon.id, 'paginated', page, debouncedQuery],
+    queryFn: () => api.getProjectsPaginated({
+      hackathonId: activeHackathon.id,
+      page,
+      pageSize: PAGE_SIZE,
+      search: debouncedQuery || undefined,
+    }),
     enabled: !!activeHackathon.id,
+    placeholderData: (prev) => prev,
   })
+
+  const projects: ProjectWithAssignments[] = pageResult?.data ?? []
+  const total = pageResult?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteProject(id),
@@ -90,20 +117,13 @@ export function Projects() {
     onError: () => toast.error(t('projects.delete_error')),
   })
 
-  const filteredProjects = useMemo(() => projects?.filter((project) => {
-    if (query) {
-      const q = query.toLowerCase()
-      const hit =
-        project.title.toLowerCase().includes(q) ||
-        project.oneLiner?.toLowerCase().includes(q) ||
-        project.tags?.some((tag: string) => tag.toLowerCase().includes(q))
-      if (!hit) return false
-    }
+  // Client-side submission field filter on current page
+  const filteredProjects = useMemo(() => projects.filter((project) => {
     for (const [fieldId, val] of Object.entries(submissionFilters)) {
       if (val && getProjectSubmissionFieldValue(project, fieldId) !== val) return false
     }
     return true
-  }), [projects, query, submissionFilters])
+  }), [projects, submissionFilters])
 
   return (
     <div className="space-y-4">
@@ -134,7 +154,7 @@ export function Projects() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">{t('assignments.all_filter_values')}</SelectItem>
-                {getSubmissionFieldFilterOptions(field, projects || []).map((opt) => (
+                {getSubmissionFieldFilterOptions(field, allProjectsLite).map((opt) => (
                   <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                 ))}
               </SelectContent>
@@ -170,14 +190,14 @@ export function Projects() {
                   {t('projects.load_error')}
                 </TableCell>
               </TableRow>
-            ) : filteredProjects?.length === 0 ? (
+            ) : filteredProjects.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
                   {t('projects.no_projects')}
                 </TableCell>
               </TableRow>
             ) : (
-              filteredProjects?.map((project) => {
+              filteredProjects.map((project) => {
                 const score = calculateProjectScore(project.id, project.assignments || [])
                 return (
                   <TableRow
@@ -256,6 +276,40 @@ export function Projects() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Pagination */}
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>
+            {t('common.showing_range', {
+              from: (page - 1) * PAGE_SIZE + 1,
+              to: Math.min(page * PAGE_SIZE, total),
+              total,
+            })}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="px-2 tabular-nums">{page} / {totalPages}</span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Dialog open={!!projectToDelete} onOpenChange={(open) => !open && setProjectToDelete(null)}>
         <DialogContent>
