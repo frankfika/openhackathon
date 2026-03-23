@@ -4,7 +4,7 @@ import { Toaster } from 'sonner'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Layout } from './components/Layout'
 import { AuthProvider } from './lib/auth'
-import { ActiveHackathonProvider } from './lib/active-hackathon'
+import { ActiveHackathonProvider, useActiveHackathon } from './lib/active-hackathon'
 import { SiteBrandingProvider, useSiteBranding } from './lib/site-branding'
 import { DashboardLayout } from './components/DashboardLayout'
 import { JudgeLayout } from './components/JudgeLayout'
@@ -53,6 +53,26 @@ function LegacyJudgingHubRedirect({ adminBasePath }: { adminBasePath: string }) 
   return <Navigate to={buildAdminPath(adminBasePath, 'assignments')} replace />
 }
 
+function RequireHackathonStarted({ adminBasePath, children }: { adminBasePath: string; children: React.ReactNode }) {
+  const { activeHackathon, isLoading } = useActiveHackathon()
+
+  if (isLoading) {
+    return <RouteLoader />
+  }
+
+  const hasStarted =
+    activeHackathon.status === 'active' ||
+    activeHackathon.status === 'judging' ||
+    activeHackathon.status === 'completed'
+
+  if (hasStarted) return <>{children}</>
+
+  const fallbackPath = activeHackathon.id
+    ? buildAdminPath(adminBasePath, `hackathons/${activeHackathon.id}/settings`)
+    : adminBasePath
+  return <Navigate to={fallbackPath} replace />
+}
+
 function AppRoutes() {
   const { settings, isLoading } = useSiteBranding()
 
@@ -96,15 +116,57 @@ function AppRoutes() {
             <Route path="hackathons" element={<Navigate to={adminBasePath} replace />} />
             <Route path="hackathons/:id" element={<Navigate to={adminBasePath} replace />} />
             <Route path="hackathons/:id/settings" element={<HackathonSettings />} />
-            <Route path="projects" element={<Projects />} />
-            <Route path="projects/:id" element={<ProjectDetail />} />
+            <Route
+              path="projects"
+              element={
+                <RequireHackathonStarted adminBasePath={adminBasePath}>
+                  <Projects />
+                </RequireHackathonStarted>
+              }
+            />
+            <Route
+              path="projects/:id"
+              element={
+                <RequireHackathonStarted adminBasePath={adminBasePath}>
+                  <ProjectDetail />
+                </RequireHackathonStarted>
+              }
+            />
             <Route path="judging" element={<LegacyJudgingHubRedirect adminBasePath={adminBasePath} />} />
             <Route path="reviews" element={<Navigate to={buildAdminPath(adminBasePath, 'assignments')} replace />} />
-            <Route path="assignments" element={<AssignmentManager />} />
+            <Route
+              path="assignments"
+              element={
+                <RequireHackathonStarted adminBasePath={adminBasePath}>
+                  <AssignmentManager />
+                </RequireHackathonStarted>
+              }
+            />
             <Route path="reports" element={<Navigate to={buildAdminPath(adminBasePath, 'assignments')} replace />} />
-            <Route path="judging/:id" element={<JudgingDetail />} />
-            <Route path="judges" element={<JudgeManagement />} />
-            <Route path="leaderboard" element={<Leaderboard />} />
+            <Route
+              path="judging/:id"
+              element={
+                <RequireHackathonStarted adminBasePath={adminBasePath}>
+                  <JudgingDetail />
+                </RequireHackathonStarted>
+              }
+            />
+            <Route
+              path="judges"
+              element={
+                <RequireHackathonStarted adminBasePath={adminBasePath}>
+                  <JudgeManagement />
+                </RequireHackathonStarted>
+              }
+            />
+            <Route
+              path="leaderboard"
+              element={
+                <RequireHackathonStarted adminBasePath={adminBasePath}>
+                  <Leaderboard />
+                </RequireHackathonStarted>
+              }
+            />
             <Route path="activity" element={<ActivityLog />} />
             <Route path="settings" element={<Settings />} />
           </Route>

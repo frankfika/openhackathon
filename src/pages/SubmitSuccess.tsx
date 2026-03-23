@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useTranslation } from 'react-i18next'
 import { useActiveHackathon } from '@/lib/active-hackathon'
+import { useSiteBranding } from '@/lib/site-branding'
 
 type SubmitSuccessState = {
   receiptId?: string
@@ -17,6 +18,7 @@ export function SubmitSuccess() {
   const { t } = useTranslation()
   const location = useLocation()
   const { activeHackathon: hackathon } = useActiveHackathon()
+  const { settings } = useSiteBranding()
   const state = (location.state || {}) as SubmitSuccessState
   const receiptId = typeof state.receiptId === 'string' && state.receiptId.trim().length > 0 ? state.receiptId : null
   const submitterEmail =
@@ -24,6 +26,12 @@ export function SubmitSuccess() {
       ? state.submitterEmail
       : null
   const emailSent = typeof state.emailSent === 'boolean' ? state.emailSent : null
+  const successHintText = typeof settings.submissionSuccessHintText === 'string'
+    ? settings.submissionSuccessHintText.trim()
+    : ''
+  const successHintImageUrl = typeof settings.submissionSuccessHintImageUrl === 'string'
+    ? settings.submissionSuccessHintImageUrl.trim()
+    : ''
 
   return (
     <div className="container max-w-2xl py-12 md:py-20">
@@ -74,6 +82,29 @@ export function SubmitSuccess() {
                 <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
                   {t('submission.receipt_status_pending')}
                 </p>
+              )}
+            </div>
+          )}
+
+          {(successHintText || successHintImageUrl) && (
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50/80 p-4 mb-8 text-left dark:border-indigo-800 dark:bg-indigo-950/20">
+              <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-100 mb-2">
+                {t('submission.success_hint_title', 'Next Step')}
+              </p>
+              {successHintText && (
+                <p className="text-sm text-indigo-900/90 dark:text-indigo-100/90 whitespace-pre-line">
+                  {successHintText}
+                </p>
+              )}
+              {successHintImageUrl && (
+                <div className="mt-3 flex justify-center">
+                  <img
+                    src={successHintImageUrl}
+                    alt={t('submission.success_hint_image_alt', 'Submission success hint image')}
+                    className="max-h-64 w-auto rounded-md border border-indigo-200 bg-white p-1 dark:border-indigo-700 dark:bg-indigo-950/40"
+                    loading="lazy"
+                  />
+                </div>
               )}
             </div>
           )}

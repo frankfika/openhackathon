@@ -163,13 +163,16 @@ npm run dev:up
 - 读取 `.env`；如果本地没有 `.env`，则回退到 `.env.example`
 - 使用 `docker compose` 启动 PostgreSQL
 - 等待数据库就绪后执行 `npx prisma db push`
-- 自动补齐内置开发账号（不会清空现有业务数据）
+- 默认不创建管理员账号，首次进入通过 Setup Wizard 创建管理员
 - 启动现有的前端和 API 开发进程（`npm run dev`）
 
 常用命令：
 ```bash
 # 首次初始化演示数据（会清空现有数据并重新写入 seed）
 npm run dev:up:seed
+
+# 仅补齐开发账号（不写入完整 seed）
+./dev-stack.sh up --dev-users
 
 # 关闭 Docker 中的数据库
 npm run dev:down
@@ -184,6 +187,12 @@ npm install
 # 手动模式：如果你自己管理 PostgreSQL，而不是使用一键脚本
 npx prisma db push
 npm run db:seed
+
+# 重置到初始状态（无默认管理员，进入 Setup Wizard）
+npm run db:reset
+
+# 重置并写入演示数据（含默认管理员）
+npm run db:reset:seed
 
 # 启动前后端
 npm run dev
@@ -233,7 +242,7 @@ npm run dev
 
 注意：
 - `npm run dev:up:seed` 和 `npm run db:seed` 都会删除当前数据库中的业务数据后重新写入演示数据。
-- `npm run dev:up` 每次都会补齐上面的内置开发账号；如果这些账号已存在，会重置为固定密码 `password`。
+- `npm run dev:up` 默认不会补齐内置开发账号；如需补齐请用 `./dev-stack.sh up --dev-users`。
 - `Ctrl+C` 会停止前端和 API 进程；数据库容器可通过 `npm run dev:down` 关闭。
 - 如果 `3001` 或 `5173` 端口已被占用，脚本会直接报错并打印占用进程，先释放端口再重跑即可。
 

@@ -13,6 +13,8 @@ export const defaultSiteSettings: SiteSettings = {
   showPoweredBy: import.meta.env.VITE_SHOW_POWERED_BY !== 'false',
   poweredByText: import.meta.env.VITE_POWERED_BY_TEXT || 'Powered by OpenHackathon',
   poweredByUrl: import.meta.env.VITE_POWERED_BY_URL || 'https://openhackathon.dev',
+  submissionSuccessHintText: null,
+  submissionSuccessHintImageUrl: null,
 }
 
 // Backward-compatible static config for places that do not use context yet.

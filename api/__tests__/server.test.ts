@@ -124,6 +124,7 @@ describe('API integration tests (real database)', () => {
     it('updates site settings and supports clearing logo url', async () => {
       const updateRes = await request(app)
         .put('/api/site-settings')
+        .set('x-test-role', 'admin')
         .send({
           siteName: 'My Hackathon Hub',
           adminBasePath: 'secret-console/',
@@ -145,10 +146,102 @@ describe('API integration tests (real database)', () => {
 
       const clearLogoRes = await request(app)
         .put('/api/site-settings')
+        .set('x-test-role', 'admin')
         .send({ logoUrl: '' })
         .expect(200);
 
       expect(clearLogoRes.body.logoUrl).toBeNull();
+    });
+
+    it('does not expose SMTP configuration on public site settings endpoint', async () => {
+      await request(app)
+        .put('/api/site-settings')
+        .set('x-test-role', 'admin')
+        .send({
+          smtpHost: 'smtp.mail.example',
+          smtpPort: 587,
+          smtpSecure: false,
+          smtpUser: 'apikey',
+          smtpPass: 'secret-token',
+          submissionEmailEnabled: true,
+        })
+        .expect(200);
+
+      const publicRes = await request(app)
+        .get('/api/site-settings')
+        .set('x-test-role', 'judge')
+        .expect(200);
+
+      expect(publicRes.body.smtpHost).toBeUndefined();
+      expect(publicRes.body.smtpPort).toBeUndefined();
+      expect(publicRes.body.smtpUser).toBeUndefined();
+      expect(publicRes.body.smtpPasswordConfigured).toBeUndefined();
+      expect(publicRes.body.submissionEmailEnabled).toBeUndefined();
+    });
+
+    it('returns admin site settings with smtp password masked', async () => {
+      await request(app)
+        .put('/api/site-settings')
+        .set('x-test-role', 'admin')
+        .send({
+          submissionSuccessHintText: 'Join the event group',
+          submissionSuccessHintImageUrl: 'https://example.com/qr.png',
+          smtpHost: 'smtp.mail.example',
+          smtpPort: 587,
+          smtpSecure: false,
+          smtpUser: 'apikey',
+          smtpPass: 'secret-token',
+          submissionEmailEnabled: true,
+        })
+        .expect(200);
+
+      const adminRes = await request(app)
+        .get('/api/site-settings/admin')
+        .set('x-test-role', 'admin')
+        .expect(200);
+
+      expect(adminRes.body.submissionSuccessHintText).toBe('Join the event group');
+      expect(adminRes.body.submissionSuccessHintImageUrl).toBe('https://example.com/qr.png');
+      expect(adminRes.body.smtpHost).toBe('smtp.mail.example');
+      expect(adminRes.body.smtpUser).toBe('apikey');
+      expect(adminRes.body.smtpPasswordConfigured).toBe(true);
+      expect(adminRes.body.smtpPassEncrypted).toBeUndefined();
+    });
+
+    it('forbids non-admin access to admin site settings endpoint', async () => {
+      const res = await request(app)
+        .get('/api/site-settings/admin')
+        .set('x-test-role', 'judge')
+        .expect(403);
+      expect(res.body.error).toBe('Admin access required');
+    });
+
+    it('validates test email endpoint and reports missing smtp config', async () => {
+      await request(app)
+        .put('/api/site-settings')
+        .set('x-test-role', 'admin')
+        .send({
+          submissionEmailEnabled: false,
+          smtpHost: '',
+          smtpUser: '',
+          smtpPass: '',
+        })
+        .expect(200);
+
+      await request(app)
+        .post('/api/site-settings/email/test')
+        .set('x-test-role', 'admin')
+        .send({ to: 'invalid-email' })
+        .expect(400);
+
+      const res = await request(app)
+        .post('/api/site-settings/email/test')
+        .set('x-test-role', 'admin')
+        .send({ to: 'test@example.com' })
+        .expect(400);
+
+      expect(res.body.sent).toBe(false);
+      expect(['missing_config', 'send_failed']).toContain(res.body.reason);
     });
   });
 

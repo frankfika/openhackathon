@@ -124,13 +124,16 @@ This command now handles the full local dev bootstrap:
 - Loads `.env`, or falls back to `.env.example` if `.env` is missing
 - Starts PostgreSQL with `docker compose`
 - Waits for the database to become ready and runs `npx prisma db push`
-- Ensures the built-in development accounts exist without wiping application data
+- Does not create default admin accounts; first-run admin creation is handled by Setup Wizard
 - Launches the existing frontend and API dev processes via `npm run dev`
 
 Common commands:
 ```bash
 # Initialize demo data (this wipes current data before reseeding)
 npm run dev:up:seed
+
+# Ensure built-in development accounts only (without full seed)
+./dev-stack.sh up --dev-users
 
 # Stop the Docker database container
 npm run dev:down
@@ -145,6 +148,12 @@ npm install
 # Manual mode: use this if you manage PostgreSQL yourself
 npx prisma db push
 npm run db:seed
+
+# Reset to initial state (no default admin, Setup Wizard will create first admin)
+npm run db:reset
+
+# Reset and reseed demo data (includes default admin accounts)
+npm run db:reset:seed
 
 # Start frontend + backend
 npm run dev
@@ -194,7 +203,7 @@ Suggested usage:
 
 Notes:
 - `npm run dev:up:seed` and `npm run db:seed` both delete current application data before reseeding demo content.
-- `npm run dev:up` always re-ensures the built-in development accounts above and resets their password to `password`.
+- `npm run dev:up` does not auto-create built-in accounts. Use `./dev-stack.sh up --dev-users` if needed.
 - `Ctrl+C` stops the frontend and API processes; use `npm run dev:down` to stop the Docker database container.
 - If port `3001` or `5173` is already in use, the script fails fast and prints the process holding that port.
 

@@ -148,6 +148,18 @@ model SiteSetting {
   showPoweredBy  Boolean  @default(true)
   poweredByText  String   @default("Powered by OpenHackathon")
   poweredByUrl   String   @default("https://openhackathon.dev")
+  submissionSuccessHintText String?
+  submissionSuccessHintImageUrl String?
+  submissionEmailEnabled Boolean @default(false)
+  smtpHost       String?
+  smtpPort       Int      @default(587)
+  smtpSecure     Boolean  @default(false)
+  smtpUser       String?
+  smtpPassEncrypted String?
+  submissionEmailFrom String @default("OpenHackathon <no-reply@localhost>")
+  submissionEmailReplyTo String?
+  submissionEmailSubject String @default("[{{hackathonTitle}}] Submission Receipt {{receiptId}}")
+  submissionEmailTimeoutMs Int @default(10000)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }

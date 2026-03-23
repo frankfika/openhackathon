@@ -20,6 +20,15 @@ export function ScoringCriteriaBuilder({ initialCriteria = [], onSave }: Scoring
   const totalScore = criteria.reduce((sum, c) => sum + (c.maxScore || 0), 0)
   const isValid = totalScore === 100
 
+  const normalizeScoreInput = (raw: string) => {
+    const digitsOnly = raw.replace(/[^\d]/g, '')
+    if (!digitsOnly) return 0
+    const normalized = digitsOnly.replace(/^0+(?=\d)/, '')
+    const parsed = Number.parseInt(normalized, 10)
+    if (!Number.isFinite(parsed)) return 0
+    return Math.min(100, Math.max(0, parsed))
+  }
+
   const addCriterion = () => {
     const newCriterion: ScoringCriterion = {
       id: `sc_${Date.now()}`,
@@ -86,8 +95,9 @@ export function ScoringCriteriaBuilder({ initialCriteria = [], onSave }: Scoring
                     type="number"
                     min="0"
                     max="100"
+                    step="1"
                     value={criterion.maxScore || 0}
-                    onChange={(e) => updateCriterion(index, { maxScore: parseInt(e.target.value) || 0 })}
+                    onChange={(e) => updateCriterion(index, { maxScore: normalizeScoreInput(e.target.value) })}
                     placeholder="0"
                   />
                 </div>

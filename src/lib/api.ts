@@ -68,8 +68,16 @@ export const api = {
     const res = await axios.get<SiteSettings>(`${API_URL}/site-settings`)
     return res.data
   },
-  updateSiteSettings: async (data: Partial<SiteSettings>) => {
+  getAdminSiteSettings: async () => {
+    const res = await axios.get<SiteSettings>(`${API_URL}/site-settings/admin`)
+    return res.data
+  },
+  updateSiteSettings: async (data: Partial<SiteSettings> & { smtpPass?: string }) => {
     const res = await axios.put<SiteSettings>(`${API_URL}/site-settings`, data)
+    return res.data
+  },
+  testSubmissionEmail: async (to: string) => {
+    const res = await axios.post<{ sent: boolean; messageId?: string; reason?: string }>(`${API_URL}/site-settings/email/test`, { to })
     return res.data
   },
 
@@ -99,7 +107,7 @@ export const api = {
     const res = await axios.get<HackathonMarkdownDoc>(endpoint)
     return res.data
   },
-  saveHackathonMarkdownDoc: async (id: string | undefined, data: { fileName?: string; content: string }) => {
+  saveHackathonMarkdownDoc: async (id: string | undefined, data: { fileName?: string; content: string; isBase64?: boolean }) => {
     const endpoint = id ? `${API_URL}/hackathons/${id}/markdown-doc` : `${API_URL}/hackathon/markdown-doc`
     const res = await axios.put<HackathonMarkdownDoc>(endpoint, data)
     return res.data
@@ -304,6 +312,12 @@ export const api = {
       admin: AdminUser & { token?: string }
       hackathon: Hackathon
     }>(`${API_URL}/setup`, data)
+    return res.data
+  },
+
+  // System Reset
+  resetSystem: async (mode: 'hackathon' | 'factory') => {
+    const res = await axios.post<{ success: boolean; mode: string }>(`${API_URL}/admin/reset`, { mode, confirm: true })
     return res.data
   },
 

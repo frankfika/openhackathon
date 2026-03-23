@@ -51,6 +51,7 @@ export function Docs() {
   }
 
   if (localDoc) {
+    const isPDF = localDoc.contentType === 'application/pdf' || localDoc.fileName.toLowerCase().endsWith('.pdf')
     return (
       <div className="container py-6 md:py-8">
         <div className="surface-panel-strong mb-4 flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-5">
@@ -61,7 +62,7 @@ export function Docs() {
               <p className="text-xs text-muted-foreground">{h.title}</p>
             </div>
             <Badge variant="outline" className="rounded-full text-[10px] uppercase tracking-wide">
-              Markdown
+              {isPDF ? 'PDF' : 'Markdown'}
             </Badge>
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -81,7 +82,15 @@ export function Docs() {
         </div>
 
         <div className="surface-panel-strong px-5 py-6 md:px-8 md:py-8">
-          <MarkdownDocument content={localDoc.content} />
+          {isPDF ? (
+            <iframe
+              src={`data:application/pdf;base64,${localDoc.content}`}
+              title={localDoc.fileName}
+              className="w-full h-[calc(100vh-12rem)] border-0"
+            />
+          ) : (
+            <MarkdownDocument content={localDoc.content} />
+          )}
         </div>
       </div>
     )

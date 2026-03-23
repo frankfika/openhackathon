@@ -72,6 +72,7 @@ export function DashboardLayout() {
   const isAdmin = user?.role === 'admin'
   const roleLabel = isAdmin ? t('auth.admin') : t('auth.judge')
   const hasMultipleHackathons = isMultiHackathonMode && hackathons.length > 1
+  const hasStarted = activeHackathon.status === 'active' || activeHackathon.status === 'judging' || activeHackathon.status === 'completed'
   const activeHackathonRange =
     activeHackathon.startAt && activeHackathon.endAt
       ? formatDateRange(activeHackathon.startAt, activeHackathon.endAt)
@@ -114,26 +115,37 @@ export function DashboardLayout() {
           { name: t('nav.dashboard'), href: adminBasePath, icon: LayoutDashboard, exact: true },
         ],
       },
-      {
-        label: t('nav.section_hackathon', 'Hackathon'),
-        items: [
-          ...(hasMultipleHackathons
-            ? [{ name: t('nav.hackathons', 'Hackathons'), href: buildAdminPath(adminBasePath, 'hackathons'), icon: Calendar }]
-            : []),
-          { name: t('nav.projects'), href: buildAdminPath(adminBasePath, 'projects'), icon: FolderGit2 },
-          { name: t('nav.assignments', 'Review Management'), href: buildAdminPath(adminBasePath, 'assignments'), icon: Gavel },
-          { name: t('nav.leaderboard'), href: buildAdminPath(adminBasePath, 'leaderboard'), icon: BarChart3 },
-        ],
-      },
     ]
 
-    if (isAdmin) {
+    const hackathonItems: NavItem[] = [
+      ...(hasMultipleHackathons
+        ? [{ name: t('nav.hackathons', 'Hackathons'), href: buildAdminPath(adminBasePath, 'hackathons'), icon: Calendar }]
+        : []),
+      ...(hasStarted
+        ? [
+            { name: t('nav.projects'), href: buildAdminPath(adminBasePath, 'projects'), icon: FolderGit2 },
+            { name: t('nav.assignments', 'Review Management'), href: buildAdminPath(adminBasePath, 'assignments'), icon: Gavel },
+            { name: t('nav.leaderboard'), href: buildAdminPath(adminBasePath, 'leaderboard'), icon: BarChart3 },
+          ]
+        : []),
+    ]
+
+    if (hackathonItems.length > 0) {
       sections.push({
-        label: t('nav.section_judges', 'Judges'),
-        items: [
-          { name: t('nav.judges', 'Judge Management'), href: buildAdminPath(adminBasePath, 'judges'), icon: Users },
-        ],
+        label: t('nav.section_hackathon', 'Hackathon'),
+        items: hackathonItems,
       })
+    }
+
+    if (isAdmin) {
+      if (hasStarted) {
+        sections.push({
+          label: t('nav.section_judges', 'Judges'),
+          items: [
+            { name: t('nav.judges', 'Judge Management'), href: buildAdminPath(adminBasePath, 'judges'), icon: Users },
+          ],
+        })
+      }
 
       sections.push({
         label: t('nav.section_settings', 'Settings'),
@@ -148,7 +160,7 @@ export function DashboardLayout() {
     }
 
     return sections
-  }, [adminBasePath, isAdmin, activeHackathon.id, hasMultipleHackathons, t])
+  }, [adminBasePath, isAdmin, activeHackathon.id, hasMultipleHackathons, hasStarted, t])
 
   const isActive = (item: NavItem) =>
     item.exact

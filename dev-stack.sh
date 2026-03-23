@@ -8,6 +8,7 @@ cd "$ROOT_DIR"
 SCRIPT_PATH="dev-stack.sh"
 COMMAND="${1:-up}"
 SEED=false
+ENSURE_USERS=false
 
 print_help() {
   cat <<EOF
@@ -17,12 +18,13 @@ Usage:
   ./$SCRIPT_PATH help
 
 Commands:
-  up       Start PostgreSQL via Docker Compose, sync Prisma schema, then launch frontend + API.
+  up       Start PostgreSQL via Docker Compose, apply Prisma migrations, then launch frontend + API.
   down     Stop the Docker Compose database services started for local development.
   help     Show this help message.
 
 Options:
   --seed   Run \`npm run db:seed\` after migrations. Warning: this resets seeded data.
+  --dev-users   Run \`npm run db:ensure-users\` after migrations.
 EOF
 }
 
@@ -119,15 +121,17 @@ start_stack() {
 
   wait_for_database
 
-  echo "Synchronizing Prisma schema..."
-  npx prisma db push
+  echo "Applying Prisma migrations..."
+  npx prisma migrate deploy
 
   if [ "$SEED" = true ]; then
     echo "Running seed data reset..."
     npm run db:seed
-  else
+  elif [ "$ENSURE_USERS" = true ]; then
     echo "Ensuring development accounts..."
     npm run db:ensure-users
+  else
+    echo "Skipping default user bootstrap. Use Setup Wizard to create the first admin account."
   fi
 
   ensure_port_available "${PORT:-3001}" "the API server"
@@ -164,6 +168,9 @@ case "$COMMAND" in
       case "$arg" in
         --seed)
           SEED=true
+          ;;
+        --dev-users)
+          ENSURE_USERS=true
           ;;
         *)
           echo "Unknown option for 'up': $arg" >&2

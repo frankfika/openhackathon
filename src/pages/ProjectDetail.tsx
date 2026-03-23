@@ -21,6 +21,8 @@ import {
 import { ArrowLeft, Loader2, Pencil, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
+import { getFieldLabel, getSubmissionFields } from '@/lib/submission-fields'
+import { useActiveHackathon } from '@/lib/active-hackathon'
 
 type ProjectDetailData = {
   id: string
@@ -74,6 +76,13 @@ export function ProjectDetail() {
     queryFn: () => api.getAssignments({ projectId: id! }),
     enabled: !!id,
   })
+
+  const { activeHackathon } = useActiveHackathon()
+
+  const submissionFieldLabels = useMemo(() => {
+    const fields = getSubmissionFields(activeHackathon?.submissionSchema)
+    return new Map(fields.map(f => [f.id, f.label || f.id]))
+  }, [activeHackathon?.submissionSchema])
 
   useEffect(() => {
     if (!project) return
@@ -363,6 +372,28 @@ export function ProjectDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Submission Data - Custom Fields */}
+          {project.submissionData && Object.keys(project.submissionData).length > 0 && (
+            <Card className="surface-panel border-none shadow-none">
+              <CardHeader>
+                <CardTitle>{t('projects.submission_data', 'Submission Data')}</CardTitle>
+                <CardDescription>{t('projects.submission_data_desc', 'Custom fields submitted with the project')}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  {Object.entries(project.submissionData).map(([key, value]) => (
+                    <div key={key} className="space-y-1">
+                      <Label className="text-muted-foreground">
+                        {submissionFieldLabels.get(key) || key}
+                      </Label>
+                      <p className="text-sm font-medium whitespace-pre-wrap">{String(value || '-')}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
 

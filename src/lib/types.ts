@@ -64,11 +64,24 @@ export type SiteSettings = {
   showPoweredBy: boolean
   poweredByText: string
   poweredByUrl: string
+  submissionSuccessHintText?: string | null
+  submissionSuccessHintImageUrl?: string | null
+  submissionEmailEnabled?: boolean
+  smtpHost?: string | null
+  smtpPort?: number
+  smtpSecure?: boolean
+  smtpUser?: string | null
+  smtpPasswordConfigured?: boolean
+  submissionEmailFrom?: string
+  submissionEmailReplyTo?: string | null
+  submissionEmailSubject?: string
+  submissionEmailTimeoutMs?: number
 }
 
 export type HackathonMarkdownDoc = {
   fileName: string
   content: string
+  contentType?: string
   updatedAt: string
 }
 

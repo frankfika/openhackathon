@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -16,7 +16,7 @@ import { SetupWizardDialog } from '@/components/SetupWizardDialog'
 import { SubmissionField, ScoringCriterion, SubmissionSchemaConfig } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ArrowLeft, Loader2, Check, FileText, Trash2, Wand2, ChevronDown, Lock, Play, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Loader2, Check, FileText, Trash2, Wand2, ChevronDown, Lock, Play, AlertTriangle, Upload } from 'lucide-react'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
@@ -193,7 +193,7 @@ export function HackathonSettings() {
   })
 
   const uploadMarkdownMutation = useMutation({
-    mutationFn: async (payload: { fileName?: string; content: string }) => {
+    mutationFn: async (payload: { fileName?: string; content: string; isBase64?: boolean }) => {
       if (!id) throw new Error('No hackathon ID')
       return api.saveHackathonMarkdownDoc(id, payload)
     },
@@ -277,20 +277,46 @@ export function HackathonSettings() {
     setIsSetupWizardOpen(false)
   }
 
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const processMarkdownFile = useCallback(async (file: File) => {
+    // Check if file is markdown or PDF
+    const isMarkdown = file.name.match(/\.(md|markdown)$/i)
+    const isPDF = file.name.match(/\.pdf$/i)
+
+    if (!isMarkdown && !isPDF) {
+      toast.error(t('settings.invalid_file_type', 'Only .md, .markdown, or .pdf files are supported'))
+      return
+    }
+
+    try {
+      if (isPDF) {
+        // For PDF files, read as base64
+        const arrayBuffer = await file.arrayBuffer()
+        const base64Content = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+        await uploadMarkdownMutation.mutateAsync({ fileName: file.name, content: base64Content, isBase64: true })
+      } else {
+        // For markdown files, read as text
+        const content = await file.text()
+        await uploadMarkdownMutation.mutateAsync({ fileName: file.name, content })
+      }
+    } catch { /* mutation handles toast */ }
+  }, [uploadMarkdownMutation, t])
+
   const handleMarkdownUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-
-    try {
-      const content = await file.text()
-      await uploadMarkdownMutation.mutateAsync({
-        fileName: file.name,
-        content,
-      })
-    } finally {
-      event.target.value = ''
-    }
+    await processMarkdownFile(file)
+    event.target.value = ''
   }
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const file = e.dataTransfer.files[0]
+    if (file) processMarkdownFile(file)
+  }, [processMarkdownFile])
 
   if (isLoadingHackathon) {
     return (
@@ -427,6 +453,97 @@ export function HackathonSettings() {
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="docsUrl">{t('settings.docs_url')}</Label>
+                  <Input id="docsUrl" type="url" placeholder="https://docs.example.com" {...register('docsUrl')} />
+                  <p className="text-xs text-muted-foreground">{t('settings.docs_url_desc')}</p>
+                  {errors.docsUrl && <p className="text-sm text-destructive">{errors.docsUrl.message as string}</p>}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    <Label>{t('settings.markdown_doc')}</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t('settings.markdown_doc_desc')}</p>
+
+                  {/* Hidden file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".md,.markdown,.pdf"
+                    className="hidden"
+                    onChange={handleMarkdownUpload}
+                    disabled={uploadMarkdownMutation.isPending || deleteMarkdownMutation.isPending}
+                  />
+
+                  {markdownDoc ? (
+                    <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">{markdownDoc.fileName}</span>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {t('settings.markdown_updated_at', { updatedAt: new Date(markdownDoc.updatedAt).toLocaleString() })}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadMarkdownMutation.isPending || deleteMarkdownMutation.isPending}
+                          >
+                            {uploadMarkdownMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => deleteMarkdownMutation.mutate()}
+                            disabled={uploadMarkdownMutation.isPending || deleteMarkdownMutation.isPending}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      <Textarea
+                        readOnly
+                        value={markdownDoc.contentType === 'application/pdf' ? t('settings.pdf_preview_not_available', '[PDF file - content not previewable]') : markdownDoc.content}
+                        className="min-h-[200px] resize-y bg-background/80 font-mono text-xs"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={handleDrop}
+                      disabled={uploadMarkdownMutation.isPending}
+                      className={cn(
+                        'flex w-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-8 transition-colors',
+                        isDragging
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border/60 bg-muted/20 hover:border-primary/40 hover:bg-muted/40',
+                        uploadMarkdownMutation.isPending && 'pointer-events-none opacity-50'
+                      )}
+                    >
+                      {uploadMarkdownMutation.isPending ? (
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                      ) : (
+                        <Upload className="h-8 w-8 text-muted-foreground/60" />
+                      )}
+                      <div className="text-center">
+                        <p className="text-sm font-medium">{t('settings.markdown_upload_hint', 'Click to upload or drag & drop')}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{t('settings.markdown_upload_accept', '.md, .markdown, or .pdf files')}</p>
+                      </div>
+                    </button>
+                  )}
+                </div>
+
                 <Button
                   type="button"
                   variant="ghost"
@@ -448,63 +565,6 @@ export function HackathonSettings() {
                         <Label htmlFor="prizePool">{t('hackathons.prize_pool')}</Label>
                         <Input id="prizePool" placeholder={t('hackathons.prize_pool_placeholder')} {...register('prizePool')} />
                       </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="docsUrl">{t('settings.docs_url')}</Label>
-                      <Input id="docsUrl" type="url" placeholder="https://docs.example.com" {...register('docsUrl')} />
-                      <p className="text-xs text-muted-foreground">{t('settings.docs_url_desc')}</p>
-                      {errors.docsUrl && <p className="text-sm text-destructive">{errors.docsUrl.message as string}</p>}
-                    </div>
-
-                    <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-primary" />
-                            <Label htmlFor="markdownDoc">{t('settings.markdown_doc')}</Label>
-                          </div>
-                          <p className="text-xs text-muted-foreground">{t('settings.markdown_doc_desc')}</p>
-                        </div>
-                        <Badge variant={markdownDoc ? 'secondary' : 'outline'}>
-                          {markdownDoc?.fileName || t('settings.markdown_empty')}
-                        </Badge>
-                      </div>
-
-                      <Input
-                        id="markdownDoc"
-                        type="file"
-                        accept=".md,.markdown"
-                        onChange={handleMarkdownUpload}
-                        disabled={uploadMarkdownMutation.isPending || deleteMarkdownMutation.isPending}
-                      />
-
-                      {markdownDoc ? (
-                        <div className="space-y-3">
-                          <p className="text-xs text-muted-foreground">
-                            {t('settings.markdown_updated_at', { updatedAt: new Date(markdownDoc.updatedAt).toLocaleString() })}
-                          </p>
-                          <Textarea
-                            readOnly
-                            value={markdownDoc.content}
-                            className="min-h-[220px] resize-y bg-background/80 font-mono text-xs"
-                          />
-                          <div className="flex justify-end">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="gap-2 text-destructive hover:text-destructive"
-                              onClick={() => deleteMarkdownMutation.mutate()}
-                              disabled={uploadMarkdownMutation.isPending || deleteMarkdownMutation.isPending}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              {t('settings.markdown_delete')}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">{t('settings.markdown_empty_desc')}</p>
-                      )}
                     </div>
 
                     <div className="space-y-3">

@@ -2,9 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 import { promises as fs } from 'fs';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient, SiteSetting } from '@prisma/client';
 import nodemailer from 'nodemailer';
 import helmet from 'helmet';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
@@ -45,6 +45,7 @@ const SUBMISSION_EMAIL_FROM = process.env.SUBMISSION_RECEIPT_FROM || 'OpenHackat
 const SUBMISSION_EMAIL_REPLY_TO = process.env.SUBMISSION_RECEIPT_REPLY_TO;
 const SUBMISSION_EMAIL_SUBJECT_TEMPLATE = process.env.SUBMISSION_RECEIPT_SUBJECT || '[{{hackathonTitle}}] Submission Receipt {{receiptId}}';
 const SUBMISSION_EMAIL_TIMEOUT_MS = Number(process.env.SUBMISSION_EMAIL_TIMEOUT_MS || 10000);
+const EMAIL_SETTINGS_SECRET = process.env.EMAIL_SETTINGS_SECRET || JWT_SECRET;
 const HACKATHON_DOCS_ROOT = path.resolve(process.cwd(), process.env.HACKATHON_DOCS_DIR || 'content/hackathons');
 const SINGLE_HACKATHON_MODE = process.env.SINGLE_HACKATHON_MODE !== 'false';
 const HACKATHON_STATUS_PRIORITY: Record<string, number> = {
@@ -55,8 +56,9 @@ const HACKATHON_STATUS_PRIORITY: Record<string, number> = {
   completed: 4,
   published: 5,
 };
+const DEFAULT_HACKATHON_COVER_GRADIENT = 'from-blue-500/20 via-sky-500/10 to-indigo-500/20';
 
-let submissionEmailTransporter: nodemailer.Transporter | null = null;
+let submissionEmailTransporterCache: { key: string; transporter: nodemailer.Transporter } | null = null;
 
 type UserRole = 'admin' | 'judge';
 type AuthUser = {
@@ -89,6 +91,23 @@ type SubmissionReceiptEmailResult = {
   sent: boolean;
   reason?: 'disabled' | 'missing_config' | 'send_failed';
   messageId?: string;
+};
+
+type SendSubmissionReceiptEmailOptions = {
+  ignoreEnabled?: boolean;
+};
+
+type ResolvedSubmissionEmailConfig = {
+  enabled: boolean;
+  host?: string;
+  port: number;
+  secure: boolean;
+  user?: string;
+  pass?: string;
+  from: string;
+  replyTo?: string;
+  subjectTemplate: string;
+  timeoutMs: number;
 };
 
 type ScoringCriterionPayload = {
@@ -216,6 +235,47 @@ function asString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function normalizeScoringCriteriaPayload(input: unknown[]): { criteria?: ScoringCriterionPayload[]; error?: string } {
+  const criteria: ScoringCriterionPayload[] = [];
+
+  for (let index = 0; index < input.length; index += 1) {
+    const item = input[index];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return { error: 'scoringCriteria must be an array of objects' };
+    }
+
+    const name = asString((item as { name?: unknown }).name);
+    const maxScoreValue = Number((item as { maxScore?: unknown }).maxScore);
+    const sortOrderInput = (item as { sortOrder?: unknown }).sortOrder;
+    const sortOrderValue = sortOrderInput === undefined ? index : Number(sortOrderInput);
+
+    if (!name) {
+      return { error: 'Each scoring criterion must include a name' };
+    }
+    if (!Number.isInteger(maxScoreValue) || maxScoreValue < 0 || maxScoreValue > 100) {
+      return { error: 'Each scoring criterion maxScore must be an integer between 0 and 100' };
+    }
+    if (!Number.isInteger(sortOrderValue) || sortOrderValue < 0) {
+      return { error: 'Each scoring criterion sortOrder must be a non-negative integer' };
+    }
+
+    criteria.push({
+      name,
+      maxScore: maxScoreValue,
+      sortOrder: sortOrderValue,
+    });
+  }
+
+  if (criteria.length > 0) {
+    const totalScore = criteria.reduce((sum, criterion) => sum + criterion.maxScore, 0);
+    if (totalScore !== 100) {
+      return { error: 'Scoring criteria total maxScore must equal 100' };
+    }
+  }
+
+  return { criteria };
+}
+
 function sanitizePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
@@ -230,10 +290,22 @@ function isMarkdownFileName(value: string): boolean {
   return ext === '.md' || ext === '.markdown';
 }
 
-function normalizeMarkdownFileName(value: string | undefined): string {
+function isPDFFileName(value: string): boolean {
+  const ext = path.extname(value).toLowerCase();
+  return ext === '.pdf';
+}
+
+function isDocumentFileName(value: string): boolean {
+  return isMarkdownFileName(value) || isPDFFileName(value);
+}
+
+function normalizeDocumentFileName(value: string | undefined): string {
   const fileName = path.basename(value?.trim() || 'README.md');
   const parsed = path.parse(fileName);
   const baseName = sanitizeFileStem(parsed.name) || 'README';
+  if (isPDFFileName(fileName)) {
+    return `${baseName}.pdf`;
+  }
   const extension = isMarkdownFileName(fileName) ? parsed.ext.toLowerCase() : '.md';
   return `${baseName}${extension}`
 }
@@ -242,11 +314,11 @@ function getHackathonDocsDir(hackathonId: string): string {
   return path.join(HACKATHON_DOCS_ROOT, sanitizePathSegment(hackathonId));
 }
 
-async function listHackathonMarkdownFiles(hackathonId: string): Promise<string[]> {
+async function listHackathonDocumentFiles(hackathonId: string): Promise<string[]> {
   try {
     const entries = await fs.readdir(getHackathonDocsDir(hackathonId), { withFileTypes: true });
     return entries
-      .filter((entry) => entry.isFile() && isMarkdownFileName(entry.name))
+      .filter((entry) => entry.isFile() && isDocumentFileName(entry.name))
       .map((entry) => entry.name);
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'ENOENT') {
@@ -256,39 +328,55 @@ async function listHackathonMarkdownFiles(hackathonId: string): Promise<string[]
   }
 }
 
-function compareMarkdownFilePriority(fileA: string, fileB: string): number {
+function compareDocumentFilePriority(fileA: string, fileB: string): number {
   const priority = (fileName: string) => {
     const lower = fileName.toLowerCase();
+    // PDF files have lower priority than markdown files
+    const isPdfA = isPDFFileName(fileName);
+    const isMdA = isMarkdownFileName(fileName);
     if (lower === 'readme.md' || lower === 'readme.markdown') return 0;
     if (lower === 'index.md' || lower === 'index.markdown') return 1;
-    return 2;
+    if (isMdA) return 2; // Other markdown files
+    if (isPdfA) return 3; // PDF files have lowest priority
+    return 4;
   };
 
   return priority(fileA) - priority(fileB) || fileA.localeCompare(fileB);
 }
 
 async function readHackathonMarkdownDoc(hackathonId: string) {
-  const files = await listHackathonMarkdownFiles(hackathonId);
+  const files = await listHackathonDocumentFiles(hackathonId);
   if (files.length === 0) return null;
 
-  const fileName = [...files].sort(compareMarkdownFilePriority)[0];
+  const fileName = [...files].sort(compareDocumentFilePriority)[0];
   const filePath = path.join(getHackathonDocsDir(hackathonId), fileName);
-  const [content, stats] = await Promise.all([
-    fs.readFile(filePath, 'utf8'),
-    fs.stat(filePath),
-  ]);
+  const stats = await fs.stat(filePath);
 
+  // For PDF files, return base64 encoded content
+  if (isPDFFileName(fileName)) {
+    const content = await fs.readFile(filePath);
+    return {
+      fileName,
+      content: content.toString('base64'),
+      contentType: 'application/pdf',
+      updatedAt: stats.mtime.toISOString(),
+    };
+  }
+
+  // For markdown files, return text content
+  const content = await fs.readFile(filePath, 'utf8');
   return {
     fileName,
     content,
+    contentType: 'text/markdown',
     updatedAt: stats.mtime.toISOString(),
   };
 }
 
-async function saveHackathonMarkdownDoc(hackathonId: string, fileName: string | undefined, content: string) {
+async function saveHackathonMarkdownDoc(hackathonId: string, fileName: string | undefined, content: string, isBase64: boolean = false) {
   const docsDir = getHackathonDocsDir(hackathonId);
-  const normalizedFileName = normalizeMarkdownFileName(fileName);
-  const existingFiles = await listHackathonMarkdownFiles(hackathonId);
+  const normalizedFileName = normalizeDocumentFileName(fileName);
+  const existingFiles = await listHackathonDocumentFiles(hackathonId);
 
   await fs.mkdir(docsDir, { recursive: true });
   await Promise.all(
@@ -296,7 +384,14 @@ async function saveHackathonMarkdownDoc(hackathonId: string, fileName: string | 
   );
 
   const filePath = path.join(docsDir, normalizedFileName);
-  await fs.writeFile(filePath, content, 'utf8');
+
+  // For PDF files, write base64 decoded content
+  if (isBase64 || isPDFFileName(normalizedFileName)) {
+    const buffer = Buffer.from(content, 'base64');
+    await fs.writeFile(filePath, buffer);
+  } else {
+    await fs.writeFile(filePath, content, 'utf8');
+  }
 
   const stats = await fs.stat(filePath);
   return {
@@ -308,7 +403,7 @@ async function saveHackathonMarkdownDoc(hackathonId: string, fileName: string | 
 
 async function deleteHackathonMarkdownDoc(hackathonId: string) {
   const docsDir = getHackathonDocsDir(hackathonId);
-  const files = await listHackathonMarkdownFiles(hackathonId);
+  const files = await listHackathonDocumentFiles(hackathonId);
   if (files.length === 0) return false;
 
   await Promise.all(files.map((fileName) => fs.unlink(path.join(docsDir, fileName))));
@@ -363,31 +458,113 @@ function interpolateEmailTemplate(template: string, variables: Record<string, st
   return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key: string) => variables[key] || '');
 }
 
-function getSubmissionEmailTransporter(): nodemailer.Transporter | null {
-  if (!SUBMISSION_EMAIL_HOST || !Number.isFinite(SUBMISSION_EMAIL_PORT) || SUBMISSION_EMAIL_PORT <= 0) {
+function getEmailSettingsCipherKey() {
+  return createHash('sha256').update(EMAIL_SETTINGS_SECRET).digest();
+}
+
+function encryptEmailSecret(value: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', getEmailSettingsCipherKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return `v1:${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted.toString('base64')}`;
+}
+
+function decryptEmailSecret(value: string): string | null {
+  try {
+    const [version, ivBase64, tagBase64, encryptedBase64] = value.split(':');
+    if (version !== 'v1' || !ivBase64 || !tagBase64 || !encryptedBase64) return null;
+
+    const iv = Buffer.from(ivBase64, 'base64');
+    const authTag = Buffer.from(tagBase64, 'base64');
+    const encrypted = Buffer.from(encryptedBase64, 'base64');
+    const decipher = createDecipheriv('aes-256-gcm', getEmailSettingsCipherKey(), iv);
+    decipher.setAuthTag(authTag);
+    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+    return decrypted.toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+function resolveSubmissionEmailPort(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) return fallback;
+  return parsed;
+}
+
+function resolveSubmissionEmailTimeout(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
+
+async function getSubmissionEmailConfig(): Promise<ResolvedSubmissionEmailConfig> {
+  const settings = await prisma.siteSetting.upsert({
+    where: { key: 'default' },
+    update: {},
+    create: {
+      key: 'default',
+      ...DEFAULT_SITE_SETTINGS,
+    },
+  });
+
+  const decryptedPass = settings.smtpPassEncrypted ? decryptEmailSecret(settings.smtpPassEncrypted) : null;
+  const fromDbHost = asString(settings.smtpHost);
+  const fromDbUser = asString(settings.smtpUser);
+  const fromDbFrom = asString(settings.submissionEmailFrom);
+  const fromDbReplyTo = asString(settings.submissionEmailReplyTo);
+  const fromDbSubject = asString(settings.submissionEmailSubject);
+
+  return {
+    enabled: settings.submissionEmailEnabled ?? SUBMISSION_EMAIL_ENABLED,
+    host: fromDbHost || SUBMISSION_EMAIL_HOST || undefined,
+    port: resolveSubmissionEmailPort(settings.smtpPort, resolveSubmissionEmailPort(SUBMISSION_EMAIL_PORT, 587)),
+    secure: settings.smtpSecure ?? SUBMISSION_EMAIL_SECURE,
+    user: fromDbUser || SUBMISSION_EMAIL_USER || undefined,
+    pass: decryptedPass || SUBMISSION_EMAIL_PASS || undefined,
+    from: fromDbFrom || SUBMISSION_EMAIL_FROM,
+    replyTo: fromDbReplyTo || SUBMISSION_EMAIL_REPLY_TO || undefined,
+    subjectTemplate: fromDbSubject || SUBMISSION_EMAIL_SUBJECT_TEMPLATE,
+    timeoutMs: resolveSubmissionEmailTimeout(settings.submissionEmailTimeoutMs, resolveSubmissionEmailTimeout(SUBMISSION_EMAIL_TIMEOUT_MS, 10000)),
+  };
+}
+
+function getSubmissionEmailTransporter(config: ResolvedSubmissionEmailConfig): nodemailer.Transporter | null {
+  if (!config.host || !Number.isFinite(config.port) || config.port <= 0) {
     return null;
   }
 
-  if (submissionEmailTransporter) {
-    return submissionEmailTransporter;
+  const cacheKey = [
+    config.host,
+    config.port,
+    config.secure ? '1' : '0',
+    config.user || '',
+    config.pass || '',
+    config.timeoutMs,
+  ].join('|');
+
+  if (submissionEmailTransporterCache?.key === cacheKey) {
+    return submissionEmailTransporterCache.transporter;
   }
 
-  submissionEmailTransporter = nodemailer.createTransport({
-    host: SUBMISSION_EMAIL_HOST,
-    port: SUBMISSION_EMAIL_PORT,
-    secure: SUBMISSION_EMAIL_SECURE,
-    auth: SUBMISSION_EMAIL_USER
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: config.user
       ? {
-          user: SUBMISSION_EMAIL_USER,
-          pass: SUBMISSION_EMAIL_PASS,
+          user: config.user,
+          pass: config.pass,
         }
       : undefined,
-    connectionTimeout: SUBMISSION_EMAIL_TIMEOUT_MS,
-    greetingTimeout: SUBMISSION_EMAIL_TIMEOUT_MS,
-    socketTimeout: SUBMISSION_EMAIL_TIMEOUT_MS,
+    connectionTimeout: config.timeoutMs,
+    greetingTimeout: config.timeoutMs,
+    socketTimeout: config.timeoutMs,
   });
 
-  return submissionEmailTransporter;
+  submissionEmailTransporterCache = { key: cacheKey, transporter };
+  return transporter;
 }
 
 function formatReceiptIssuedAt(issuedAtIso: string): string {
@@ -396,19 +573,23 @@ function formatReceiptIssuedAt(issuedAtIso: string): string {
   return date.toISOString().replace('T', ' ').replace('Z', ' UTC');
 }
 
-async function sendSubmissionReceiptEmail(payload: SubmissionReceiptEmailPayload): Promise<SubmissionReceiptEmailResult> {
-  if (!SUBMISSION_EMAIL_ENABLED) {
+async function sendSubmissionReceiptEmail(
+  payload: SubmissionReceiptEmailPayload,
+  options?: SendSubmissionReceiptEmailOptions
+): Promise<SubmissionReceiptEmailResult> {
+  const config = await getSubmissionEmailConfig();
+  if (!config.enabled && !options?.ignoreEnabled) {
     return { sent: false, reason: 'disabled' };
   }
 
-  const transporter = getSubmissionEmailTransporter();
+  const transporter = getSubmissionEmailTransporter(config);
   if (!transporter) {
     console.warn('[submission-email] SMTP is enabled but config is incomplete');
     return { sent: false, reason: 'missing_config' };
   }
 
   const issuedAtText = formatReceiptIssuedAt(payload.issuedAtIso);
-  const subject = interpolateEmailTemplate(SUBMISSION_EMAIL_SUBJECT_TEMPLATE, {
+  const subject = interpolateEmailTemplate(config.subjectTemplate, {
     receiptId: payload.receiptId,
     hackathonTitle: payload.hackathonTitle,
     projectTitle: payload.projectTitle,
@@ -436,27 +617,35 @@ async function sendSubmissionReceiptEmail(payload: SubmissionReceiptEmailPayload
     </div>
   `;
 
-  try {
-    const info = await transporter.sendMail({
-      from: SUBMISSION_EMAIL_FROM,
-      to: payload.to,
-      ...(SUBMISSION_EMAIL_REPLY_TO ? { replyTo: SUBMISSION_EMAIL_REPLY_TO } : {}),
-      subject: subject || `[${payload.hackathonTitle}] Submission Receipt ${payload.receiptId}`,
-      text: textBody,
-      html: htmlBody,
-    });
+  const mailOptions = {
+    from: config.from,
+    to: payload.to,
+    ...(config.replyTo ? { replyTo: config.replyTo } : {}),
+    subject: subject || `[${payload.hackathonTitle}] Submission Receipt ${payload.receiptId}`,
+    text: textBody,
+    html: htmlBody,
+  };
 
-    return {
-      sent: true,
-      messageId: info.messageId,
-    };
-  } catch (error) {
-    console.error('[submission-email] Failed to send receipt email:', error);
-    return {
-      sent: false,
-      reason: 'send_failed',
-    };
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const info = await transporter.sendMail(mailOptions);
+      return {
+        sent: true,
+        messageId: info.messageId,
+      };
+    } catch (error) {
+      console.error(`[submission-email] Failed to send receipt email (attempt ${attempt}/${maxAttempts}):`, error);
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 300));
+      }
+    }
   }
+
+  return {
+    sent: false,
+    reason: 'send_failed',
+  };
 }
 
 function signTokenForUser(user: AuthUser): string {
@@ -474,6 +663,12 @@ function signTokenForUser(user: AuthUser): string {
       audience: JWT_AUDIENCE,
     }
   );
+}
+
+function resolveHackathonCoverGradient(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_HACKATHON_COVER_GRADIENT;
+  const normalized = value.trim();
+  return normalized || DEFAULT_HACKATHON_COVER_GRADIENT;
 }
 
 function getAuthUserFromRequest(req: express.Request): AuthUser | null {
@@ -515,8 +710,45 @@ function getAuthUserFromRequest(req: express.Request): AuthUser | null {
   }
 }
 
-function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+async function getValidatedAuthUserFromRequest(req: express.Request): Promise<AuthUser | null> {
   const authUser = getAuthUserFromRequest(req);
+  if (!authUser) {
+    return null;
+  }
+
+  if (AUTH_DISABLED) {
+    return authUser;
+  }
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: authUser.id },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+    },
+  });
+
+  if (!dbUser) {
+    return null;
+  }
+
+  const role = asUserRole(dbUser.role);
+  if (!role) {
+    return null;
+  }
+
+  return {
+    id: dbUser.id,
+    role,
+    email: dbUser.email,
+    name: dbUser.name,
+  };
+}
+
+async function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authUser = await getValidatedAuthUserFromRequest(req);
   if (!authUser) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -524,8 +756,8 @@ function requireAuth(req: express.Request, res: express.Response, next: express.
   next();
 }
 
-function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const authUser = getAuthUserFromRequest(req);
+async function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authUser = await getValidatedAuthUserFromRequest(req);
   if (!authUser) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -600,7 +832,7 @@ async function logActivity(input: ActivityLogInput): Promise<void> {
 
 // Helper to get actor info from request
 function getActorInfo(req: express.Request): { actorId: string; actorRole: 'admin' | 'judge'; actorName: string } | null {
-  const authUser = getAuthUserFromRequest(req);
+  const authUser = req.authUser || getAuthUserFromRequest(req);
   if (!authUser) return null;
   return {
     actorId: authUser.id,
@@ -656,7 +888,47 @@ const DEFAULT_SITE_SETTINGS = {
   showPoweredBy: true,
   poweredByText: 'Powered by OpenHackathon',
   poweredByUrl: 'https://openhackathon.dev',
+  submissionSuccessHintText: null as string | null,
+  submissionSuccessHintImageUrl: null as string | null,
+  submissionEmailEnabled: SUBMISSION_EMAIL_ENABLED,
+  smtpHost: null as string | null,
+  smtpPort: resolveSubmissionEmailPort(SUBMISSION_EMAIL_PORT, 587),
+  smtpSecure: SUBMISSION_EMAIL_SECURE,
+  smtpUser: null as string | null,
+  submissionEmailFrom: SUBMISSION_EMAIL_FROM,
+  submissionEmailReplyTo: null as string | null,
+  submissionEmailSubject: SUBMISSION_EMAIL_SUBJECT_TEMPLATE,
+  submissionEmailTimeoutMs: resolveSubmissionEmailTimeout(SUBMISSION_EMAIL_TIMEOUT_MS, 10000),
 } as const;
+
+function serializeSiteSettings(settings: SiteSetting) {
+  const { smtpPassEncrypted, ...rest } = settings;
+  return {
+    ...rest,
+    smtpPasswordConfigured: Boolean(smtpPassEncrypted),
+  };
+}
+
+function serializePublicSiteSettings(settings: SiteSetting) {
+  return {
+    id: settings.id,
+    key: settings.key,
+    siteName: settings.siteName,
+    adminBasePath: settings.adminBasePath,
+    logoUrl: settings.logoUrl,
+    tabTitle: settings.tabTitle,
+    seoTitle: settings.seoTitle,
+    seoDescription: settings.seoDescription,
+    faviconUrl: settings.faviconUrl,
+    showPoweredBy: settings.showPoweredBy,
+    poweredByText: settings.poweredByText,
+    poweredByUrl: settings.poweredByUrl,
+    submissionSuccessHintText: settings.submissionSuccessHintText,
+    submissionSuccessHintImageUrl: settings.submissionSuccessHintImageUrl,
+    createdAt: settings.createdAt,
+    updatedAt: settings.updatedAt,
+  };
+}
 
 // ===== Site Settings =====
 
@@ -669,7 +941,19 @@ app.get('/api/site-settings', async (_req, res) => {
       ...DEFAULT_SITE_SETTINGS,
     },
   });
-  res.json(settings);
+  res.json(serializePublicSiteSettings(settings));
+});
+
+app.get('/api/site-settings/admin', requireAdmin, async (_req, res) => {
+  const settings = await prisma.siteSetting.upsert({
+    where: { key: 'default' },
+    update: {},
+    create: {
+      key: 'default',
+      ...DEFAULT_SITE_SETTINGS,
+    },
+  });
+  res.json(serializeSiteSettings(settings));
 });
 
 app.put('/api/site-settings', requireAdmin, async (req, res) => {
@@ -686,6 +970,42 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
   const logoUrl = typeof body.logoUrl === 'string' ? body.logoUrl.trim() : undefined;
   const poweredByText = typeof body.poweredByText === 'string' ? body.poweredByText.trim() : undefined;
   const poweredByUrl = typeof body.poweredByUrl === 'string' ? body.poweredByUrl.trim() : undefined;
+  const submissionSuccessHintText =
+    typeof body.submissionSuccessHintText === 'string' ? body.submissionSuccessHintText.trim() : undefined;
+  const submissionSuccessHintImageUrl =
+    typeof body.submissionSuccessHintImageUrl === 'string' ? body.submissionSuccessHintImageUrl.trim() : undefined;
+  const smtpHost = typeof body.smtpHost === 'string' ? body.smtpHost.trim() : undefined;
+  const smtpUser = typeof body.smtpUser === 'string' ? body.smtpUser.trim() : undefined;
+  const submissionEmailFrom = typeof body.submissionEmailFrom === 'string' ? body.submissionEmailFrom.trim() : undefined;
+  const submissionEmailReplyTo = typeof body.submissionEmailReplyTo === 'string' ? body.submissionEmailReplyTo.trim() : undefined;
+  const submissionEmailSubject = typeof body.submissionEmailSubject === 'string' ? body.submissionEmailSubject.trim() : undefined;
+  const smtpPassInput = typeof body.smtpPass === 'string' ? body.smtpPass : undefined;
+
+  const smtpPort =
+    body.smtpPort !== undefined
+      ? resolveSubmissionEmailPort(body.smtpPort, -1)
+      : undefined;
+  if (smtpPort !== undefined && smtpPort <= 0) {
+    return res.status(400).json({ error: 'smtpPort must be an integer between 1 and 65535' });
+  }
+
+  const submissionEmailTimeoutMs =
+    body.submissionEmailTimeoutMs !== undefined
+      ? resolveSubmissionEmailTimeout(body.submissionEmailTimeoutMs, -1)
+      : undefined;
+  if (submissionEmailTimeoutMs !== undefined && submissionEmailTimeoutMs <= 0) {
+    return res.status(400).json({ error: 'submissionEmailTimeoutMs must be a positive integer' });
+  }
+
+  if (submissionEmailReplyTo !== undefined && submissionEmailReplyTo && !isValidEmail(submissionEmailReplyTo)) {
+    return res.status(400).json({ error: 'submissionEmailReplyTo must be a valid email' });
+  }
+
+  let smtpPassEncryptedValue: string | null | undefined;
+  if (smtpPassInput !== undefined) {
+    const trimmed = smtpPassInput.trim();
+    smtpPassEncryptedValue = trimmed ? encryptEmailSecret(trimmed) : null;
+  }
 
   const data: Prisma.SiteSettingUpdateInput = {
     ...(siteName !== undefined ? { siteName: siteName || DEFAULT_SITE_SETTINGS.siteName } : {}),
@@ -700,6 +1020,30 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
       : {}),
     ...(poweredByText !== undefined ? { poweredByText: poweredByText || DEFAULT_SITE_SETTINGS.poweredByText } : {}),
     ...(poweredByUrl !== undefined ? { poweredByUrl: poweredByUrl || DEFAULT_SITE_SETTINGS.poweredByUrl } : {}),
+    ...(body.submissionSuccessHintText !== undefined
+      ? { submissionSuccessHintText: submissionSuccessHintText || null }
+      : {}),
+    ...(body.submissionSuccessHintImageUrl !== undefined
+      ? { submissionSuccessHintImageUrl: submissionSuccessHintImageUrl || null }
+      : {}),
+    ...(body.submissionEmailEnabled !== undefined && typeof body.submissionEmailEnabled === 'boolean'
+      ? { submissionEmailEnabled: body.submissionEmailEnabled }
+      : {}),
+    ...(body.smtpHost !== undefined ? { smtpHost: smtpHost || null } : {}),
+    ...(smtpPort !== undefined ? { smtpPort } : {}),
+    ...(body.smtpSecure !== undefined && typeof body.smtpSecure === 'boolean'
+      ? { smtpSecure: body.smtpSecure }
+      : {}),
+    ...(body.smtpUser !== undefined ? { smtpUser: smtpUser || null } : {}),
+    ...(smtpPassEncryptedValue !== undefined ? { smtpPassEncrypted: smtpPassEncryptedValue } : {}),
+    ...(body.submissionEmailFrom !== undefined
+      ? { submissionEmailFrom: submissionEmailFrom || DEFAULT_SITE_SETTINGS.submissionEmailFrom }
+      : {}),
+    ...(body.submissionEmailReplyTo !== undefined ? { submissionEmailReplyTo: submissionEmailReplyTo || null } : {}),
+    ...(body.submissionEmailSubject !== undefined
+      ? { submissionEmailSubject: submissionEmailSubject || DEFAULT_SITE_SETTINGS.submissionEmailSubject }
+      : {}),
+    ...(submissionEmailTimeoutMs !== undefined ? { submissionEmailTimeoutMs } : {}),
   };
   const createData: Prisma.SiteSettingCreateInput = {
     key: 'default',
@@ -712,6 +1056,33 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
     showPoweredBy: typeof body.showPoweredBy === 'boolean' ? body.showPoweredBy : DEFAULT_SITE_SETTINGS.showPoweredBy,
     poweredByText: poweredByText || DEFAULT_SITE_SETTINGS.poweredByText,
     poweredByUrl: poweredByUrl || DEFAULT_SITE_SETTINGS.poweredByUrl,
+    submissionSuccessHintText:
+      body.submissionSuccessHintText !== undefined
+        ? (submissionSuccessHintText || null)
+        : DEFAULT_SITE_SETTINGS.submissionSuccessHintText,
+    submissionSuccessHintImageUrl:
+      body.submissionSuccessHintImageUrl !== undefined
+        ? (submissionSuccessHintImageUrl || null)
+        : DEFAULT_SITE_SETTINGS.submissionSuccessHintImageUrl,
+    submissionEmailEnabled:
+      typeof body.submissionEmailEnabled === 'boolean'
+        ? body.submissionEmailEnabled
+        : DEFAULT_SITE_SETTINGS.submissionEmailEnabled,
+    smtpHost: body.smtpHost !== undefined ? (smtpHost || null) : DEFAULT_SITE_SETTINGS.smtpHost,
+    smtpPort: smtpPort !== undefined ? smtpPort : DEFAULT_SITE_SETTINGS.smtpPort,
+    smtpSecure: typeof body.smtpSecure === 'boolean' ? body.smtpSecure : DEFAULT_SITE_SETTINGS.smtpSecure,
+    smtpUser: body.smtpUser !== undefined ? (smtpUser || null) : DEFAULT_SITE_SETTINGS.smtpUser,
+    ...(smtpPassEncryptedValue !== undefined ? { smtpPassEncrypted: smtpPassEncryptedValue } : {}),
+    submissionEmailFrom: submissionEmailFrom || DEFAULT_SITE_SETTINGS.submissionEmailFrom,
+    submissionEmailReplyTo:
+      body.submissionEmailReplyTo !== undefined
+        ? (submissionEmailReplyTo || null)
+        : DEFAULT_SITE_SETTINGS.submissionEmailReplyTo,
+    submissionEmailSubject: submissionEmailSubject || DEFAULT_SITE_SETTINGS.submissionEmailSubject,
+    submissionEmailTimeoutMs:
+      submissionEmailTimeoutMs !== undefined
+        ? submissionEmailTimeoutMs
+        : DEFAULT_SITE_SETTINGS.submissionEmailTimeoutMs,
     ...(body.logoUrl !== undefined ? { logoUrl: logoUrl || null } : {}),
   };
 
@@ -721,7 +1092,36 @@ app.put('/api/site-settings', requireAdmin, async (req, res) => {
     create: createData,
   });
 
-  res.json(settings);
+  res.json(serializeSiteSettings(settings));
+});
+
+app.post('/api/site-settings/email/test', requireAdmin, async (req, res) => {
+  const to = normalizeEmail(req.body?.to);
+  if (!to || !isValidEmail(to)) {
+    return res.status(400).json({ error: 'A valid recipient email is required' });
+  }
+
+  const currentHackathon = await getCurrentHackathon();
+  const emailResult = await sendSubmissionReceiptEmail({
+    to,
+    receiptId: `TEST-${randomBytes(3).toString('hex').toUpperCase()}`,
+    hackathonTitle: currentHackathon?.title || 'OpenHackathon',
+    projectTitle: 'SMTP Configuration Test',
+    issuedAtIso: new Date().toISOString(),
+  }, { ignoreEnabled: true });
+
+  if (!emailResult.sent) {
+    return res.status(400).json({
+      sent: false,
+      reason: emailResult.reason,
+      error: 'Failed to send test email',
+    });
+  }
+
+  res.json({
+    sent: true,
+    messageId: emailResult.messageId,
+  });
 });
 
 // ===== Hackathons =====
@@ -766,9 +1166,14 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
     judgesPerProject,
   } = req.body;
   const hasScoringCriteriaInput = Array.isArray(scoringCriteria);
-  const scoringCriteriaInputs: ScoringCriterionPayload[] = hasScoringCriteriaInput
-    ? scoringCriteria as ScoringCriterionPayload[]
-    : [];
+  let scoringCriteriaInputs: ScoringCriterionPayload[] = [];
+  if (hasScoringCriteriaInput) {
+    const normalized = normalizeScoringCriteriaPayload(scoringCriteria as unknown[]);
+    if (normalized.error) {
+      return res.status(400).json({ error: normalized.error });
+    }
+    scoringCriteriaInputs = normalized.criteria || [];
+  }
   if (SINGLE_HACKATHON_MODE) {
     const existingHackathonCount = await prisma.hackathon.count();
     if (existingHackathonCount > 0) {
@@ -778,8 +1183,18 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
     }
   }
 
-  const hackathonStartAt = new Date(startAt);
-  const hackathonEndAt = new Date(endAt);
+  const titleValue = typeof title === 'string' ? title.trim() : '';
+  if (!titleValue) {
+    return res.status(400).json({ error: 'title is required' });
+  }
+  const taglineValue = typeof tagline === 'string' ? tagline.trim() : '';
+  const statusValue = typeof status === 'string' && status.trim() ? status.trim() : 'draft';
+  const coverGradientValue = resolveHackathonCoverGradient(coverGradient);
+
+  const defaultStartAt = new Date();
+  const defaultEndAt = new Date(defaultStartAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const hackathonStartAt = startAt ? new Date(startAt) : defaultStartAt;
+  const hackathonEndAt = endAt ? new Date(endAt) : defaultEndAt;
 
   if (Number.isNaN(hackathonStartAt.getTime()) || Number.isNaN(hackathonEndAt.getTime())) {
     return res.status(400).json({ error: 'startAt and endAt must be valid dates' });
@@ -790,13 +1205,13 @@ app.post('/api/hackathons', requireAdmin, async (req, res) => {
 
   const hackathon = await prisma.hackathon.create({
     data: {
-      title,
-      tagline,
+      title: titleValue,
+      tagline: taglineValue,
       city,
       startAt: hackathonStartAt,
       endAt: hackathonEndAt,
-      status,
-      coverGradient,
+      status: statusValue,
+      coverGradient: coverGradientValue,
       prizePool: prizePool || null,
       docsUrl: docsUrl || null,
       submissionSchema: submissionSchema || {},
@@ -830,9 +1245,14 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
     judgesPerProject,
   } = req.body;
   const hasScoringCriteriaInput = Array.isArray(scoringCriteria);
-  const scoringCriteriaInputs: ScoringCriterionPayload[] = hasScoringCriteriaInput
-    ? scoringCriteria as ScoringCriterionPayload[]
-    : [];
+  let scoringCriteriaInputs: ScoringCriterionPayload[] = [];
+  if (hasScoringCriteriaInput) {
+    const normalized = normalizeScoringCriteriaPayload(scoringCriteria as unknown[]);
+    if (normalized.error) {
+      return res.status(400).json({ error: normalized.error });
+    }
+    scoringCriteriaInputs = normalized.criteria || [];
+  }
   if (SINGLE_HACKATHON_MODE) {
     const currentHackathon = await getCurrentHackathon();
     if (currentHackathon && currentHackathon.id !== req.params.id) {
@@ -885,7 +1305,7 @@ app.put('/api/hackathons/:id', requireAdmin, async (req, res) => {
         startAt: startAt ? new Date(startAt) : undefined,
         endAt: endAt ? new Date(endAt) : undefined,
         status,
-        coverGradient,
+        coverGradient: coverGradient !== undefined ? resolveHackathonCoverGradient(coverGradient) : undefined,
         prizePool: prizePool !== undefined ? (prizePool || null) : undefined,
         docsUrl: docsUrl !== undefined ? (docsUrl || null) : undefined,
         submissionSchema: submissionSchema !== undefined ? submissionSchema : undefined,
@@ -924,7 +1344,7 @@ app.get('/api/hackathon/markdown-doc', async (_req, res) => {
 
   const doc = await readHackathonMarkdownDoc(currentHackathon.id);
   if (!doc) {
-    return res.status(404).json({ error: 'Markdown document not found' });
+    return res.status(404).json({ error: 'Document not found' });
   }
 
   res.json(doc);
@@ -938,16 +1358,17 @@ app.put('/api/hackathon/markdown-doc', requireAdmin, async (req, res) => {
 
   const content = typeof req.body?.content === 'string' ? req.body.content : '';
   const fileName = asString(req.body?.fileName);
+  const isBase64 = req.body?.isBase64 === true;
 
   if (!content.trim()) {
-    return res.status(400).json({ error: 'Markdown content is required' });
+    return res.status(400).json({ error: 'Document content is required' });
   }
 
   try {
-    const doc = await saveHackathonMarkdownDoc(currentHackathon.id, fileName, content);
+    const doc = await saveHackathonMarkdownDoc(currentHackathon.id, fileName, content, isBase64);
     res.json(doc);
   } catch (error: unknown) {
-    res.status(500).json({ error: getErrorMessage(error, 'Failed to save markdown document') });
+    res.status(500).json({ error: getErrorMessage(error, 'Failed to save document') });
   }
 });
 
@@ -960,11 +1381,11 @@ app.delete('/api/hackathon/markdown-doc', requireAdmin, async (_req, res) => {
   try {
     const deleted = await deleteHackathonMarkdownDoc(currentHackathon.id);
     if (!deleted) {
-      return res.status(404).json({ error: 'Markdown document not found' });
+      return res.status(404).json({ error: 'Document not found' });
     }
     res.json({ success: true });
   } catch (error: unknown) {
-    res.status(500).json({ error: getErrorMessage(error, 'Failed to delete markdown document') });
+    res.status(500).json({ error: getErrorMessage(error, 'Failed to delete document') });
   }
 });
 
@@ -980,7 +1401,7 @@ app.get('/api/hackathons/:id/markdown-doc', async (req, res) => {
 
   const doc = await readHackathonMarkdownDoc(req.params.id);
   if (!doc) {
-    return res.status(404).json({ error: 'Markdown document not found' });
+    return res.status(404).json({ error: 'Document not found' });
   }
 
   res.json(doc);
@@ -998,16 +1419,17 @@ app.put('/api/hackathons/:id/markdown-doc', requireAdmin, async (req, res) => {
 
   const content = typeof req.body?.content === 'string' ? req.body.content : '';
   const fileName = asString(req.body?.fileName);
+  const isBase64 = req.body?.isBase64 === true;
 
   if (!content.trim()) {
-    return res.status(400).json({ error: 'Markdown content is required' });
+    return res.status(400).json({ error: 'Document content is required' });
   }
 
   try {
-    const doc = await saveHackathonMarkdownDoc(req.params.id, fileName, content);
+    const doc = await saveHackathonMarkdownDoc(req.params.id, fileName, content, isBase64);
     res.json(doc);
   } catch (error: unknown) {
-    res.status(500).json({ error: getErrorMessage(error, 'Failed to save markdown document') });
+    res.status(500).json({ error: getErrorMessage(error, 'Failed to save document') });
   }
 });
 
@@ -1024,11 +1446,11 @@ app.delete('/api/hackathons/:id/markdown-doc', requireAdmin, async (req, res) =>
   try {
     const deleted = await deleteHackathonMarkdownDoc(req.params.id);
     if (!deleted) {
-      return res.status(404).json({ error: 'Markdown document not found' });
+      return res.status(404).json({ error: 'Document not found' });
     }
     res.json({ success: true });
   } catch (error: unknown) {
-    res.status(500).json({ error: getErrorMessage(error, 'Failed to delete markdown document') });
+    res.status(500).json({ error: getErrorMessage(error, 'Failed to delete document') });
   }
 });
 
@@ -1641,6 +2063,9 @@ app.post('/api/assignments/:id/scores', requireAuth, async (req, res) => {
 
   const existing = await prisma.assignment.findUnique({
     where: { id: assignmentId },
+    include: {
+      project: { select: { hackathonId: true } },
+    },
   });
 
   if (!existing) {
@@ -1660,7 +2085,7 @@ app.post('/api/assignments/:id/scores', requireAuth, async (req, res) => {
       if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
       const criterionId = asString((row as { criterionId?: unknown }).criterionId);
       const scoreValue = Number((row as { score?: unknown }).score);
-      if (!criterionId || !Number.isFinite(scoreValue)) {
+      if (!criterionId || !Number.isInteger(scoreValue)) {
         return null;
       }
       return {
@@ -1671,6 +2096,35 @@ app.post('/api/assignments/:id/scores', requireAuth, async (req, res) => {
     .filter((row): row is AssignmentScorePayload => row !== null);
   if (parsedScores.length !== scores.length) {
     return res.status(400).json({ error: 'Scores payload contains invalid entries' });
+  }
+
+  const scoringCriteria = await prisma.scoringCriterion.findMany({
+    where: { hackathonId: existing.project.hackathonId },
+    select: { id: true, maxScore: true },
+  });
+  if (scoringCriteria.length === 0) {
+    return res.status(400).json({ error: 'No scoring criteria configured for this hackathon' });
+  }
+
+  const criterionMaxMap = new Map(scoringCriteria.map((criterion) => [criterion.id, criterion.maxScore]));
+  const seenCriteria = new Set<string>();
+
+  for (const scoreItem of parsedScores) {
+    const criterionMax = criterionMaxMap.get(scoreItem.criterionId);
+    if (criterionMax === undefined) {
+      return res.status(400).json({ error: `Unknown criterionId: ${scoreItem.criterionId}` });
+    }
+    if (seenCriteria.has(scoreItem.criterionId)) {
+      return res.status(400).json({ error: 'Scores payload contains duplicate criterion entries' });
+    }
+    if (scoreItem.score < 0 || scoreItem.score > criterionMax) {
+      return res.status(400).json({ error: `Score for criterion ${scoreItem.criterionId} must be between 0 and ${criterionMax}` });
+    }
+    seenCriteria.add(scoreItem.criterionId);
+  }
+
+  if (seenCriteria.size !== scoringCriteria.length) {
+    return res.status(400).json({ error: 'Scores payload must include every scoring criterion exactly once' });
   }
 
   const totalScore = parsedScores.reduce((sum, scoreItem) => sum + scoreItem.score, 0);
@@ -2462,7 +2916,7 @@ app.post('/api/setup', async (req, res) => {
         data: {
           title: hackathon.title,
           tagline: hackathon.tagline || '',
-          coverGradient: '',
+          coverGradient: resolveHackathonCoverGradient(hackathon.coverGradient),
           city: hackathon.city || null,
           startAt: hackathon.startAt ? new Date(hackathon.startAt) : new Date(),
           endAt: hackathon.endAt ? new Date(hackathon.endAt) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -2487,6 +2941,71 @@ app.post('/api/setup', async (req, res) => {
   } catch (error) {
     console.error('Setup error:', error);
     res.status(500).json({ error: 'Setup failed' });
+  }
+});
+
+// ===== System Reset =====
+
+app.post('/api/admin/reset', requireAdmin, async (req, res) => {
+  try {
+    const { mode, confirm } = req.body;
+    if (!confirm) {
+      return res.status(400).json({ error: 'Confirmation required. Set confirm: true to proceed.' });
+    }
+    if (mode !== 'hackathon' && mode !== 'factory') {
+      return res.status(400).json({ error: 'Invalid mode. Use "hackathon" or "factory".' });
+    }
+
+    const adminUser = req.authUser;
+    if (!adminUser) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (mode === 'hackathon') {
+      // Delete hackathon data, keep user accounts
+      await prisma.$transaction(async (tx) => {
+        await tx.score.deleteMany({});
+        await tx.assignment.deleteMany({});
+        await tx.hackathonJudge.deleteMany({});
+        await tx.project.deleteMany({});
+        await tx.scoringCriterion.deleteMany({});
+        await tx.activityLog.deleteMany({});
+        await tx.hackathon.deleteMany({});
+      });
+
+      // Log the reset action
+      await prisma.activityLog.create({
+        data: {
+          action: 'system_reset',
+          entityType: 'system',
+          entityId: 'system',
+          actorId: adminUser.id,
+          actorRole: 'admin',
+          actorName: adminUser.name || adminUser.email,
+          metadata: { mode: 'hackathon' },
+        },
+      });
+
+      return res.json({ success: true, mode: 'hackathon' });
+    }
+
+    // Factory reset — delete everything
+    await prisma.$transaction(async (tx) => {
+      await tx.score.deleteMany({});
+      await tx.assignment.deleteMany({});
+      await tx.hackathonJudge.deleteMany({});
+      await tx.project.deleteMany({});
+      await tx.scoringCriterion.deleteMany({});
+      await tx.activityLog.deleteMany({});
+      await tx.hackathon.deleteMany({});
+      await tx.siteSetting.deleteMany({});
+      await tx.user.deleteMany({});
+    });
+
+    return res.json({ success: true, mode: 'factory' });
+  } catch (error) {
+    console.error('System reset error:', error);
+    res.status(500).json({ error: 'System reset failed' });
   }
 });
 
