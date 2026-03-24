@@ -2,10 +2,10 @@ import type { Express, RequestHandler } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { asString } from '../config';
-import { normalizeEmail, isValidEmail, getErrorMessage } from '../utils/validation';
+import { normalizeEmail, isValidEmail, validateSearchInput, MAX_TITLE_LENGTH, MAX_TAG_LENGTH, MAX_TAGS_COUNT, MAX_DESCRIPTION_LENGTH } from '../utils/validation';
 import { getScopedHackathonId, parseProjectSubmissionFilters, buildProjectSubmissionFilterClause } from '../utils/hackathon';
 import { generateSubmissionReceiptId, sendSubmissionReceiptEmail } from '../utils/email';
-import { logActivity, getActorInfo } from '../utils/activity';
+import { logActivity } from '../utils/activity';
 
 export function registerProjectRoutes(
   app: Express,
@@ -18,7 +18,7 @@ export function registerProjectRoutes(
 
     const pageNum = page ? Math.max(1, parseInt(String(page), 10)) : null;
     const pageSizeNum = pageSize ? Math.min(200, Math.max(1, parseInt(String(pageSize), 10))) : null;
-    const searchStr = search ? String(search).trim() : null;
+    const searchStr = validateSearchInput(search as string | undefined);
     const statusStr = typeof status === 'string' ? status.trim() : '';
     const statusValue = statusStr ? statusStr : null;
     const parsedSubmissionFilters = parseProjectSubmissionFilters(submissionFilters);
@@ -121,6 +121,13 @@ export function registerProjectRoutes(
     const submitterEmailValue = normalizeEmail(submitterEmail);
     const submitterNameValue = asString(submitterName);
 
+    if (titleValue && titleValue.length > MAX_TITLE_LENGTH) {
+      return res.status(400).json({ error: `title must be at most ${MAX_TITLE_LENGTH} characters` });
+    }
+    if (description && typeof description === 'string' && description.length > MAX_DESCRIPTION_LENGTH) {
+      return res.status(400).json({ error: `description must be at most ${MAX_DESCRIPTION_LENGTH} characters` });
+    }
+
     if (!hackathonIdValue) {
       return res.status(400).json({ error: 'hackathonId is required' });
     }
@@ -161,8 +168,13 @@ export function registerProjectRoutes(
     const demoUrlValue = asString(demoUrl);
     const repoUrlValue = asString(repoUrl);
     const tagsValue = Array.isArray(tags)
-      ? tags.filter((tag: unknown): tag is string => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean)
+      ? tags.filter((tag: unknown): tag is string => typeof tag === 'string').map((tag) => tag.trim()).filter(Boolean).slice(0, MAX_TAGS_COUNT)
       : [];
+    for (const tag of tagsValue) {
+      if (tag.length > MAX_TAG_LENGTH) {
+        return res.status(400).json({ error: `Each tag must be at most ${MAX_TAG_LENGTH} characters` });
+      }
+    }
 
     const project = await prisma.project.create({
       data: {

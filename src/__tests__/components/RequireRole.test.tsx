@@ -36,10 +36,11 @@ function renderWithRouter(
 describe('RequireRole', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
   })
 
   it('shows loading spinner while auth is loading', () => {
-    mockUseAuth.mockReturnValue({ user: null, isLoading: true })
+    mockUseAuth.mockReturnValue({ user: null, isLoading: true, logout: vi.fn() })
 
     renderWithRouter(
       <RequireRole allowedRoles={['admin']}>
@@ -52,7 +53,7 @@ describe('RequireRole', () => {
   })
 
   it('redirects to /login when user is not authenticated', () => {
-    mockUseAuth.mockReturnValue({ user: null, isLoading: false })
+    mockUseAuth.mockReturnValue({ user: null, isLoading: false, logout: vi.fn() })
 
     renderWithRouter(
       <RequireRole allowedRoles={['admin']}>
@@ -65,9 +66,12 @@ describe('RequireRole', () => {
   })
 
   it('redirects judges away from admin-only routes to /judge', () => {
+    // Set token so the useEffect doesn't trigger logout
+    localStorage.setItem('openhackathon_admin_token', 'fake-token')
     mockUseAuth.mockReturnValue({
       user: { id: '1', email: 'judge@test.com', name: 'Judge', role: 'judge' },
       isLoading: false,
+      logout: vi.fn(),
     })
 
     renderWithRouter(
@@ -81,9 +85,11 @@ describe('RequireRole', () => {
   })
 
   it('redirects admins away from judge-only routes to /admin', () => {
+    localStorage.setItem('openhackathon_admin_token', 'fake-token')
     mockUseAuth.mockReturnValue({
       user: { id: '1', email: 'admin@test.com', name: 'Admin', role: 'admin' },
       isLoading: false,
+      logout: vi.fn(),
     })
 
     renderWithRouter(
@@ -97,9 +103,11 @@ describe('RequireRole', () => {
   })
 
   it('renders children when user has allowed role', () => {
+    localStorage.setItem('openhackathon_admin_token', 'fake-token')
     mockUseAuth.mockReturnValue({
       user: { id: '1', email: 'admin@test.com', name: 'Admin', role: 'admin' },
       isLoading: false,
+      logout: vi.fn(),
     })
 
     renderWithRouter(
@@ -112,9 +120,11 @@ describe('RequireRole', () => {
   })
 
   it('supports multiple allowed roles', () => {
+    localStorage.setItem('openhackathon_admin_token', 'fake-token')
     mockUseAuth.mockReturnValue({
       user: { id: '1', email: 'judge@test.com', name: 'Judge', role: 'judge' },
       isLoading: false,
+      logout: vi.fn(),
     })
 
     renderWithRouter(
@@ -127,7 +137,7 @@ describe('RequireRole', () => {
   })
 
   it('redirects to custom path via redirectTo prop', () => {
-    mockUseAuth.mockReturnValue({ user: null, isLoading: false })
+    mockUseAuth.mockReturnValue({ user: null, isLoading: false, logout: vi.fn() })
 
     render(
       <MemoryRouter initialEntries={['/protected']}>

@@ -6,7 +6,7 @@ import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { app, prisma } from '../server';
 
-const DEFAULT_PASSWORD = 'secret123';
+const DEFAULT_PASSWORD = 'Secret123';
 const TINY_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jm3sAAAAASUVORK5CYII=';
 type ProjectReportJudge = {
   status: 'pending' | 'in_progress' | 'completed';
@@ -418,7 +418,7 @@ describe('API integration tests (real database)', () => {
         admin: {
           email: 'admin@example.com',
           name: 'Admin User',
-          password: 'supersecret',
+          password: 'SuperSecret1',
         },
         hackathon: {
           title: 'Launch Event',
@@ -936,7 +936,7 @@ describe('API integration tests (real database)', () => {
         .send({
           email: 'judge.new@example.com',
           name: 'Judge New',
-          password: 'judge-password',
+          password: 'JudgePass1',
           role: 'judge',
         })
         .expect(200);
@@ -946,15 +946,15 @@ describe('API integration tests (real database)', () => {
 
       const stored = await prisma.user.findUnique({ where: { email: 'judge.new@example.com' } });
       expect(stored).toBeTruthy();
-      expect(stored?.password).not.toBe('judge-password');
-      expect(bcrypt.compareSync('judge-password', stored!.password)).toBe(true);
+      expect(stored?.password).not.toBe('JudgePass1');
+      expect(bcrypt.compareSync('JudgePass1', stored!.password)).toBe(true);
 
       await prisma.user.create({
         data: {
           email: 'admin.filter@example.com',
           name: 'Admin Filter',
           role: 'admin',
-          password: bcrypt.hashSync('admin-password', 10),
+          password: bcrypt.hashSync('AdminPass1', 10),
         },
       });
 
@@ -967,7 +967,7 @@ describe('API integration tests (real database)', () => {
         .send({
           email: 'judge.new@example.com',
           name: 'Duplicate',
-          password: '12345678',
+          password: 'ValidPass1',
           role: 'judge',
         })
         .expect(409);
@@ -979,7 +979,7 @@ describe('API integration tests (real database)', () => {
         .send({
           email: 'auth.user@example.com',
           name: 'Auth User',
-          password: 'my-password',
+          password: 'MyPassword1',
           role: 'admin',
         })
         .expect(200);
@@ -988,7 +988,7 @@ describe('API integration tests (real database)', () => {
         .post('/api/auth/login')
         .send({
           email: 'auth.user@example.com',
-          password: 'my-password',
+          password: 'MyPassword1',
         })
         .expect(200);
 
@@ -1011,7 +1011,7 @@ describe('API integration tests (real database)', () => {
         .post('/api/auth/login')
         .send({
           email: 'auth.user@example.com',
-          password: 'wrong-password',
+          password: 'WrongPass1',
         })
         .expect(401);
 
@@ -1024,7 +1024,7 @@ describe('API integration tests (real database)', () => {
         .send({
           email: 'invalid-email',
           name: 'Bad Email User',
-          password: 'good-password',
+          password: 'GoodPass1',
           role: 'judge',
         })
         .expect(400);
@@ -1034,7 +1034,7 @@ describe('API integration tests (real database)', () => {
         .send({
           email: 'weak.password@example.com',
           name: 'Weak Password User',
-          password: '123',
+          password: 'weakpass1',
           role: 'judge',
         })
         .expect(400);

@@ -25,7 +25,12 @@ export function isValidHttpOrRootRelativeUrl(url: string): boolean {
 }
 
 export function isValidPassword(password: string): boolean {
-  return password.length >= 8 && password.length <= 72;
+  if (password.length < 8 || password.length > 72) return false;
+  // Require at least one uppercase, one lowercase, and one digit
+  const hasUppercase = /[A-Z]/.test(password);
+  const hasLowercase = /[a-z]/.test(password);
+  const hasDigit = /[0-9]/.test(password);
+  return hasUppercase && hasLowercase && hasDigit;
 }
 
 export function asUserRole(value: unknown): UserRole | null {
@@ -98,4 +103,33 @@ export function normalizeAdminBasePath(value?: string | null) {
   const normalized = collapsed.length > 1 ? collapsed.replace(/\/$/, '') : collapsed;
 
   return normalized === '/' ? fallback : normalized;
+}
+
+// ===== Input length limits =====
+
+export const MAX_TITLE_LENGTH = 200;
+export const MAX_TAGLINE_LENGTH = 500;
+export const MAX_DESCRIPTION_LENGTH = 10000;
+export const MAX_NAME_LENGTH = 100;
+export const MAX_EMAIL_LENGTH = 254;
+export const MAX_URL_LENGTH = 2000;
+export const MAX_SEARCH_LENGTH = 200;
+export const MAX_TAG_LENGTH = 50;
+export const MAX_TAGS_COUNT = 20;
+export const MAX_CITY_LENGTH = 100;
+export const MAX_PRIZE_POOL_LENGTH = 200;
+
+export function truncateString(value: string | undefined | null, maxLength: number): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  return value.length > maxLength ? value.slice(0, maxLength) : value;
+}
+
+export function validateSearchInput(search: string | undefined | null): string | null {
+  if (search === undefined || search === null) return null;
+  const trimmed = String(search).trim();
+  if (!trimmed) return null;
+  if (trimmed.length > MAX_SEARCH_LENGTH) {
+    return trimmed.slice(0, MAX_SEARCH_LENGTH);
+  }
+  return trimmed;
 }

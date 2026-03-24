@@ -1,6 +1,6 @@
 import type express from 'express';
 import type { PrismaClient } from '@prisma/client';
-import type { ActivityLogInput, AuthUser } from '../types';
+import type { ActivityLogInput } from '../types';
 import { getAuthUserFromRequest } from '../middleware';
 
 export async function logActivity(prisma: PrismaClient, input: ActivityLogInput): Promise<void> {

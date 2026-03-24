@@ -6,21 +6,13 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { Prisma } from '@prisma/client';
 import {
-  SUBMISSION_EMAIL_ENABLED,
-  SUBMISSION_EMAIL_FROM,
-  SUBMISSION_EMAIL_PORT,
-  SUBMISSION_EMAIL_SECURE,
-  SUBMISSION_EMAIL_SUBJECT_TEMPLATE,
-  SUBMISSION_EMAIL_TIMEOUT_MS,
   IMAGE_UPLOAD_LIMIT,
-  UPLOADS_ROOT,
   UPLOAD_IMAGES_DIR,
   ALLOWED_UPLOAD_IMAGE_EXTENSIONS,
-  asString,
 } from '../config';
-import { normalizeEmail, isValidEmail, getErrorMessage, normalizeAdminBasePath } from '../utils/validation';
+import { normalizeEmail, isValidEmail, getErrorMessage, normalizeAdminBasePath, MAX_URL_LENGTH, MAX_NAME_LENGTH, MAX_TITLE_LENGTH } from '../utils/validation';
 import { encryptEmailSecret } from '../utils/crypto';
-import { resolveSubmissionEmailPort, resolveSubmissionEmailTimeout, sendSubmissionReceiptEmail, getSubmissionEmailConfig } from '../utils/email';
+import { resolveSubmissionEmailPort, resolveSubmissionEmailTimeout, sendSubmissionReceiptEmail } from '../utils/email';
 import { getCurrentHackathon, serializeSiteSettings, serializePublicSiteSettings } from '../utils/hackathon';
 import { normalizeUploadedImageFileName, resolveUploadedImageExtension } from '../utils/documents';
 
@@ -95,6 +87,35 @@ export function registerSiteSettingsRoutes(
     if (smtpPassInput !== undefined) {
       const trimmed = smtpPassInput.trim();
       smtpPassEncryptedValue = trimmed ? encryptEmailSecret(trimmed) : null;
+    }
+
+    // Validate input lengths
+    if (siteName !== undefined && siteName.length > MAX_TITLE_LENGTH) {
+      return res.status(400).json({ error: `siteName must be at most ${MAX_TITLE_LENGTH} characters` });
+    }
+    if (tabTitle !== undefined && tabTitle.length > MAX_TITLE_LENGTH) {
+      return res.status(400).json({ error: `tabTitle must be at most ${MAX_TITLE_LENGTH} characters` });
+    }
+    if (seoTitle !== undefined && seoTitle.length > MAX_TITLE_LENGTH) {
+      return res.status(400).json({ error: `seoTitle must be at most ${MAX_TITLE_LENGTH} characters` });
+    }
+    if (seoDescription !== undefined && seoDescription.length > 1000) {
+      return res.status(400).json({ error: 'seoDescription must be at most 1000 characters' });
+    }
+    if (faviconUrl !== undefined && faviconUrl.length > MAX_URL_LENGTH) {
+      return res.status(400).json({ error: `faviconUrl must be at most ${MAX_URL_LENGTH} characters` });
+    }
+    if (logoUrl !== undefined && logoUrl.length > MAX_URL_LENGTH) {
+      return res.status(400).json({ error: `logoUrl must be at most ${MAX_URL_LENGTH} characters` });
+    }
+    if (poweredByText !== undefined && poweredByText.length > MAX_NAME_LENGTH) {
+      return res.status(400).json({ error: `poweredByText must be at most ${MAX_NAME_LENGTH} characters` });
+    }
+    if (poweredByUrl !== undefined && poweredByUrl.length > MAX_URL_LENGTH) {
+      return res.status(400).json({ error: `poweredByUrl must be at most ${MAX_URL_LENGTH} characters` });
+    }
+    if (submissionEmailSubject !== undefined && submissionEmailSubject.length > 200) {
+      return res.status(400).json({ error: 'submissionEmailSubject must be at most 200 characters' });
     }
 
     const data: Prisma.SiteSettingUpdateInput = {

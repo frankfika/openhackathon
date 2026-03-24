@@ -13,9 +13,8 @@ import {
   AUTH_RATE_LIMIT_MAX,
   SUBMISSION_RATE_LIMIT_WINDOW_MS,
   SUBMISSION_RATE_LIMIT_MAX,
-  asString,
 } from './config';
-import type { AuthUser, JwtPayload, UserRole } from './types';
+import type { AuthUser, JwtPayload } from './types';
 import { normalizeEmail, asUserRole } from './utils/validation';
 
 export function getAuthUserFromRequest(req: express.Request): AuthUser | null {

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import type { PrismaClient, SiteSetting } from '@prisma/client';
+import type { SiteSetting } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import {
   HACKATHON_STATUS_PRIORITY,

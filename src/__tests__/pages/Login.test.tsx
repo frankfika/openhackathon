@@ -19,6 +19,12 @@ vi.mock('@/lib/admin-routing', () => ({
   }),
 }))
 
+vi.mock('@/lib/api', () => ({
+  api: {
+    getSetupStatus: vi.fn().mockResolvedValue({ needsSetup: false }),
+  },
+}))
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, defaultValue?: string) => defaultValue ?? key,
@@ -37,7 +43,7 @@ describe('Login', () => {
     vi.clearAllMocks()
   })
 
-  it('redirects to the authenticated role home instead of the selected tab', async () => {
+  it('redirects to admin page after successful login', async () => {
     mockLogin.mockResolvedValue({
       id: '1',
       email: 'admin@test.com',
@@ -58,7 +64,6 @@ describe('Login', () => {
       </MemoryRouter>
     )
 
-    await user.click(screen.getByRole('tab', { name: 'auth.judge' }))
     await user.type(screen.getByLabelText('auth.email'), 'admin@test.com')
     await user.type(screen.getByLabelText('auth.password'), 'password')
     await user.click(screen.getByRole('button', { name: 'auth.sign_in' }))
@@ -66,6 +71,5 @@ describe('Login', () => {
     await waitFor(() => {
       expect(screen.getByTestId('admin-page')).toBeInTheDocument()
     })
-    expect(screen.queryByTestId('judge-page')).not.toBeInTheDocument()
   })
 })

@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import {
@@ -11,7 +10,6 @@ import {
   FolderGit2,
   Gavel,
   Loader2,
-  Plus,
   Settings as SettingsIcon,
   Trophy,
   Users,
@@ -189,7 +187,7 @@ export function AdminDashboard() {
       default:
         return []
     }
-  }, [activeHackathon.id, activeHackathon.status, shouldSuggestWizard, hackathonStatus, stats, adminBasePath, navigate, t])
+  }, [activeHackathon.id, shouldSuggestWizard, hackathonStatus, stats, adminBasePath, navigate, t])
 
   const statCards = [
     {

@@ -2,7 +2,6 @@ import React, { useMemo, useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Separator } from '@/components/ui/separator'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { CheckCircle2, ExternalLink, Github, Save, FileText, ChevronRight, ChevronLeft } from 'lucide-react'
@@ -12,7 +11,6 @@ import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useActiveHackathon } from '@/lib/active-hackathon'
-import type { Assignment, Project, ScoringCriterion } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { getVisibleSubmissionDataEntries } from '@/lib/submission-fields'
 import {
@@ -77,7 +75,7 @@ export function Judging() {
     enabled: !!activeHackathon?.id,
   })
 
-  const scoringCriteria = hackathon?.scoringCriteria || []
+  const scoringCriteria = useMemo(() => hackathon?.scoringCriteria || [], [hackathon?.scoringCriteria])
   const visibleStatuses = isJudge ? judgeStatuses : adminStatuses
 
   const getStatusCount = (targetStatus: 'pending' | 'in_progress' | 'completed') => {

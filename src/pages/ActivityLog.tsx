@@ -11,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -201,7 +200,7 @@ export function ActivityLogPage() {
     staleTime: 30_000,
   })
 
-  const logs = logsData?.logs ?? []
+  const logs = useMemo(() => logsData?.logs ?? [], [logsData?.logs])
   const total = logsData?.total ?? 0
   // Stats are inlined in the first unfiltered page response
   const stats = (logsData as { stats?: { totalActions: number; recentActions: number; byRole: Record<string, number>; byEntity: Record<string, number> } })?.stats

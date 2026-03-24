@@ -12,7 +12,6 @@ import {
   CORS_ALLOW_ALL,
   CORS_ORIGINS,
   JSON_BODY_LIMIT,
-  MARKDOWN_DOC_BODY_LIMIT,
   TRUST_PROXY,
   UPLOADS_ROOT,
   SUBMISSION_EMAIL_ENABLED,
@@ -112,6 +111,7 @@ if (TRUST_PROXY !== undefined) {
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));
 app.use(cors(corsOptions));
 app.use(express.json({ limit: JSON_BODY_LIMIT, type: shouldParseJsonBody }));

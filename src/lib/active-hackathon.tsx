@@ -44,7 +44,7 @@ export function ActiveHackathonProvider({ children }: { children: React.ReactNod
     return hackathons[0]
   }, [hackathons])
 
-  const setActiveHackathonId = useCallback((_id: string) => {
+  const setActiveHackathonId = useCallback((/* _id: string */) => {
     // Single-hackathon mode keeps one global event; ID switching is disabled.
   }, [])
 

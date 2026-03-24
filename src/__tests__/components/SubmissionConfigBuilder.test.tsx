@@ -5,7 +5,7 @@ import { SubmissionConfigBuilder } from '@/components/SubmissionConfigBuilder'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, defaultValue?: string) => defaultValue ?? key,
   }),
 }))
 
@@ -33,10 +33,11 @@ describe('SubmissionConfigBuilder', () => {
     expect(saveButton).toBeDisabled()
     expect(screen.getAllByText('submission.field_options_required').length).toBeGreaterThan(0)
 
-    const optionsTextarea = screen.getByPlaceholderText('submission.field_options_placeholder')
-    fireEvent.change(optionsTextarea, { target: { value: 'AI Agent' } })
+    // The component already shows one empty option input when options is empty.
+    // Fill it to enable the save button.
+    const optionInput = screen.getByPlaceholderText('Option value')
+    fireEvent.change(optionInput, { target: { value: 'AI Agent' } })
 
     expect(saveButton).toBeEnabled()
   })
 })
-

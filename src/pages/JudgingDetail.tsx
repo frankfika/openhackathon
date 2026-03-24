@@ -12,7 +12,6 @@ import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth'
 import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Assignment } from '@/lib/types'
 import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
 import { getVisibleSubmissionDataEntries } from '@/lib/submission-fields'
 import { cn } from '@/lib/utils'
@@ -64,7 +63,7 @@ export function JudgingDetail() {
     enabled: !!project?.hackathonId,
   })
 
-  const scoringCriteria = hackathon?.scoringCriteria || []
+  const scoringCriteria = React.useMemo(() => hackathon?.scoringCriteria || [], [hackathon?.scoringCriteria])
   const visibleSubmissionEntries = React.useMemo(() => {
     return getVisibleSubmissionDataEntries(project?.submissionData, hackathon?.submissionSchema, t)
   }, [project?.submissionData, hackathon?.submissionSchema, t])

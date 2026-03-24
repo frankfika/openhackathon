@@ -12,6 +12,11 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
+// Mock extractApiErrorMessage
+vi.mock('@/lib/api-error', () => ({
+  extractApiErrorMessage: (_err: unknown, fallback: string) => fallback,
+}))
+
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <AuthProvider>{children}</AuthProvider>
 )
@@ -39,7 +44,8 @@ describe('useAuth', () => {
 
   it('restores user from localStorage', async () => {
     const savedUser = { id: '1', email: 'admin@test.com', name: 'Admin', role: 'admin' as const }
-    localStorage.setItem('openhackathon_user', JSON.stringify(savedUser))
+    // Use the new role-based storage key (path is "/" in jsdom → admin)
+    localStorage.setItem('openhackathon_admin_user', JSON.stringify(savedUser))
 
     const { result } = renderHook(() => useAuth(), { wrapper })
     await waitFor(() => {
@@ -49,7 +55,7 @@ describe('useAuth', () => {
   })
 
   it('handles corrupted localStorage gracefully', async () => {
-    localStorage.setItem('openhackathon_user', 'not-valid-json')
+    localStorage.setItem('openhackathon_admin_user', 'not-valid-json')
 
     const { result } = renderHook(() => useAuth(), { wrapper })
     await waitFor(() => {
@@ -60,7 +66,8 @@ describe('useAuth', () => {
 
   it('login sets user and persists to localStorage', async () => {
     const mockUser = { id: '1', email: 'admin@test.com', name: 'Admin', role: 'admin' as const }
-    vi.mocked(api.login).mockResolvedValue(mockUser)
+    // api.login now returns { token, ...userData }
+    vi.mocked(api.login).mockResolvedValue({ ...mockUser, token: 'test-token' })
 
     const { result } = renderHook(() => useAuth(), { wrapper })
     await waitFor(() => {
@@ -74,7 +81,8 @@ describe('useAuth', () => {
 
     expect(result.current.user).toEqual(mockUser)
     expect(authenticatedUser).toEqual(mockUser)
-    expect(localStorage.getItem('openhackathon_user')).toBe(JSON.stringify(mockUser))
+    expect(localStorage.getItem('openhackathon_admin_user')).toBe(JSON.stringify(mockUser))
+    expect(localStorage.getItem('openhackathon_admin_token')).toBe('test-token')
   })
 
   it.skip('login sets error on failure - timing issue with act()', async () => {
@@ -105,7 +113,8 @@ describe('useAuth', () => {
 
   it('logout clears user and localStorage', async () => {
     const savedUser = { id: '1', email: 'admin@test.com', name: 'Admin', role: 'admin' as const }
-    localStorage.setItem('openhackathon_user', JSON.stringify(savedUser))
+    localStorage.setItem('openhackathon_admin_user', JSON.stringify(savedUser))
+    localStorage.setItem('openhackathon_admin_token', 'test-token')
 
     const { result } = renderHook(() => useAuth(), { wrapper })
     await waitFor(() => {
@@ -117,6 +126,7 @@ describe('useAuth', () => {
     })
 
     expect(result.current.user).toBeNull()
-    expect(localStorage.getItem('openhackathon_user')).toBeNull()
+    expect(localStorage.getItem('openhackathon_admin_user')).toBeNull()
+    expect(localStorage.getItem('openhackathon_admin_token')).toBeNull()
   })
 })

@@ -191,7 +191,7 @@ describe('Judging', () => {
 
     expect(screen.getByText('Track')).toBeInTheDocument()
     expect(screen.getByText('AI')).toBeInTheDocument()
-    expect(screen.getByText('Project ID')).toBeInTheDocument()
+    expect(screen.getByText('projects.project_id')).toBeInTheDocument()
     expect(screen.queryByText('_receipt')).not.toBeInTheDocument()
     expect(screen.queryByText('SUB-20260324-ABC123')).not.toBeInTheDocument()
   })

@@ -1,10 +1,9 @@
 import type { Express, RequestHandler } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import express from 'express';
-import { Prisma } from '@prisma/client';
 import { SINGLE_HACKATHON_MODE, MARKDOWN_DOC_BODY_LIMIT, asString } from '../config';
 import type { ScoringCriterionPayload } from '../types';
-import { isValidHttpUrl, isValidHttpOrRootRelativeUrl, getErrorMessage, normalizeScoringCriteriaPayload } from '../utils/validation';
+import { isValidHttpUrl, isValidHttpOrRootRelativeUrl, getErrorMessage, normalizeScoringCriteriaPayload, MAX_TITLE_LENGTH, MAX_TAGLINE_LENGTH, MAX_CITY_LENGTH, MAX_PRIZE_POOL_LENGTH, MAX_URL_LENGTH } from '../utils/validation';
 import { getCurrentHackathon, listHackathonsWithRelations, resolveHackathonCoverGradient } from '../utils/hackathon';
 import { readHackathonMarkdownDoc, saveHackathonMarkdownDoc, deleteHackathonMarkdownDoc } from '../utils/documents';
 
@@ -80,9 +79,15 @@ export function registerHackathonRoutes(
     if (!titleValue) {
       return res.status(400).json({ error: 'title is required' });
     }
+    if (titleValue.length > MAX_TITLE_LENGTH) {
+      return res.status(400).json({ error: `title must be at most ${MAX_TITLE_LENGTH} characters` });
+    }
     const taglineValue = typeof tagline === 'string' ? tagline.trim() : '';
     if (!taglineValue) {
       return res.status(400).json({ error: 'tagline is required' });
+    }
+    if (taglineValue.length > MAX_TAGLINE_LENGTH) {
+      return res.status(400).json({ error: `tagline must be at most ${MAX_TAGLINE_LENGTH} characters` });
     }
     const startAtValue = asString(startAt);
     const endAtValue = asString(endAt);
@@ -93,6 +98,9 @@ export function registerHackathonRoutes(
     if (docsUrlValue && !isValidHttpUrl(docsUrlValue)) {
       return res.status(400).json({ error: 'docsUrl must be a valid http(s) URL' });
     }
+    if (docsUrlValue && docsUrlValue.length > MAX_URL_LENGTH) {
+      return res.status(400).json({ error: `docsUrl must be at most ${MAX_URL_LENGTH} characters` });
+    }
     const submissionSuccessHintTextValue = asString(submissionSuccessHintText) || null;
     const submissionSuccessHintImageUrlValue = asString(submissionSuccessHintImageUrl);
     if (submissionSuccessHintImageUrlValue && !isValidHttpOrRootRelativeUrl(submissionSuccessHintImageUrlValue)) {
@@ -101,7 +109,13 @@ export function registerHackathonRoutes(
     const statusValue = typeof status === 'string' && status.trim() ? status.trim() : 'draft';
     const coverGradientValue = resolveHackathonCoverGradient(coverGradient);
     const cityValue = asString(city) || null;
+    if (cityValue && cityValue.length > MAX_CITY_LENGTH) {
+      return res.status(400).json({ error: `city must be at most ${MAX_CITY_LENGTH} characters` });
+    }
     const prizePoolValue = asString(prizePool) || null;
+    if (prizePoolValue && prizePoolValue.length > MAX_PRIZE_POOL_LENGTH) {
+      return res.status(400).json({ error: `prizePool must be at most ${MAX_PRIZE_POOL_LENGTH} characters` });
+    }
     const hackathonStartAt = new Date(startAtValue);
     const hackathonEndAt = new Date(endAtValue);
 
@@ -201,9 +215,15 @@ export function registerHackathonRoutes(
     if (title !== undefined && !titleValue) {
       return res.status(400).json({ error: 'title cannot be empty' });
     }
+    if (titleValue && titleValue.length > MAX_TITLE_LENGTH) {
+      return res.status(400).json({ error: `title must be at most ${MAX_TITLE_LENGTH} characters` });
+    }
     const taglineValue = tagline !== undefined ? asString(tagline) : undefined;
     if (tagline !== undefined && !taglineValue) {
       return res.status(400).json({ error: 'tagline cannot be empty' });
+    }
+    if (taglineValue && taglineValue.length > MAX_TAGLINE_LENGTH) {
+      return res.status(400).json({ error: `tagline must be at most ${MAX_TAGLINE_LENGTH} characters` });
     }
 
     const startAtValue = startAt !== undefined ? asString(startAt) : undefined;
@@ -219,6 +239,9 @@ export function registerHackathonRoutes(
     if (docsUrlValue && !isValidHttpUrl(docsUrlValue)) {
       return res.status(400).json({ error: 'docsUrl must be a valid http(s) URL' });
     }
+    if (docsUrlValue && docsUrlValue.length > MAX_URL_LENGTH) {
+      return res.status(400).json({ error: `docsUrl must be at most ${MAX_URL_LENGTH} characters` });
+    }
     const submissionSuccessHintTextValue =
       submissionSuccessHintText !== undefined ? (asString(submissionSuccessHintText) || null) : undefined;
     const submissionSuccessHintImageUrlValue =
@@ -228,7 +251,13 @@ export function registerHackathonRoutes(
     }
 
     const cityValue = city !== undefined ? (asString(city) || null) : undefined;
+    if (cityValue && cityValue.length > MAX_CITY_LENGTH) {
+      return res.status(400).json({ error: `city must be at most ${MAX_CITY_LENGTH} characters` });
+    }
     const prizePoolValue = prizePool !== undefined ? (asString(prizePool) || null) : undefined;
+    if (prizePoolValue && prizePoolValue.length > MAX_PRIZE_POOL_LENGTH) {
+      return res.status(400).json({ error: `prizePool must be at most ${MAX_PRIZE_POOL_LENGTH} characters` });
+    }
 
     const nextStartAt = startAtValue ? new Date(startAtValue) : existingHackathon.startAt;
     const nextEndAt = endAtValue ? new Date(endAtValue) : existingHackathon.endAt;
