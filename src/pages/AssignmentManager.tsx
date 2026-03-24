@@ -268,7 +268,7 @@ export function AssignmentManager() {
   }
 
   const downloadCSV = () => {
-    const headers = [t('reports.rank'), t('reports.project'), t('reports.submitter'), ...judges.map(j => j.name), t('reports.average'), t('reports.progress')]
+    const headers = [t('reports.rank'), t('projects.project_id'), t('reports.project'), t('reports.submitter'), ...judges.map(j => j.name), t('reports.average'), t('reports.progress')]
     const rows = sortedProjects.map((project, index) => {
       const judgeCells = judges.map(judge => {
         const a = getAssignment(project.id, judge.id)
@@ -277,7 +277,7 @@ export function AssignmentManager() {
         return a.status
       })
       const s = projectStats.get(project.id)
-      return [index + 1, `"${project.title}"`, `"${project.submitterName || project.submitterEmail}"`, ...judgeCells, s && s.averageScore > 0 ? s.averageScore.toFixed(1) : '-', `${s?.completedAssignments ?? 0}/${s?.totalAssignments ?? 0}`]
+      return [index + 1, `"${project.id}"`, `"${project.title}"`, `"${project.submitterName || project.submitterEmail}"`, ...judgeCells, s && s.averageScore > 0 ? s.averageScore.toFixed(1) : '-', `${s?.completedAssignments ?? 0}/${s?.totalAssignments ?? 0}`]
     })
     const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -477,6 +477,7 @@ export function AssignmentManager() {
                         className="truncate text-sm text-left hover:underline block max-w-[220px] font-medium">
                         {project.title}
                       </button>
+                      <p className="truncate text-[11px] font-mono text-muted-foreground max-w-[220px]">{project.id}</p>
                       {project.submitterName && (
                         <p className="truncate text-[11px] text-muted-foreground max-w-[220px]">{project.submitterName}</p>
                       )}
@@ -566,6 +567,7 @@ export function AssignmentManager() {
                         className="truncate text-sm text-left hover:underline block max-w-[220px]">
                         {project.title}
                       </button>
+                      <p className="truncate text-[11px] font-mono text-muted-foreground max-w-[220px]">{project.id}</p>
                     </TableCell>
                     {judges.map((judge) => (
                       <TableCell key={judge.id} className={cn('text-center p-1', judge.id === focusedJudgeId && 'bg-primary/10')}>
@@ -751,4 +753,3 @@ function MatrixCell({
     </button>
   )
 }
-

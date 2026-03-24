@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -23,6 +24,16 @@ import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSiteBranding } from '@/lib/site-branding'
+import {
+  applyEmailProviderPreset,
+  DEFAULT_SUBMISSION_EMAIL_SUBJECT,
+  DEFAULT_SUBMISSION_EMAIL_TIMEOUT_MS,
+  EmailProviderPresetId,
+  getEmailProviderPreset,
+  inferEmailProviderPresetId,
+  EMAIL_PROVIDER_PRESETS,
+} from '@/lib/email-presets'
+import { buildEmailTestErrorMessage } from '@/lib/email-test-feedback'
 
 export function Settings() {
   const { t } = useTranslation()
@@ -52,6 +63,7 @@ export function Settings() {
   const [showSmtpPassword, setShowSmtpPassword] = useState(false)
   const [clearSmtpPassword, setClearSmtpPassword] = useState(false)
   const [testRecipient, setTestRecipient] = useState('')
+  const [selectedEmailPresetId, setSelectedEmailPresetId] = useState<EmailProviderPresetId>('custom')
   const [isUploadingLogo, setIsUploadingLogo] = useState(false)
   const [isUploadingFavicon, setIsUploadingFavicon] = useState(false)
   const logoFileInputRef = useRef<HTMLInputElement>(null)
@@ -69,6 +81,18 @@ export function Settings() {
     submissionEmailTimeoutMs: '10000',
     smtpPasswordConfigured: false,
   })
+
+  const getDerivedEmailFrom = () => {
+    const smtpUser = emailForm.smtpUser.trim()
+    const siteName = siteSettings.siteName?.trim() || 'OpenHackathon'
+    const emailLike = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(smtpUser)
+
+    if (emailLike) {
+      return `${siteName} <${smtpUser}>`
+    }
+
+    return emailForm.submissionEmailFrom.trim() || `${siteName} <no-reply@localhost>`
+  }
 
   const adminSettingsQuery = useQuery({
     queryKey: ['admin-site-settings'],
@@ -103,12 +127,30 @@ export function Settings() {
       smtpPass: '',
       submissionEmailFrom: adminSettings.submissionEmailFrom || 'OpenHackathon <no-reply@localhost>',
       submissionEmailReplyTo: adminSettings.submissionEmailReplyTo || '',
-      submissionEmailSubject: adminSettings.submissionEmailSubject || '[{{hackathonTitle}}] Submission Receipt {{receiptId}}',
-      submissionEmailTimeoutMs: String(adminSettings.submissionEmailTimeoutMs ?? 10000),
+      submissionEmailSubject: adminSettings.submissionEmailSubject || DEFAULT_SUBMISSION_EMAIL_SUBJECT,
+      submissionEmailTimeoutMs: String(adminSettings.submissionEmailTimeoutMs ?? DEFAULT_SUBMISSION_EMAIL_TIMEOUT_MS),
       smtpPasswordConfigured: !!adminSettings.smtpPasswordConfigured,
     })
+    setSelectedEmailPresetId(
+      inferEmailProviderPresetId({
+        smtpHost: adminSettings.smtpHost || '',
+        smtpPort: String(adminSettings.smtpPort ?? 587),
+        smtpSecure: !!adminSettings.smtpSecure,
+      })
+    )
     setClearSmtpPassword(false)
   }, [adminSettingsQuery.data])
+
+  const selectedEmailPreset = getEmailProviderPreset(selectedEmailPresetId)
+
+  const handleApplyEmailPreset = (presetId: EmailProviderPresetId) => {
+    setSelectedEmailPresetId(presetId)
+    const preset = getEmailProviderPreset(presetId)
+    if (preset.id === 'custom') return
+
+    setEmailForm((prev) => applyEmailProviderPreset(prev, preset))
+    if (clearSmtpPassword) setClearSmtpPassword(false)
+  }
 
   const saveBrandingMutation = useMutation({
     mutationFn: () =>
@@ -152,8 +194,8 @@ export function Settings() {
         smtpPort: Number.parseInt(emailForm.smtpPort, 10) || 587,
         smtpSecure: emailForm.smtpSecure,
         smtpUser: emailForm.smtpUser.trim(),
-        submissionEmailFrom: emailForm.submissionEmailFrom.trim(),
-        submissionEmailReplyTo: emailForm.submissionEmailReplyTo.trim(),
+        submissionEmailFrom: getDerivedEmailFrom(),
+        submissionEmailReplyTo: '',
         submissionEmailSubject: emailForm.submissionEmailSubject.trim(),
         submissionEmailTimeoutMs: Number.parseInt(emailForm.submissionEmailTimeoutMs, 10) || 10000,
       }
@@ -195,13 +237,23 @@ export function Settings() {
       toast.success(t('settings.email_test_sent', 'Test email sent'))
     },
     onError: (error: unknown) => {
-      const message =
+      const responseData =
         typeof error === 'object' &&
         error !== null &&
-        'response' in error &&
-        typeof (error as { response?: { data?: { error?: string; reason?: string } } }).response?.data?.error === 'string'
-          ? (error as { response?: { data?: { error?: string } } }).response?.data?.error
-          : t('settings.email_test_failed', 'Failed to send test email')
+        'response' in error
+          ? (error as {
+              response?: {
+                data?: {
+                  error?: string
+                  reason?: string
+                  errorCode?: string
+                  errorDetail?: string
+                }
+              }
+            }).response?.data
+          : undefined
+
+      const message = buildEmailTestErrorMessage(responseData, emailForm.smtpHost, t)
       toast.error(message || t('settings.email_test_failed', 'Failed to send test email'))
     },
   })
@@ -516,12 +568,79 @@ export function Settings() {
             />
           </div>
 
+          <div className="rounded-lg border border-border p-4 space-y-3">
+            <div>
+              <p className="text-sm font-medium">{t('settings.email_presets_title', 'Common SMTP Presets')}</p>
+              <p className="text-xs text-muted-foreground">
+                {t('settings.email_presets_desc', 'Click a preset to fill host, port, and TLS defaults, then finish the account-specific fields below.')}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+              {EMAIL_PROVIDER_PRESETS.map((preset) => {
+                const isActive = preset.id === selectedEmailPresetId
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={`rounded-lg border p-3 text-left transition-colors ${
+                      isActive
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/40 hover:bg-muted/40'
+                    }`}
+                    onClick={() => handleApplyEmailPreset(preset.id)}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-medium">
+                        {t(`settings.email_presets_items.${preset.id}.label`)}
+                      </span>
+                      <Badge variant={preset.evidence === 'official' ? 'secondary' : 'outline'}>
+                        {preset.evidence === 'official'
+                          ? t('settings.email_preset_source_official', 'Official')
+                          : t('settings.email_preset_source_common', 'Common')}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t(`settings.email_presets_items.${preset.id}.desc`)}
+                    </p>
+                    <p className="mt-3 font-mono text-xs text-muted-foreground">
+                      {preset.host ? `${preset.host}:${preset.port} ${preset.secure ? 'SSL' : 'STARTTLS'}` : 'SMTP host / port'}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="rounded-md bg-muted/50 p-3 space-y-2 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">
+                {t(`settings.email_presets_items.${selectedEmailPreset.id}.label`)}
+              </p>
+              <p>{t(selectedEmailPreset.passwordHintKey)}</p>
+              <p>{t('settings.email_preset_username_hint', { example: selectedEmailPreset.usernameHint, defaultValue: 'Username example: {{example}}' })}</p>
+              <p>{t('settings.email_preset_from_hint', { example: selectedEmailPreset.fromHint, defaultValue: 'From example: {{example}}' })}</p>
+              <p>{t('settings.email_preset_reply_to_hint', { example: selectedEmailPreset.replyToHint, defaultValue: 'Reply-To example: {{example}}' })}</p>
+              {selectedEmailPreset.noteKeys.map((noteKey) => (
+                <p key={noteKey}>{t(noteKey)}</p>
+              ))}
+              {selectedEmailPreset.docUrl ? (
+                <a
+                  href={selectedEmailPreset.docUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex text-primary hover:underline"
+                >
+                  {t('settings.email_preset_doc_link', 'View provider documentation')}
+                </a>
+              ) : null}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="smtpHost">{t('settings.smtp_host', 'SMTP Host')}</Label>
               <Input
                 id="smtpHost"
-                placeholder="smtp.example.com"
+                placeholder={selectedEmailPreset.host || 'smtp.example.com'}
                 value={emailForm.smtpHost}
                 onChange={(e) => setEmailForm((prev) => ({ ...prev, smtpHost: e.target.value }))}
               />
@@ -541,7 +660,7 @@ export function Settings() {
               <Label htmlFor="smtpUser">{t('settings.smtp_user', 'SMTP Username')}</Label>
               <Input
                 id="smtpUser"
-                placeholder="apikey or account user"
+                placeholder={selectedEmailPreset.usernameHint}
                 value={emailForm.smtpUser}
                 onChange={(e) => setEmailForm((prev) => ({ ...prev, smtpUser: e.target.value }))}
               />
@@ -552,7 +671,7 @@ export function Settings() {
                 <Input
                   id="smtpPass"
                   type={showSmtpPassword ? 'text' : 'password'}
-                  placeholder={emailForm.smtpPasswordConfigured ? t('settings.smtp_pass_masked', 'Saved (leave blank to keep)') : '******'}
+                  placeholder={emailForm.smtpPasswordConfigured ? t('settings.smtp_pass_masked', 'Saved (leave blank to keep)') : t(selectedEmailPreset.passwordHintKey)}
                   value={emailForm.smtpPass}
                   onChange={(e) => {
                     setEmailForm((prev) => ({ ...prev, smtpPass: e.target.value }))
@@ -591,23 +710,14 @@ export function Settings() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="submissionEmailFrom">{t('settings.email_from', 'From')}</Label>
-              <Input
-                id="submissionEmailFrom"
-                placeholder="OpenHackathon <no-reply@example.com>"
-                value={emailForm.submissionEmailFrom}
-                onChange={(e) => setEmailForm((prev) => ({ ...prev, submissionEmailFrom: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="submissionEmailReplyTo">{t('settings.email_reply_to', 'Reply-To')}</Label>
-              <Input
-                id="submissionEmailReplyTo"
-                placeholder="support@example.com"
-                value={emailForm.submissionEmailReplyTo}
-                onChange={(e) => setEmailForm((prev) => ({ ...prev, submissionEmailReplyTo: e.target.value }))}
-              />
+            <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+              <p className="font-medium">{t('settings.email_from_auto_title', 'Automatic sender address')}</p>
+              <p className="mt-1 font-mono text-xs text-muted-foreground break-all">
+                {getDerivedEmailFrom()}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {t('settings.email_from_auto_desc', 'Generated automatically as "Site Name <SMTP mailbox>". Replies will also go to this address.')}
+              </p>
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="submissionEmailSubject">{t('settings.email_subject', 'Subject Template')}</Label>

@@ -17,6 +17,13 @@ import { CalendarDays, ClipboardList, Loader2, Mail, Sparkles, User } from 'luci
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
+const BUILTIN_PROJECT_NAME_FIELD: SubmissionField = {
+  id: 'title',
+  label: 'Project Name',
+  type: 'text',
+  required: true,
+}
+
 export function PublicSubmit() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -30,8 +37,16 @@ export function PublicSubmit() {
   }
 
   const schema: SubmissionField[] = useMemo(() => {
-    return getSubmissionFields(hackathon.submissionSchema)
-  }, [hackathon.submissionSchema])
+    const customFields = getSubmissionFields(hackathon.submissionSchema).filter((field) => field.id !== 'title')
+    return [
+      {
+        ...BUILTIN_PROJECT_NAME_FIELD,
+        label: t('projects.project_name'),
+        placeholder: t('submission.project_name_placeholder'),
+      },
+      ...customFields,
+    ]
+  }, [hackathon.submissionSchema, t])
 
   const formSchema = useMemo(
     () =>
@@ -93,8 +108,6 @@ export function PublicSubmit() {
     resolver: zodResolver(formSchema),
   })
 
-  const hasCustomFields = schema.length > 0
-
   // Fields that map directly to Project model columns
   const PROJECT_COLUMN_FIELDS = ['title', 'oneLiner', 'description', 'repoUrl', 'demoUrl', 'tags']
 
@@ -126,8 +139,12 @@ export function PublicSubmit() {
 
       const titleValue =
         asNonEmptyString(rest.title) ||
-        asNonEmptyString(rest.project_name) ||
-        `${t('submission.submit_project')} ${submitterEmailValue}`
+        asNonEmptyString(rest.project_name)
+
+      if (!titleValue) {
+        toast.error(t('submission.validation.field_required', { field: t('projects.project_name') }))
+        return
+      }
       const oneLinerValue = asNonEmptyString(rest.oneLiner) || ''
       const descriptionValue = asNonEmptyString(rest.description) || ''
       const repoUrlValue = asNonEmptyString(rest.repoUrl) || ''
@@ -178,6 +195,7 @@ export function PublicSubmit() {
       navigate('/submit/success', {
         state: {
           receiptId: result.receipt?.id || result.id,
+          projectId: result.id,
           submitterEmail: result.receipt?.email || submitterEmailValue,
           issuedAt: result.receipt?.issuedAt,
           emailSent: result.receipt?.emailSent,
@@ -266,45 +284,54 @@ export function PublicSubmit() {
                     {t('submission.contact_help')}
                   </p>
 
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-3">
                     <div className="space-y-2">
-                      <Label htmlFor="submitterEmail" className="inline-flex items-center gap-1.5">
-                        <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                        {t('submission.contact_email_label')}
-                        <span className="text-destructive">*</span>
-                      </Label>
-                      <Input
-                        id="submitterEmail"
-                        type="email"
-                        placeholder={t('submission.contact_email_placeholder')}
-                        className={errors.submitterEmail ? 'border-destructive' : ''}
-                        {...register('submitterEmail')}
-                      />
-                      {errors.submitterEmail && (
-                        <p className="text-sm text-destructive">
-                          {errors.submitterEmail?.message as string}
-                        </p>
-                      )}
+                      <div className="surface-panel space-y-3 rounded-2xl border-none p-4 shadow-none">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <Label htmlFor="submitterEmail" className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                            <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                            {t('submission.contact_email_label')}
+                            <span className="text-destructive">*</span>
+                          </Label>
+                          <span className="text-xs text-muted-foreground">* {t('submission.required_mark_hint')}</span>
+                        </div>
+                        <Input
+                          id="submitterEmail"
+                          type="email"
+                          placeholder={t('submission.contact_email_placeholder')}
+                          className={errors.submitterEmail ? 'border-destructive' : ''}
+                          {...register('submitterEmail')}
+                        />
+                        {errors.submitterEmail && (
+                          <p className="text-sm text-destructive">
+                            {errors.submitterEmail?.message as string}
+                          </p>
+                        )}
+                      </div>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="submitterName" className="inline-flex items-center gap-1.5">
-                        <User className="h-3.5 w-3.5 text-muted-foreground" />
-                        {t('submission.contact_name_label')}
-                        <span className="text-muted-foreground">({t('submission.optional')})</span>
-                      </Label>
-                      <Input
-                        id="submitterName"
-                        type="text"
-                        placeholder={t('submission.contact_name_placeholder')}
-                        className={errors.submitterName ? 'border-destructive' : ''}
-                        {...register('submitterName')}
-                      />
-                      {errors.submitterName && (
-                        <p className="text-sm text-destructive">
-                          {errors.submitterName?.message as string}
-                        </p>
-                      )}
+                      <div className="surface-panel space-y-3 rounded-2xl border-none p-4 shadow-none">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <Label htmlFor="submitterName" className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                            <User className="h-3.5 w-3.5 text-muted-foreground" />
+                            {t('submission.contact_name_label')}
+                          </Label>
+                          <span className="text-xs text-muted-foreground">{t('submission.optional')}</span>
+                        </div>
+                        <Input
+                          id="submitterName"
+                          type="text"
+                          placeholder={t('submission.contact_name_placeholder')}
+                          className={errors.submitterName ? 'border-destructive' : ''}
+                          {...register('submitterName')}
+                        />
+                        {errors.submitterName && (
+                          <p className="text-sm text-destructive">
+                            {errors.submitterName?.message as string}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -318,90 +345,85 @@ export function PublicSubmit() {
                     {t('submission.project_help')}
                   </p>
 
-                  {!hasCustomFields ? (
-                    <div className="surface-inset border-dashed p-5 text-center text-muted-foreground">
-                      <p className="text-sm font-medium">{t('submission.no_schema')}</p>
-                      <p className="mt-1 text-xs">
-                        {t('submission.no_schema_desc')}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {schema.map((field) => (
-                        <div
-                          key={field.id}
-                          className={cn('space-y-2', field.type === 'textarea' ? 'md:col-span-2' : undefined)}
-                        >
-                          <Label htmlFor={field.id}>
+                  <div className="space-y-3">
+                    {schema.map((field) => (
+                      <div
+                        key={field.id}
+                        className={cn('surface-panel space-y-3 rounded-2xl border-none p-4 shadow-none md:p-5')}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <Label htmlFor={field.id} className="text-sm font-semibold">
                             {getFieldLabel(field.id, field.label, t)}
                             {field.required ? (
                               <span className="ml-1 text-destructive">*</span>
-                            ) : (
-                              <span className="ml-1 text-muted-foreground">({t('submission.optional')})</span>
-                            )}
+                            ) : null}
                           </Label>
-
-                          {field.type === 'textarea' ? (
-                            <Textarea
-                              id={field.id}
-                              placeholder={field.placeholder}
-                              className={errors[field.id] ? 'border-destructive' : ''}
-                              {...register(field.id as keyof FormData)}
-                            />
-                          ) : field.type === 'select' ? (
-                            <Controller
-                              control={control}
-                              name={field.id as keyof FormData}
-                              render={({ field: controlledField }) => (
-                                <div className="space-y-2">
-                                  <Select
-                                    value={typeof controlledField.value === 'string' ? controlledField.value : ''}
-                                    onValueChange={controlledField.onChange}
-                                  >
-                                    <SelectTrigger className={errors[field.id] ? 'border-destructive' : ''}>
-                                      <SelectValue placeholder={field.placeholder || t('submission.select_placeholder')} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {(field.options || []).map((option) => (
-                                        <SelectItem key={option} value={option}>
-                                          {option}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                  {!field.required && controlledField.value ? (
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 px-0 text-xs"
-                                      onClick={() => controlledField.onChange('')}
-                                    >
-                                      {t('submission.clear_choice')}
-                                    </Button>
-                                  ) : null}
-                                </div>
-                              )}
-                            />
-                          ) : (
-                            <Input
-                              id={field.id}
-                              type={field.type === 'url' ? 'url' : 'text'}
-                              placeholder={field.placeholder}
-                              className={errors[field.id] ? 'border-destructive' : ''}
-                              {...register(field.id as keyof FormData)}
-                            />
-                          )}
-
-                          {errors[field.id] && (
-                            <p className="text-sm text-destructive">
-                              {errors[field.id]?.message as string}
-                            </p>
-                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {field.required ? `* ${t('submission.required_mark_hint')}` : t('submission.optional')}
+                          </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
+
+                        {field.type === 'textarea' ? (
+                          <Textarea
+                            id={field.id}
+                            placeholder={field.placeholder}
+                            rows={5}
+                            className={errors[field.id] ? 'border-destructive' : ''}
+                            {...register(field.id as keyof FormData)}
+                          />
+                        ) : field.type === 'select' ? (
+                          <Controller
+                            control={control}
+                            name={field.id as keyof FormData}
+                            render={({ field: controlledField }) => (
+                              <div className="space-y-2">
+                                <Select
+                                  value={typeof controlledField.value === 'string' ? controlledField.value : ''}
+                                  onValueChange={controlledField.onChange}
+                                >
+                                  <SelectTrigger className={errors[field.id] ? 'border-destructive' : ''}>
+                                    <SelectValue placeholder={field.placeholder || t('submission.select_placeholder')} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {(field.options || []).map((option) => (
+                                      <SelectItem key={option} value={option}>
+                                        {option}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                {!field.required && controlledField.value ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-0 text-xs"
+                                    onClick={() => controlledField.onChange('')}
+                                  >
+                                    {t('submission.clear_choice')}
+                                  </Button>
+                                ) : null}
+                              </div>
+                            )}
+                          />
+                        ) : (
+                          <Input
+                            id={field.id}
+                            type={field.type === 'url' ? 'url' : 'text'}
+                            placeholder={field.placeholder}
+                            className={errors[field.id] ? 'border-destructive' : ''}
+                            {...register(field.id as keyof FormData)}
+                          />
+                        )}
+
+                        {errors[field.id] && (
+                          <p className="text-sm text-destructive">
+                            {errors[field.id]?.message as string}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {errors.root && (

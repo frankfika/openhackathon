@@ -77,7 +77,7 @@ export const api = {
     return res.data
   },
   testSubmissionEmail: async (to: string) => {
-    const res = await axios.post<{ sent: boolean; messageId?: string; reason?: string }>(`${API_URL}/site-settings/email/test`, { to })
+    const res = await axios.post<{ sent: boolean; messageId?: string; reason?: string; errorCode?: string; errorDetail?: string }>(`${API_URL}/site-settings/email/test`, { to })
     return res.data
   },
   uploadImage: async (file: File) => {
@@ -139,9 +139,22 @@ export const api = {
     pageSize: number
     search?: string
     status?: 'draft' | 'submitted'
+    submissionFilters?: Record<string, string>
   }) => {
+    const queryParams = {
+      hackathonId: params.hackathonId,
+      page: params.page,
+      pageSize: params.pageSize,
+      search: params.search,
+      status: params.status,
+      submissionFilters:
+        params.submissionFilters && Object.keys(params.submissionFilters).length > 0
+          ? JSON.stringify(params.submissionFilters)
+          : undefined,
+    }
+
     const res = await axios.get<{ data: Project[]; total: number; page: number; pageSize: number }>(
-      `${API_URL}/projects`, { params }
+      `${API_URL}/projects`, { params: queryParams }
     )
     return res.data
   },

@@ -7,6 +7,7 @@ import { useActiveHackathon } from '@/lib/active-hackathon'
 
 type SubmitSuccessState = {
   receiptId?: string
+  projectId?: string
   submitterEmail?: string
   issuedAt?: string
   emailSent?: boolean
@@ -19,6 +20,7 @@ export function SubmitSuccess() {
   const { activeHackathon: hackathon } = useActiveHackathon()
   const state = (location.state || {}) as SubmitSuccessState
   const receiptId = typeof state.receiptId === 'string' && state.receiptId.trim().length > 0 ? state.receiptId : null
+  const projectId = typeof state.projectId === 'string' && state.projectId.trim().length > 0 ? state.projectId : null
   const submitterEmail =
     typeof state.submitterEmail === 'string' && state.submitterEmail.trim().length > 0
       ? state.submitterEmail
@@ -66,6 +68,11 @@ export function SubmitSuccess() {
               <p className="font-mono text-base font-semibold text-emerald-900 dark:text-emerald-100 mb-2">
                 {receiptId}
               </p>
+              {projectId && (
+                <p className="text-sm text-emerald-900/90 dark:text-emerald-100/90 mb-2">
+                  {t('submission.project_id_label')}: <span className="font-mono">{projectId}</span>
+                </p>
+              )}
               {submitterEmail && (
                 <p className="text-sm text-emerald-900/90 dark:text-emerald-100/90">
                   {t('submission.receipt_email_label')}: {submitterEmail}

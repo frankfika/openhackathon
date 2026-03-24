@@ -216,8 +216,8 @@ async function createJudge(email = 'judge@example.com', name = 'Judge One') {
   return judge;
 }
 
-async function createProject(params: { hackathonId: string; title: string }) {
-  const { hackathonId, title } = params;
+async function createProject(params: { hackathonId: string; title: string; submissionData?: Record<string, unknown> }) {
+  const { hackathonId, title, submissionData } = params;
   const project = await prisma.project.create({
     data: {
       hackathonId,
@@ -229,7 +229,7 @@ async function createProject(params: { hackathonId: string; title: string }) {
       repoUrl: 'https://github.com/example/repo',
       submitterEmail: `${title.toLowerCase().replace(/\s+/g, '-')}-owner@example.com`,
       submitterName: 'Project Owner',
-      submissionData: {},
+      submissionData: (submissionData || {}) as Prisma.InputJsonValue,
       status: 'submitted',
     },
   });
@@ -753,6 +753,54 @@ describe('API integration tests (real database)', () => {
       expect(detailRes.body.submissionData._receipt.emailFailureReason).toBe('disabled');
     });
 
+    it('filters paginated projects by submission field values', async () => {
+      const { hackathon } = await seedHackathon();
+      await createProject({
+        hackathonId: hackathon.id,
+        title: 'AI Copilot',
+        submissionData: { category: 'AI' },
+      });
+      await createProject({
+        hackathonId: hackathon.id,
+        title: 'Web Portal',
+        submissionData: { category: 'Web' },
+      });
+
+      const res = await request(app)
+        .get('/api/projects')
+        .query({
+          hackathonId: hackathon.id,
+          page: 1,
+          pageSize: 50,
+          submissionFilters: JSON.stringify({ category: 'AI' }),
+        })
+        .expect(200);
+
+      expect(res.body.total).toBe(1);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].title).toBe('AI Copilot');
+    });
+
+    it('rejects blank title when updating a project', async () => {
+      const { hackathon } = await seedHackathon();
+      const createRes = await request(app)
+        .post('/api/projects')
+        .send({
+          hackathonId: hackathon.id,
+          title: 'Editable Project',
+          submitterEmail: 'editable@example.com',
+          submitterName: 'Editable Owner',
+        })
+        .expect(200);
+
+      const res = await request(app)
+        .put(`/api/projects/${createRes.body.id}`)
+        .send({ title: '   ' })
+        .expect(400);
+
+      expect(res.body.error).toBe('title is required');
+    });
+
     it('returns 404 for a non-existing project', async () => {
       await request(app).get('/api/projects/non-existent-id').expect(404);
     });
@@ -768,6 +816,19 @@ describe('API integration tests (real database)', () => {
         .expect(400);
 
       expect(res.body.error).toBe('submitterEmail is required');
+    });
+
+    it('requires title for public project submission', async () => {
+      const { hackathon } = await seedHackathon();
+      const res = await request(app)
+        .post('/api/projects')
+        .send({
+          hackathonId: hackathon.id,
+          submitterEmail: 'no-title@example.com',
+        })
+        .expect(400);
+
+      expect(res.body.error).toBe('title is required');
     });
 
     it('validates submitterEmail format for public submission', async () => {

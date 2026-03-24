@@ -107,6 +107,8 @@ type SubmissionReceiptEmailResult = {
   sent: boolean;
   reason?: 'disabled' | 'missing_config' | 'send_failed';
   messageId?: string;
+  errorCode?: string;
+  errorMessage?: string;
 };
 
 type SendSubmissionReceiptEmailOptions = {
@@ -146,6 +148,8 @@ type DashboardStats = {
   completed?: number;
   pending?: number;
 };
+
+type ProjectSubmissionFilters = Record<string, string>;
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -693,6 +697,8 @@ async function sendSubmissionReceiptEmail(
   };
 
   const maxAttempts = 2;
+  let lastErrorCode: string | undefined;
+  let lastErrorMessage: string | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const info = await transporter.sendMail(mailOptions);
@@ -701,6 +707,19 @@ async function sendSubmissionReceiptEmail(
         messageId: info.messageId,
       };
     } catch (error) {
+      const smtpError = error as {
+        code?: string;
+        responseCode?: number;
+        command?: string;
+        message?: string;
+        response?: string;
+      };
+      lastErrorCode = [
+        smtpError.code,
+        smtpError.responseCode ? String(smtpError.responseCode) : undefined,
+        smtpError.command,
+      ].filter(Boolean).join(' ');
+      lastErrorMessage = smtpError.response || smtpError.message;
       console.error(`[submission-email] Failed to send receipt email (attempt ${attempt}/${maxAttempts}):`, error);
       if (attempt < maxAttempts) {
         await new Promise((resolve) => setTimeout(resolve, attempt * 300));
@@ -711,6 +730,8 @@ async function sendSubmissionReceiptEmail(
   return {
     sent: false,
     reason: 'send_failed',
+    ...(lastErrorCode ? { errorCode: lastErrorCode } : {}),
+    ...(lastErrorMessage ? { errorMessage: lastErrorMessage } : {}),
   };
 }
 
@@ -735,6 +756,57 @@ function resolveHackathonCoverGradient(value: unknown): string {
   if (typeof value !== 'string') return DEFAULT_HACKATHON_COVER_GRADIENT;
   const normalized = value.trim();
   return normalized || DEFAULT_HACKATHON_COVER_GRADIENT;
+}
+
+function parseProjectSubmissionFilters(value: unknown): ProjectSubmissionFilters | null {
+  if (value === undefined || value === null || value === '') return {};
+  if (typeof value !== 'string') return null;
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+
+    const filters: ProjectSubmissionFilters = {};
+    for (const [fieldId, fieldValue] of Object.entries(parsed)) {
+      const normalizedFieldId = fieldId.trim();
+      const normalizedFieldValue = typeof fieldValue === 'string' ? fieldValue.trim() : '';
+      if (!normalizedFieldId || !normalizedFieldValue) continue;
+      filters[normalizedFieldId] = normalizedFieldValue;
+    }
+    return filters;
+  } catch {
+    return null;
+  }
+}
+
+function buildProjectSubmissionFilterClause(fieldId: string, value: string): Prisma.ProjectWhereInput {
+  switch (fieldId) {
+    case 'title':
+      return { title: value };
+    case 'oneLiner':
+      return { oneLiner: value };
+    case 'description':
+      return { description: value };
+    case 'demoUrl':
+      return { demoUrl: value };
+    case 'repoUrl':
+      return { repoUrl: value };
+    case 'submitterEmail':
+      return { submitterEmail: value };
+    case 'submitterName':
+      return { submitterName: value };
+    case 'status':
+      return { status: value };
+    default:
+      return {
+        submissionData: {
+          path: [fieldId],
+          equals: value,
+        },
+      };
+  }
 }
 
 function getAuthUserFromRequest(req: express.Request): AuthUser | null {
@@ -1243,6 +1315,8 @@ app.post('/api/site-settings/email/test', requireAdmin, async (req, res) => {
       sent: false,
       reason: emailResult.reason,
       error: 'Failed to send test email',
+      ...(emailResult.errorCode ? { errorCode: emailResult.errorCode } : {}),
+      ...(emailResult.errorMessage ? { errorDetail: emailResult.errorMessage } : {}),
     });
   }
 
@@ -1690,7 +1764,7 @@ app.delete('/api/hackathons/:id/markdown-doc', requireAdmin, async (req, res) =>
 // ===== Projects =====
 
 app.get('/api/projects', async (req, res) => {
-  const { hackathonId, lite, page, pageSize, search, status } = req.query;
+  const { hackathonId, lite, page, pageSize, search, status, submissionFilters } = req.query;
   const hackathonIdValue = await getScopedHackathonId(hackathonId);
 
   const pageNum = page ? Math.max(1, parseInt(String(page), 10)) : null;
@@ -1698,12 +1772,20 @@ app.get('/api/projects', async (req, res) => {
   const searchStr = search ? String(search).trim() : null;
   const statusStr = typeof status === 'string' ? status.trim() : '';
   const statusValue = statusStr ? statusStr : null;
+  const parsedSubmissionFilters = parseProjectSubmissionFilters(submissionFilters);
 
   if (statusValue && statusValue !== 'draft' && statusValue !== 'submitted') {
     return res.status(400).json({ error: 'Invalid project status' });
   }
+  if (parsedSubmissionFilters === null) {
+    return res.status(400).json({ error: 'Invalid submissionFilters' });
+  }
 
-  const where = {
+  const submissionFilterClauses = Object.entries(parsedSubmissionFilters).map(([fieldId, value]) =>
+    buildProjectSubmissionFilterClause(fieldId, value)
+  );
+
+  const where: Prisma.ProjectWhereInput = {
     ...(hackathonIdValue ? { hackathonId: hackathonIdValue } : {}),
     ...(statusValue ? { status: statusValue } : {}),
     ...(searchStr ? {
@@ -1715,6 +1797,7 @@ app.get('/api/projects', async (req, res) => {
         { tags: { has: searchStr } },
       ],
     } : {}),
+    ...(submissionFilterClauses.length > 0 ? { AND: submissionFilterClauses } : {}),
   };
 
   // Paginated response
@@ -1785,11 +1868,16 @@ app.post('/api/projects', submissionRateLimiter, async (req, res) => {
   const { hackathonId, title, oneLiner, description, tags, demoUrl, repoUrl, submitterEmail, submitterName, submissionData } = req.body;
 
   const hackathonIdValue = await getScopedHackathonId(hackathonId);
+  const titleValue = asString(title);
   const submitterEmailValue = normalizeEmail(submitterEmail);
   const submitterNameValue = asString(submitterName);
 
   if (!hackathonIdValue) {
     return res.status(400).json({ error: 'hackathonId is required' });
+  }
+
+  if (!titleValue) {
+    return res.status(400).json({ error: 'title is required' });
   }
 
   if (!submitterEmailValue) {
@@ -1819,7 +1907,6 @@ app.post('/api/projects', submissionRateLimiter, async (req, res) => {
       ? (submissionData as Record<string, unknown>)
       : {};
 
-  const titleValue = asString(title) || `Submission ${receipt.id}`;
   const oneLinerValue = asString(oneLiner) || 'Contact-only submission';
   const descriptionValue = asString(description);
   const demoUrlValue = asString(demoUrl);
@@ -1909,6 +1996,10 @@ app.post('/api/projects', submissionRateLimiter, async (req, res) => {
 app.put('/api/projects/:id', requireAdmin, async (req, res) => {
   try {
     const { title, oneLiner, description, tags, demoUrl, repoUrl, submissionData, status } = req.body;
+    const titleValue = title !== undefined ? asString(title) : undefined;
+    if (title !== undefined && !titleValue) {
+      return res.status(400).json({ error: 'title is required' });
+    }
     const existingProject = await prisma.project.findUnique({
       where: { id: req.params.id },
       select: { submissionData: true },
@@ -1933,7 +2024,7 @@ app.put('/api/projects/:id', requireAdmin, async (req, res) => {
     const project = await prisma.project.update({
       where: { id: req.params.id },
       data: {
-        title,
+        title: titleValue,
         oneLiner,
         description,
         tags: tags || [],

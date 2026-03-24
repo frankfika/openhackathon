@@ -162,6 +162,35 @@ describe('api client', () => {
       expect(result).toEqual(data)
     })
 
+    it('getProjectsPaginated serializes submission field filters', async () => {
+      const data = { data: [{ id: 'p1' }], total: 1, page: 1, pageSize: 50 }
+      mockedAxios.get.mockResolvedValue({ data })
+
+      await api.getProjectsPaginated({
+        hackathonId: 'h1',
+        page: 1,
+        pageSize: 50,
+        submissionFilters: {
+          category: 'AI',
+          className: '2026',
+        },
+      })
+
+      expect(mockedAxios.get).toHaveBeenCalledWith('/api/projects', {
+        params: {
+          hackathonId: 'h1',
+          page: 1,
+          pageSize: 50,
+          search: undefined,
+          status: undefined,
+          submissionFilters: JSON.stringify({
+            category: 'AI',
+            className: '2026',
+          }),
+        },
+      })
+    })
+
     it('createProject calls POST /api/projects', async () => {
       const payload = { title: 'My Project', hackathonId: 'h1' }
       mockedAxios.post.mockResolvedValue({ data: { id: 'p1', ...payload } })

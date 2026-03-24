@@ -18,10 +18,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ArrowLeft, Loader2, Pencil, Save, X } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Loader2, Mail, Pencil, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
-import { getFieldLabel, getSubmissionFields } from '@/lib/submission-fields'
+import { getSubmissionFields } from '@/lib/submission-fields'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 
 type ProjectDetailData = {
@@ -81,8 +81,20 @@ export function ProjectDetail() {
 
   const submissionFieldLabels = useMemo(() => {
     const fields = getSubmissionFields(activeHackathon?.submissionSchema)
-    return new Map(fields.map(f => [f.id, f.label || f.id]))
+    return new Map(fields.map((field) => [field.id, field.label || field.id]))
   }, [activeHackathon?.submissionSchema])
+
+  const receiptId = useMemo(() => {
+    const receipt = project?.submissionData?._receipt
+    if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) return null
+    const value = (receipt as Record<string, unknown>).id
+    return typeof value === 'string' && value.trim().length > 0 ? value : null
+  }, [project?.submissionData])
+
+  const visibleSubmissionEntries = useMemo(() => {
+    if (!project?.submissionData) return []
+    return Object.entries(project.submissionData).filter(([key]) => !key.startsWith('_'))
+  }, [project?.submissionData])
 
   useEffect(() => {
     if (!project) return
@@ -126,20 +138,20 @@ export function ProjectDetail() {
   })
 
   const completedAssignments = useMemo(
-    () => assignments.filter((a) => a.status === 'completed'),
+    () => assignments.filter((assignment) => assignment.status === 'completed'),
     [assignments]
   )
   const pendingAssignments = useMemo(
-    () => assignments.filter((a) => a.status === 'pending'),
+    () => assignments.filter((assignment) => assignment.status === 'pending'),
     [assignments]
   )
   const inProgressAssignments = useMemo(
-    () => assignments.filter((a) => a.status === 'in_progress'),
+    () => assignments.filter((assignment) => assignment.status === 'in_progress'),
     [assignments]
   )
   const avgScore = useMemo(() => {
     if (completedAssignments.length === 0) return 0
-    const total = completedAssignments.reduce((sum, a) => sum + (a.totalScore || 0), 0)
+    const total = completedAssignments.reduce((sum, assignment) => sum + (assignment.totalScore || 0), 0)
     return total / completedAssignments.length
   }, [completedAssignments])
 
@@ -171,13 +183,21 @@ export function ProjectDetail() {
       .join(' / ')
   }
 
+  const renderSubmissionValue = (value: unknown) => {
+    if (value == null || value === '') return '-'
+    if (typeof value === 'boolean') return value ? t('common.yes', 'Yes') : t('common.no', 'No')
+    if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : '-'
+    if (typeof value === 'object') return JSON.stringify(value, null, 2)
+    return String(value)
+  }
+
   const handleSave = () => {
     updateMutation.mutate(form)
   }
 
   if (isLoadingProject || isLoadingAssignments) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     )
@@ -189,76 +209,81 @@ export function ProjectDetail() {
 
   return (
     <div className="space-y-6 p-6 md:p-8">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-2">
-          <Button variant="ghost" className="px-0" onClick={() => navigate(buildAdminPath(adminBasePath, 'projects'))}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            {t('common.back')}
-          </Button>
-          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">{project.title}</h1>
-          <p className="text-sm text-muted-foreground">
-            {project.submitterName || project.submitterEmail}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {!isEditing ? (
-            <Button variant="outline" onClick={() => setIsEditing(true)}>
-              <Pencil className="mr-2 h-4 w-4" />
-              {t('common.edit')}
-            </Button>
-          ) : (
-            <>
-              <Button variant="outline" onClick={() => setIsEditing(false)}>
-                <X className="mr-2 h-4 w-4" />
-                {t('common.cancel')}
+      <div className="surface-panel-strong border-none shadow-none">
+        <div className="space-y-6 p-6 md:p-8">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="space-y-4">
+              <Button
+                variant="ghost"
+                className="px-0"
+                onClick={() => navigate(buildAdminPath(adminBasePath, 'projects'))}
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                {t('common.back')}
               </Button>
-              <Button onClick={handleSave} disabled={updateMutation.isPending}>
-                {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <Save className="mr-2 h-4 w-4" />
-                {t('common.save')}
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant={activeTab === 'overview' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setActiveTab('overview')}
-        >
-          {t('common.overview')}
-        </Button>
-        <Button
-          variant={activeTab === 'scores' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setActiveTab('scores')}
-        >
-          {t('projects.view_scores')}
-        </Button>
-      </div>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={form.status === 'submitted' ? 'default' : 'secondary'}>
+                    {t(`projects.status_options.${form.status}`)}
+                  </Badge>
+                  <span className="grand-chip">{t('projects.project_id')}: {project.id.slice(0, 8)}</span>
+                  {receiptId ? (
+                    <span className="grand-chip">
+                      {t('submission.receipt_number_label')}: {receiptId}
+                    </span>
+                  ) : null}
+                </div>
+                <div>
+                  <h1 className="text-2xl font-semibold tracking-tight md:text-4xl">{project.title}</h1>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground md:text-base">
+                    {project.oneLiner || t('projects.subtitle')}
+                  </p>
+                </div>
+              </div>
 
-      {activeTab === 'overview' && (
-        <>
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card className="surface-panel border-none shadow-none">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">{t('projects.status')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Badge variant={form.status === 'submitted' ? 'default' : 'secondary'}>
-                  {t(`projects.status_options.${form.status}`)}
-                </Badge>
-              </CardContent>
-            </Card>
-            <Card className="surface-panel border-none shadow-none">
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/75 px-3 py-1.5 backdrop-blur-sm dark:border-slate-700/60 dark:bg-slate-900/55">
+                  <Mail className="h-3.5 w-3.5" />
+                  <span>{project.submitterName || project.submitterEmail}</span>
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/75 px-3 py-1.5 backdrop-blur-sm dark:border-slate-700/60 dark:bg-slate-900/55">
+                  <span className="font-medium text-foreground">{t('reports.progress')}</span>
+                  <span>{completedAssignments.length}/{assignments.length}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {!isEditing ? (
+                <Button variant="outline" onClick={() => setIsEditing(true)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  {t('common.edit')}
+                </Button>
+              ) : (
+                <>
+                  <Button variant="outline" onClick={() => setIsEditing(false)}>
+                    <X className="mr-2 h-4 w-4" />
+                    {t('common.cancel')}
+                  </Button>
+                  <Button onClick={handleSave} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    <Save className="mr-2 h-4 w-4" />
+                    {t('common.save')}
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <Card className="surface-inset border-none shadow-none">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">{t('projects.score')}</CardTitle>
               </CardHeader>
               <CardContent className="text-2xl font-bold">{avgScore > 0 ? avgScore.toFixed(1) : '-'}</CardContent>
             </Card>
-            <Card className="surface-panel border-none shadow-none">
+            <Card className="surface-inset border-none shadow-none">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">{t('reports.progress')}</CardTitle>
               </CardHeader>
@@ -266,144 +291,297 @@ export function ProjectDetail() {
                 {completedAssignments.length}/{assignments.length}
               </CardContent>
             </Card>
-            <Card className="surface-panel border-none shadow-none">
+            <Card className="surface-inset border-none shadow-none">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">{t('reports.judges')}</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('reports.pending_short')}</CardTitle>
               </CardHeader>
-              <CardContent className="text-sm text-muted-foreground">
-                {t('reports.pending_short')}: {pendingAssignments.length}
-                <br />
-                {t('reports.in_progress_short')}: {inProgressAssignments.length}
-              </CardContent>
+              <CardContent className="text-2xl font-bold">{pendingAssignments.length}</CardContent>
+            </Card>
+            <Card className="surface-inset border-none shadow-none">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">{t('reports.in_progress_short')}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-2xl font-bold">{inProgressAssignments.length}</CardContent>
             </Card>
           </div>
 
-          <Card className="surface-panel border-none shadow-none">
-            <CardHeader>
-              <CardTitle>{t('projects.details')}</CardTitle>
-              <CardDescription>{t('projects.subtitle')}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {isEditing ? (
-                <>
-                  <div className="space-y-2">
-                    <Label>{t('projects.project_name')}</Label>
-                    <Input
-                      value={form.title}
-                      onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t('projects.one_liner')}</Label>
-                    <Input
-                      value={form.oneLiner}
-                      onChange={(e) => setForm((prev) => ({ ...prev, oneLiner: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t('projects.description')}</Label>
-                    <Textarea
-                      value={form.description}
-                      onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                      rows={5}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t('projects.tags')}</Label>
-                    <Input
-                      value={form.tags}
-                      onChange={(e) => setForm((prev) => ({ ...prev, tags: e.target.value }))}
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label>{t('projects.demo_url')}</Label>
-                      <Input
-                        value={form.demoUrl}
-                        onChange={(e) => setForm((prev) => ({ ...prev, demoUrl: e.target.value }))}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>{t('projects.repo_url')}</Label>
-                      <Input
-                        value={form.repoUrl}
-                        onChange={(e) => setForm((prev) => ({ ...prev, repoUrl: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{t('projects.status')}</Label>
-                    <select
-                      value={form.status}
-                      onChange={(e) =>
-                        setForm((prev) => ({ ...prev, status: e.target.value as 'draft' | 'submitted' }))
-                      }
-                      className="w-full rounded-xl border border-white/80 bg-white/78 px-3 py-2 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-900/58 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                    >
-                      <option value="draft">{t('projects.status_options.draft')}</option>
-                      <option value="submitted">{t('projects.status_options.submitted')}</option>
-                    </select>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm text-muted-foreground">{project.oneLiner || '-'}</p>
-                  <p className="text-sm whitespace-pre-wrap">{project.description || '-'}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {(project.tags || []).map((tag) => (
-                      <Badge key={tag} variant="outline">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                  <div className="flex flex-wrap gap-4 text-sm">
-                    {project.demoUrl && (
-                      <a className="underline" href={project.demoUrl} target="_blank" rel="noreferrer">
-                        {t('projects.demo_url')}
-                      </a>
-                    )}
-                    {project.repoUrl && (
-                      <a className="underline" href={project.repoUrl} target="_blank" rel="noreferrer">
-                        {t('projects.repo_url')}
-                      </a>
-                    )}
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={activeTab === 'overview' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setActiveTab('overview')}
+            >
+              {t('common.overview')}
+            </Button>
+            <Button
+              variant={activeTab === 'scores' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setActiveTab('scores')}
+            >
+              {t('projects.view_scores')}
+            </Button>
+          </div>
+        </div>
+      </div>
 
-          {/* Submission Data - Custom Fields */}
-          {project.submissionData && Object.keys(project.submissionData).length > 0 && (
+      {activeTab === 'overview' && (
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.95fr)]">
+          <div className="space-y-6">
             <Card className="surface-panel border-none shadow-none">
               <CardHeader>
-                <CardTitle>{t('projects.submission_data', 'Submission Data')}</CardTitle>
-                <CardDescription>{t('projects.submission_data_desc', 'Custom fields submitted with the project')}</CardDescription>
+                <CardTitle>{t('projects.details')}</CardTitle>
+                <CardDescription>{t('projects.subtitle')}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  {Object.entries(project.submissionData).map(([key, value]) => (
-                    <div key={key} className="space-y-1">
-                      <Label className="text-muted-foreground">
+                {isEditing ? (
+                  <>
+                    <div className="surface-inset space-y-4 p-4 md:p-5">
+                      <div className="space-y-2">
+                        <Label>{t('projects.project_name')}</Label>
+                        <Input
+                          value={form.title}
+                          onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>{t('projects.one_liner')}</Label>
+                        <Input
+                          value={form.oneLiner}
+                          onChange={(e) => setForm((prev) => ({ ...prev, oneLiner: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>{t('projects.description')}</Label>
+                        <Textarea
+                          value={form.description}
+                          onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                          rows={7}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="surface-inset space-y-4 p-4 md:p-5">
+                      <div className="space-y-2">
+                        <Label>{t('projects.tags')}</Label>
+                        <Input
+                          value={form.tags}
+                          onChange={(e) => setForm((prev) => ({ ...prev, tags: e.target.value }))}
+                        />
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>{t('projects.demo_url')}</Label>
+                          <Input
+                            value={form.demoUrl}
+                            onChange={(e) => setForm((prev) => ({ ...prev, demoUrl: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{t('projects.repo_url')}</Label>
+                          <Input
+                            value={form.repoUrl}
+                            onChange={(e) => setForm((prev) => ({ ...prev, repoUrl: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>{t('projects.status')}</Label>
+                        <select
+                          value={form.status}
+                          onChange={(e) =>
+                            setForm((prev) => ({ ...prev, status: e.target.value as 'draft' | 'submitted' }))
+                          }
+                          className="w-full rounded-xl border border-white/80 bg-white/78 px-3 py-2 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-900/58 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+                        >
+                          <option value="draft">{t('projects.status_options.draft')}</option>
+                          <option value="submitted">{t('projects.status_options.submitted')}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="surface-inset space-y-3 p-4 md:p-5">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          {t('projects.one_liner')}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-foreground">{project.oneLiner || '-'}</p>
+                      </div>
+                      <div className="h-px bg-border/60" />
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          {t('projects.description')}
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
+                          {project.description || '-'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="surface-inset space-y-3 p-4 md:p-5">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          {t('projects.tags')}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {(project.tags || []).length > 0 ? (
+                            (project.tags || []).map((tag) => (
+                              <Badge key={tag} variant="outline">
+                                {tag}
+                              </Badge>
+                            ))
+                          ) : (
+                            <p className="text-sm text-muted-foreground">-</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="surface-inset space-y-3 p-4 md:p-5">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          {t('projects.links', 'Project Links')}
+                        </p>
+                        <div className="space-y-2 text-sm">
+                          {project.demoUrl ? (
+                            <a
+                              className="inline-flex items-center gap-2 font-medium text-primary hover:underline"
+                              href={project.demoUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                              {t('projects.demo_url')}
+                            </a>
+                          ) : null}
+                          {project.repoUrl ? (
+                            <a
+                              className="inline-flex items-center gap-2 font-medium text-primary hover:underline"
+                              href={project.repoUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                              {t('projects.repo_url')}
+                            </a>
+                          ) : null}
+                          {!project.demoUrl && !project.repoUrl ? (
+                            <p className="text-sm text-muted-foreground">-</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {visibleSubmissionEntries.length > 0 && (
+              <Card className="surface-panel border-none shadow-none">
+                <CardHeader>
+                  <CardTitle>{t('projects.submission_data', 'Submission Data')}</CardTitle>
+                  <CardDescription>
+                    {t('projects.submission_data_desc', 'Custom fields submitted with the project')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {visibleSubmissionEntries.map(([key, value]) => (
+                    <div key={key} className="surface-inset space-y-2 p-4 md:p-5">
+                      <Label className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                         {submissionFieldLabels.get(key) || key}
                       </Label>
-                      <p className="text-sm font-medium whitespace-pre-wrap">{String(value || '-')}</p>
+                      <p className="whitespace-pre-wrap break-words text-sm font-medium leading-6 text-foreground">
+                        {renderSubmissionValue(value)}
+                      </p>
                     </div>
                   ))}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          <div className="space-y-6">
+            <Card className="surface-panel border-none shadow-none">
+              <CardHeader>
+                <CardTitle>{t('projects.project_id')}</CardTitle>
+                <CardDescription>{t('projects.submitter')}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="surface-inset space-y-2 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    {t('projects.project_id')}
+                  </p>
+                  <p className="break-all font-mono text-sm text-foreground">{project.id}</p>
+                </div>
+
+                {receiptId ? (
+                  <div className="surface-inset space-y-2 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      {t('submission.receipt_number_label')}
+                    </p>
+                    <p className="break-all font-mono text-sm text-foreground">{receiptId}</p>
+                  </div>
+                ) : null}
+
+                <div className="surface-inset space-y-2 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    {t('projects.submitter')}
+                  </p>
+                  <p className="text-sm font-medium text-foreground">
+                    {project.submitterName || t('common.anonymous')}
+                  </p>
+                  <p className="break-all text-sm text-muted-foreground">{project.submitterEmail}</p>
+                </div>
+
+                <div className="surface-inset space-y-2 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    {t('projects.status')}
+                  </p>
+                  <div>
+                    <Badge variant={form.status === 'submitted' ? 'default' : 'secondary'}>
+                      {t(`projects.status_options.${form.status}`)}
+                    </Badge>
+                  </div>
                 </div>
               </CardContent>
             </Card>
-          )}
-        </>
+
+            <Card className="surface-panel border-none shadow-none">
+              <CardHeader>
+                <CardTitle>{t('projects.view_scores')}</CardTitle>
+                <CardDescription>{t('reports.scoring_matrix_desc')}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="surface-inset flex items-center justify-between gap-4 p-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      {t('reports.judges')}
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-foreground">{assignments.length}</p>
+                  </div>
+                  <div className="text-right text-sm text-muted-foreground">
+                    <p>{t('reports.pending_short')}: {pendingAssignments.length}</p>
+                    <p>{t('reports.in_progress_short')}: {inProgressAssignments.length}</p>
+                  </div>
+                </div>
+                <div className="surface-inset p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    {t('projects.score')}
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-foreground">
+                    {avgScore > 0 ? avgScore.toFixed(1) : '-'}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       )}
 
       {activeTab === 'scores' && (
         <Card className="surface-panel border-none shadow-none">
           <CardHeader>
             <CardTitle>{t('projects.view_scores')}</CardTitle>
-            <CardDescription>
-              {t('reports.scoring_matrix_desc')}
-            </CardDescription>
+            <CardDescription>{t('reports.scoring_matrix_desc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
@@ -457,7 +635,7 @@ export function ProjectDetail() {
                         <TableCell className="max-w-[340px] text-sm text-muted-foreground">
                           {formatScoreBreakdown(assignment)}
                         </TableCell>
-                        <TableCell className="max-w-[280px] truncate">
+                        <TableCell className="max-w-[280px] whitespace-pre-wrap text-sm">
                           {assignment.comment || '-'}
                         </TableCell>
                       </TableRow>

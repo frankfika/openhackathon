@@ -34,7 +34,7 @@ import { Badge } from '@/components/ui/badge'
 import { Search, Pencil, Trash2, Eye, Loader2, BarChart3, ChevronLeft, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
-import { getFilterableSubmissionFields, getFieldLabel, getProjectSubmissionFieldValue, getSubmissionFieldFilterOptions } from '@/lib/submission-fields'
+import { getFilterableSubmissionFields, getFieldLabel, getSubmissionFieldFilterOptions } from '@/lib/submission-fields'
 import { useDebounce } from '@/lib/use-debounce'
 
 const PAGE_SIZE = 50
@@ -93,13 +93,14 @@ export function Projects() {
 
   // Main paginated query (server search)
   const { data: pageResult, isLoading, isError } = useQuery({
-    queryKey: ['projects', activeHackathon.id, 'paginated', page, debouncedQuery, statusFilter],
+    queryKey: ['projects', activeHackathon.id, 'paginated', page, debouncedQuery, statusFilter, submissionFilters],
     queryFn: () => api.getProjectsPaginated({
       hackathonId: activeHackathon.id,
       page,
       pageSize: PAGE_SIZE,
       search: debouncedQuery || undefined,
       status: statusFilter === 'all' ? undefined : statusFilter,
+      submissionFilters,
     }),
     enabled: !!activeHackathon.id,
     placeholderData: (prev) => prev,
@@ -121,15 +122,6 @@ export function Projects() {
     },
     onError: () => toast.error(t('projects.delete_error')),
   })
-
-  // Client-side submission field filter on current page
-  const filteredProjects = useMemo(() => projects.filter((project) => {
-    if (statusFilter !== 'all' && project.status !== statusFilter) return false
-    for (const [fieldId, val] of Object.entries(submissionFilters)) {
-      if (val && getProjectSubmissionFieldValue(project, fieldId) !== val) return false
-    }
-    return true
-  }), [projects, statusFilter, submissionFilters])
 
   const activeFilterCount = (query.trim() ? 1 : 0)
     + (statusFilter !== 'all' ? 1 : 0)
@@ -202,6 +194,7 @@ export function Projects() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>{t('projects.project_id')}</TableHead>
               <TableHead>{t('projects.project_name')}</TableHead>
               <TableHead>{t('projects.submitter')}</TableHead>
               <TableHead>{t('projects.status')}</TableHead>
@@ -211,7 +204,7 @@ export function Projects() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={4} className="h-24 text-center">
+                <TableCell colSpan={5} className="h-24 text-center">
                   <div className="flex justify-center items-center gap-2">
                     <Loader2 className="h-5 w-5 animate-spin" />
                     {t('projects.loading')}
@@ -220,18 +213,18 @@ export function Projects() {
               </TableRow>
             ) : isError ? (
               <TableRow>
-                <TableCell colSpan={4} className="h-24 text-center text-red-500">
+                <TableCell colSpan={5} className="h-24 text-center text-red-500">
                   {t('projects.load_error')}
                 </TableCell>
               </TableRow>
-            ) : filteredProjects.length === 0 ? (
+            ) : projects.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                   {t('projects.no_projects')}
                 </TableCell>
               </TableRow>
             ) : (
-              filteredProjects.map((project) => {
+              projects.map((project) => {
                 const score = calculateProjectScore(project.id, project.assignments || [])
                 return (
                   <TableRow
@@ -239,6 +232,7 @@ export function Projects() {
                     className="cursor-pointer"
                     onClick={() => navigate(buildAdminPath(adminBasePath, `projects/${project.id}`))}
                   >
+                    <TableCell className="font-mono text-xs text-muted-foreground">{project.id}</TableCell>
                     <TableCell className="font-medium">
                       <div>
                         <span>{project.title}</span>

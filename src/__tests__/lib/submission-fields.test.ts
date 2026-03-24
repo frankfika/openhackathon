@@ -34,4 +34,16 @@ describe('submission field helpers', () => {
     expect(getSubmissionFieldFilterOptions(field, projects)).toEqual(['AI', 'Fintech', 'Healthcare'])
     expect(getProjectSubmissionFieldValue(projects[1], 'track')).toBe('Healthcare')
   })
+
+  it('reads built-in project column values before submission data', () => {
+    const project = {
+      id: 'p1',
+      title: 'Project Atlas',
+      tags: ['AI', 'Vision'],
+      submissionData: { title: 'Shadow Title' },
+    } as never
+
+    expect(getProjectSubmissionFieldValue(project, 'title')).toBe('Project Atlas')
+    expect(getProjectSubmissionFieldValue(project, 'tags')).toBe('AI, Vision')
+  })
 })
