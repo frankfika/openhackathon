@@ -1,24 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { User } from './types'
 import { api } from './api'
-
-type AuthApiError = {
-  response?: {
-    data?: {
-      error?: string
-    }
-  }
-}
-
-function getLoginErrorMessage(err: unknown): string {
-  if (typeof err === 'object' && err !== null) {
-    const apiError = err as AuthApiError
-    if (apiError.response?.data?.error) {
-      return apiError.response.data.error
-    }
-  }
-  return 'Login failed. Please try again.'
-}
+import { extractApiErrorMessage } from './api-error'
 
 // Separate storage keys for admin and judge sessions
 const ADMIN_USER_KEY = 'openhackathon_admin_user'
@@ -131,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return userData
     } catch (err: unknown) {
-      const message = getLoginErrorMessage(err)
+      const message = extractApiErrorMessage(err, 'Login failed. Please try again.')
       setError(message)
       throw new Error(message)
     } finally {
