@@ -21,7 +21,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { shouldSuggestSetupWizard } from '@/lib/setup-wizard'
 import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
 
 const GRADIENT_PRESETS = [
@@ -169,14 +168,6 @@ export function HackathonSettings() {
   const watchedStartAt = watch('startAt')
   const watchedEndAt = watch('endAt')
   const watchedSubmissionSuccessHintImageUrl = watch('submissionSuccessHintImageUrl')
-
-  const shouldSuggestWizard = useMemo(() => {
-    if (!hackathon) return false
-    return shouldSuggestSetupWizard({
-      submissionFieldCount: submissionSchema.length,
-      scoringCriteriaCount: scoringCriteria.length,
-    })
-  }, [hackathon, submissionSchema.length, scoringCriteria.length])
 
   // Update form values when hackathon data loads
   useEffect(() => {
@@ -499,23 +490,6 @@ export function HackathonSettings() {
           </span>
         </div>
       )}
-
-      {shouldSuggestWizard && !isLocked ? (
-        <Card className="mb-6 border border-primary/20 bg-primary/5 shadow-none">
-          <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="text-sm font-semibold">{t('settings.setup_wizard.title', 'Setup Wizard')}</div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {t('settings.setup_wizard.dashboard_hint', 'This hackathon is still missing core setup. Run the wizard to configure the event profile, docs links, submission schema, judging flow, and scoring rubric.')}
-              </p>
-            </div>
-            <Button type="button" className="gap-2" onClick={() => setIsSetupWizardOpen(true)}>
-              <Wand2 className="h-4 w-4" />
-              {t('settings.setup_wizard.open')}
-            </Button>
-          </CardContent>
-        </Card>
-      ) : null}
 
       <Tabs defaultValue="general">
         <TabsList className="flex flex-wrap w-full mb-8 h-auto gap-1 p-1">
