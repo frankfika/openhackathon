@@ -73,9 +73,9 @@ OpenHackathon 是一个面向黑客松主办方、评委与参赛团队的全流
 - **实时评分**：滑块控件实时计算总分，已评分项目显示完成状态和分数。
 
 ### 7. 赛事详情统一入口（规则/文档去重）
-- 前台统一使用「赛事详情」入口，不再拆分成重复的“规则”和“文档”菜单。
-- 文档来源按优先级自动回退：`gitbookUrl` → `rulesUrl` → `detailsUrl`。
-- 后台活动设置支持三种链接配置，便于主办方逐步完善内容。
+- 前台统一使用「赛事详情」入口，不再拆分成重复的”规则”和”文档”菜单。
+- 后台设置中，**外链 URL** 与**本地文档上传**合并展示为同一功能的两种方式（用「或」分隔）。
+- 优先级：本地文档（MD/PDF）> 外链 URL。本地文档上传后即优先展示，外链仅作为跳转备用；两者都未配置时显示空状态提示。
 
 ### 8. 公开提交回执与邮件通知
 - `/submit` 页面仅强制邮箱，提交后后端自动生成回执号（如 `SUB-20260228-ABC123`）。
@@ -254,6 +254,22 @@ npm run test:e2e
 ```
 
 ## 🏗️ 部署
+
+### 在线演示
+> **体验地址：http://49.234.25.35**（腾讯云，国内可直接访问）
+
+### 一键部署到服务器（Ubuntu）
+```bash
+curl -fsSL https://raw.githubusercontent.com/frankfika/openhackathon/main/scripts/deploy-server.sh | bash
+```
+脚本自动完成：安装 Node.js / PostgreSQL / Nginx / PM2、克隆代码、构建前端、数据库迁移、启动服务、配置反向代理。
+
+### 自动部署（CI/CD）
+仓库已配置 GitHub Actions，推送到 `main` 分支后自动部署到服务器（约 2 分钟）：
+```bash
+git push origin main  # 即可触发自动部署
+```
+
 ### Docker Compose
 ```bash
 docker compose up -d --build
