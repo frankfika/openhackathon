@@ -109,10 +109,10 @@ export async function createAdmin(
 export async function createProject(
   prisma: FactoryContext,
   hackathonId: string,
-  overrides: Partial<Prisma.ProjectCreateInput> = {}
+  overrides: Partial<Prisma.ProjectUncheckedCreateInput> = {}
 ) {
   const timestamp = Date.now();
-  const defaults: Prisma.ProjectCreateInput = {
+  const defaults: Prisma.ProjectUncheckedCreateInput = {
     hackathonId,
     title: `Test Project ${timestamp}`,
     oneLiner: 'An amazing project',
@@ -137,9 +137,9 @@ export async function createProject(
 export async function createCriterion(
   prisma: FactoryContext,
   hackathonId: string,
-  overrides: Partial<Prisma.ScoringCriterionCreateInput> = {}
+  overrides: Partial<Prisma.ScoringCriterionUncheckedCreateInput> = {}
 ) {
-  const defaults: Prisma.ScoringCriterionCreateInput = {
+  const defaults: Prisma.ScoringCriterionUncheckedCreateInput = {
     hackathonId,
     name: 'Test Criterion',
     maxScore: 50,
@@ -158,9 +158,9 @@ export async function createAssignment(
   prisma: FactoryContext,
   projectId: string,
   judgeId: string,
-  overrides: Partial<Prisma.AssignmentCreateInput> = {}
+  overrides: Partial<Prisma.AssignmentUncheckedCreateInput> = {}
 ) {
-  const defaults: Prisma.AssignmentCreateInput = {
+  const defaults: Prisma.AssignmentUncheckedCreateInput = {
     projectId,
     judgeId,
     status: 'pending',
