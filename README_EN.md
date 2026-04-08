@@ -18,14 +18,14 @@
 
 ## 📖 Introduction
 OpenHackathon is an end-to-end platform for hackathon organizers, judges, and participants:
-- Organizers manage events, rounds, scoring criteria, assignments, promotions, and leaderboards.
+- Organizers manage hackathon settings, scoring criteria, assignments, and leaderboard publishing.
 - Judges review assigned projects, submit scores, and leave feedback in one workspace.
 - Participants submit projects publicly and track results on the leaderboard.
 
 ## ✨ Capabilities
-### 1. Event and Round Management
-- Supports multiple hackathons and multi-round workflows (preliminary / semifinal / final).
-- Configurable scoring criteria, submission schema, and event statuses.
+### 1. Hackathon Setup and Status Management
+- Single-hackathon-first workflow with clear status progression (`draft` / `upcoming` / `active` / `judging` / `completed`).
+- Configurable scoring criteria, submission schema, and event metadata.
 
 ![Dashboard](./docs/assets/dashboard.png)
 
@@ -41,25 +41,12 @@ OpenHackathon is an end-to-end platform for hackathon organizers, judges, and pa
 
 ![Features](./docs/assets/features.png)
 
-### 4. Promotion and Multi-Round Evaluation
-- Promotion decisions: `advanced` / `eliminated` / `pending`.
-- Promoted projects can flow into next-round assignments automatically.
-
-![Promotions](./docs/assets/promotions.png)
-
-### 4.1 Admin Review Operations Architecture (v2)
-- Admin review operations are fully split into dedicated pages: `${adminBasePath}/reviews`, `${adminBasePath}/assignments`, `${adminBasePath}/promotions`, `${adminBasePath}/reports`, `${adminBasePath}/judges` (default `adminBasePath=/admin`).
-- `adminBasePath` is configurable in Site Settings. It controls the admin entry path only and does not change judging business rules.
-- Judge identity is global, but eligibility is hackathon-scoped. Only judges registered to the current hackathon can be assigned or auto-carried to next-round assignments.
-- Admin sidebar now includes a dedicated `Hackathons` entry and shows explicit current hackathon name + date range, with a direct switch action to avoid ambiguous "current hackathon" context.
-- Preliminary / semi-final / final and region are consistently modeled as session dimensions, with shared `sessionId` URL context across review pages.
-- A project can be reviewed by multiple judges (uniqueness only prevents duplicate assignment of the same judge to the same project in the same session).
-- Session timelines are strongly validated in both UI and API: start date cannot be after end date, and downstream rounds cannot start earlier than upstream rounds.
-- Promotions prefer region-matched downstream routing by default (for both preliminary and semi-final flows), while still allowing per-project override.
-- Promotions do not auto-select all judges; reviewer selection is required only when there are `advanced` decisions, preventing accidental mass assignment.
-- Promotions now include keyword/decision/region filters, filtered-batch decision actions, and "auto fill next round", and block apply when advanced items miss a next-round target.
-- Final sessions are excluded from promotion-operation scope in UI, avoiding invalid "advance after final" paths.
-- Full product rules are documented in [Admin Review Architecture v2](./docs/admin-review-architecture.md).
+### 4. Admin Review Operations Architecture
+- Core admin operations are centered on `${adminBasePath}/projects`, `${adminBasePath}/assignments`, `${adminBasePath}/judges`, `${adminBasePath}/leaderboard`, `${adminBasePath}/activity`.
+- `adminBasePath` is configurable in Site Settings and controls admin entry paths.
+- Judge identity is global, while assignment eligibility is hackathon-scoped via `HackathonJudge`.
+- Legacy routes like `${adminBasePath}/reviews` and `${adminBasePath}/reports` are redirected for compatibility.
+- Current architecture details are documented in [Admin Review Architecture](./docs/admin-review-architecture.md).
 
 ### 5. Unified Event Details Entry (No Rules/Docs Duplication)
 - Public navigation now uses one `Event Details` entry instead of separate duplicated `Rules` and `Docs`.
@@ -98,14 +85,14 @@ Notes:
 |---|---|---|
 | ![Home](./docs/assets/home.png) | ![Projects](./docs/assets/projects.png) | ![Leaderboard](./docs/assets/leaderboard.png) |
 
-| Judging | Settings | Promotions |
-|---|---|---|
-| ![Judging](./docs/assets/judging.png) | ![Settings](./docs/assets/settings.png) | ![Promotions](./docs/assets/promotions.png) |
+| Judging | Settings |
+|---|---|
+| ![Judging](./docs/assets/judging.png) | ![Settings](./docs/assets/settings.png) |
 
 ## 🎨 UX Baseline
 - Homepage visual structure is aligned with `docs/assets/home.png` as the reference baseline.
 - Admin and judge workspaces share one premium glass-style component system (buttons, cards, inputs, tables, dialogs, tabs).
-- Key management pages (projects, reports, promotions, settings) follow the same hierarchy: overview section + panel section + table section.
+- Key management pages (projects, assignments, judges, settings) follow the same hierarchy: overview section + panel section + table section.
 
 ## 🚀 Quick Start
 ### Requirements

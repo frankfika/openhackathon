@@ -41,7 +41,7 @@ async function loginAsAdmin(page) {
   await page.locator('input[type="email"]').fill(ADMIN_EMAIL);
   await page.locator('input[type="password"]').fill(ADMIN_PASSWORD);
   await page.locator('button[type="submit"]').click();
-  await page.waitForURL(/\/dashboard/, { timeout: 20000 });
+  await page.waitForURL(/\/admin(\/|$)/, { timeout: 20000 });
 }
 
 async function run() {
@@ -73,16 +73,13 @@ async function run() {
     await loginAsAdmin(page);
     await capture(page, 'dashboard', 1800);
 
-    await page.goto(`${BASE_URL}/dashboard/settings`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${BASE_URL}/admin/settings`, { waitUntil: 'domcontentloaded' });
     await capture(page, 'settings', 1800);
 
-    await page.goto(`${BASE_URL}/dashboard/reports`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${BASE_URL}/admin/assignments`, { waitUntil: 'domcontentloaded' });
     await capture(page, 'features', 1800);
 
-    await page.goto(`${BASE_URL}/dashboard/promotions`, { waitUntil: 'domcontentloaded' });
-    await capture(page, 'promotions', 1800);
-
-    await page.goto(`${BASE_URL}/dashboard/judging`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${BASE_URL}/admin/judges`, { waitUntil: 'domcontentloaded' });
     await capture(page, 'judging', 1800);
 
     console.log(`✅ Screenshots saved to ${assetsDir}`);

@@ -1,6 +1,6 @@
 import express from 'express';
 import type { Express, RequestHandler } from 'express';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, SiteSetting } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -16,6 +16,52 @@ import { resolveSubmissionEmailPort, resolveSubmissionEmailTimeout, sendSubmissi
 import { getCurrentHackathon, serializeSiteSettings, serializePublicSiteSettings } from '../utils/hackathon';
 import { normalizeUploadedImageFileName, resolveUploadedImageExtension } from '../utils/documents';
 
+function resolveString(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function resolveNullableString(value: unknown, fallback: string | null): string | null {
+  if (value === null) return null;
+  return typeof value === 'string' ? value : fallback;
+}
+
+function resolveBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function resolvePositiveInteger(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function buildFallbackSiteSettings(defaultSiteSettings: Record<string, unknown>): SiteSetting {
+  return {
+    id: 'default',
+    key: 'default',
+    siteName: resolveString(defaultSiteSettings.siteName, 'OpenHackathon'),
+    adminBasePath: normalizeAdminBasePath(resolveString(defaultSiteSettings.adminBasePath, '/admin')),
+    logoUrl: resolveNullableString(defaultSiteSettings.logoUrl, null),
+    tabTitle: resolveString(defaultSiteSettings.tabTitle, 'OpenHackathon'),
+    seoTitle: resolveString(defaultSiteSettings.seoTitle, 'OpenHackathon'),
+    seoDescription: resolveString(defaultSiteSettings.seoDescription, 'OpenHackathon - Open source hackathon management platform'),
+    faviconUrl: resolveString(defaultSiteSettings.faviconUrl, '/favicon.svg'),
+    showPoweredBy: resolveBoolean(defaultSiteSettings.showPoweredBy, true),
+    poweredByText: resolveString(defaultSiteSettings.poweredByText, 'Powered by OpenHackathon'),
+    poweredByUrl: resolveString(defaultSiteSettings.poweredByUrl, 'https://openhackathon.dev'),
+    submissionEmailEnabled: resolveBoolean(defaultSiteSettings.submissionEmailEnabled, false),
+    smtpHost: resolveNullableString(defaultSiteSettings.smtpHost, null),
+    smtpPort: resolvePositiveInteger(defaultSiteSettings.smtpPort, 587),
+    smtpSecure: resolveBoolean(defaultSiteSettings.smtpSecure, false),
+    smtpUser: resolveNullableString(defaultSiteSettings.smtpUser, null),
+    smtpPassEncrypted: null,
+    submissionEmailFrom: resolveString(defaultSiteSettings.submissionEmailFrom, 'OpenHackathon <no-reply@localhost>'),
+    submissionEmailReplyTo: resolveNullableString(defaultSiteSettings.submissionEmailReplyTo, null),
+    submissionEmailSubject: resolveString(defaultSiteSettings.submissionEmailSubject, '[{{hackathonTitle}}] Submission Receipt {{receiptId}}'),
+    submissionEmailTimeoutMs: resolvePositiveInteger(defaultSiteSettings.submissionEmailTimeoutMs, 10000),
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  };
+}
+
 export function registerSiteSettingsRoutes(
   app: Express,
   prisma: PrismaClient,
@@ -23,22 +69,16 @@ export function registerSiteSettingsRoutes(
 ) {
   // GET /api/site-settings - public settings
   app.get('/api/site-settings', async (_req, res) => {
-    const settings = await prisma.siteSetting.upsert({
-      where: { key: 'default' },
-      update: {},
-      create: { key: 'default', ...defaultSiteSettings },
-    });
-    res.json(serializePublicSiteSettings(settings));
+    const settings = await prisma.siteSetting.findUnique({ where: { key: 'default' } });
+    const resolvedSettings = settings ?? buildFallbackSiteSettings(defaultSiteSettings);
+    res.json(serializePublicSiteSettings(resolvedSettings));
   });
 
   // GET /api/site-settings/admin - admin settings
   app.get('/api/site-settings/admin', requireAdmin, async (_req, res) => {
-    const settings = await prisma.siteSetting.upsert({
-      where: { key: 'default' },
-      update: {},
-      create: { key: 'default', ...defaultSiteSettings },
-    });
-    res.json(serializeSiteSettings(settings));
+    const settings = await prisma.siteSetting.findUnique({ where: { key: 'default' } });
+    const resolvedSettings = settings ?? buildFallbackSiteSettings(defaultSiteSettings);
+    res.json(serializeSiteSettings(resolvedSettings));
   });
 
   // PUT /api/site-settings - update settings

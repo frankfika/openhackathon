@@ -285,7 +285,7 @@ SMTP 服务器配置（host / port / security / user / password），内置邮�
 | 部署 | GitHub Actions → PM2 + Nginx |
 
 ### 后端模块化架构
-按领域拆分为 **16 个路由模块** 和 **7 个工具模块**：
+按领域拆分为 **15 个路由模块** 和 **7 个工具模块**：
 
 ```
 api/
@@ -300,7 +300,6 @@ api/
 │   ├── assignments.ts #   评审分配（随机/手动/批量）
 │   ├── scores.ts      #   评分提交与查询
 │   ├── judges.ts      #   评委注册/取消注册/创建
-│   ├── promotions.ts  #   晋级决策（advanced/eliminated）
 │   ├── reports.ts     #   评审报表（按项目/评委聚合）
 │   ├── site-settings.ts # 站点设置 + 图片/文件上传
 │   ├── users.ts       #   用户管理

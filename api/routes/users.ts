@@ -72,13 +72,32 @@ export function registerUserRoutes(
         return res.status(404).json({ error: 'User not found' });
       }
 
+      if (req.authUser?.id === userToDelete.id) {
+        return res.status(400).json({ error: 'Cannot delete the currently logged-in admin account' });
+      }
+
+      if (userToDelete.role === 'admin') {
+        const adminCount = await prisma.user.count({ where: { role: 'admin' } });
+        if (adminCount <= 1) {
+          return res.status(409).json({
+            error: 'Cannot delete the last admin account',
+            code: 'LAST_ADMIN_PROTECTED',
+          });
+        }
+      }
+
+      const assignmentCount = await prisma.assignment.count({
+        where: { judgeId: req.params.id },
+      });
+      if (assignmentCount > 0) {
+        return res.status(409).json({
+          error: 'Cannot delete user with existing assignments. Remove or reassign assignments first.',
+          code: 'USER_DELETE_BLOCKED_BY_ASSIGNMENTS',
+          assignmentCount,
+        });
+      }
+
       await prisma.$transaction(async (tx) => {
-        await tx.score.deleteMany({
-          where: { assignment: { judgeId: req.params.id } },
-        });
-        await tx.assignment.deleteMany({
-          where: { judgeId: req.params.id },
-        });
         await tx.hackathonJudge.deleteMany({
           where: { userId: req.params.id },
         });

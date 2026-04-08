@@ -98,7 +98,7 @@ export function JudgingDetail() {
       toast.success(t('judging.score_submitted', 'Score submitted successfully'))
       queryClient.invalidateQueries({ queryKey: ['assignments'] })
       // Navigate based on user role
-      const redirectPath = user?.role === 'judge' ? '/judge' : buildAdminPath(adminBasePath, 'reviews')
+      const redirectPath = user?.role === 'judge' ? '/judge' : buildAdminPath(adminBasePath, 'assignments')
       navigate(redirectPath)
     },
     onError: () => {
@@ -163,7 +163,7 @@ export function JudgingDetail() {
   const totalScore = assignment?.totalScore ?? sumScoreDraft(scores)
   const maxPossible = scoringCriteria.reduce((sum, c) => sum + (c.maxScore || 0), 0)
   const unscoredCount = countUnscoredCriteria(scores, scoringCriteria)
-  const backPath = user?.role === 'judge' ? '/judge' : buildAdminPath(adminBasePath, 'reviews')
+  const backPath = user?.role === 'judge' ? '/judge' : buildAdminPath(adminBasePath, 'assignments')
 
   const updateCriterionScore = (criterionId: string, maxScore: number, nextValue: number) => {
     setScores((prev) => ({

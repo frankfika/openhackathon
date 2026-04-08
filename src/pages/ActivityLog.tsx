@@ -41,6 +41,7 @@ const actionLabels: Record<ActivityAction, string> = {
   login: '登录',
   logout: '退出',
   invite: '邀请',
+  bulk_reset: '批量重置',
 }
 
 const entityLabels: Record<ActivityEntityType, string> = {
@@ -74,6 +75,7 @@ const actionColors: Record<string, string> = {
   login: 'bg-gray-100 text-gray-800 dark:bg-gray-800',
   logout: 'bg-gray-100 text-gray-800 dark:bg-gray-800',
   invite: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30',
+  bulk_reset: 'bg-rose-100 text-rose-800 dark:bg-rose-900/30',
 }
 
 function getEntityIcon(type: ActivityEntityType) {
@@ -143,6 +145,15 @@ function ActivityDescription({ log }: { log: ActivityLogType }): React.ReactNode
       return (
         <span>
           邀请评委 <strong>{(metadata?.judgeName as string) ?? 'Unknown'}</strong> 加入赛事
+        </span>
+      )
+    case 'bulk_reset':
+      return (
+        <span>
+          批量重置了待分配记录
+          {typeof metadata?.deleted === 'number' && (
+            <span className="ml-1 font-semibold text-primary">({metadata.deleted} 条)</span>
+          )}
         </span>
       )
     case 'create':

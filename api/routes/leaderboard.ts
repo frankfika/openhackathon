@@ -2,6 +2,81 @@ import type { Express, RequestHandler } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { getScopedHackathonId, getCurrentHackathon } from '../utils/hackathon';
 
+type LeaderboardEntryInput = {
+  projectId: string;
+  rank: number;
+  award: string;
+};
+
+async function validateLeaderboardPayload(
+  prisma: PrismaClient,
+  hackathonId: string,
+  body: unknown,
+): Promise<{ entries: LeaderboardEntryInput[]; published: boolean } | { error: string }> {
+  const payload = (body && typeof body === 'object') ? body as Record<string, unknown> : {};
+  const rawEntries = payload.entries;
+  const rawPublished = payload.published;
+
+  if (!Array.isArray(rawEntries)) {
+    return { error: 'entries must be an array' };
+  }
+  if (typeof rawPublished !== 'boolean') {
+    return { error: 'published must be a boolean' };
+  }
+
+  const entries: LeaderboardEntryInput[] = [];
+  const seenProjects = new Set<string>();
+  const seenRanks = new Set<number>();
+
+  for (const raw of rawEntries) {
+    if (!raw || typeof raw !== 'object') {
+      return { error: 'each entry must be an object' };
+    }
+
+    const item = raw as Record<string, unknown>;
+    const projectId = typeof item.projectId === 'string' ? item.projectId.trim() : '';
+    const rank = typeof item.rank === 'number' ? item.rank : Number.NaN;
+    const award = typeof item.award === 'string' ? item.award.trim() : '';
+
+    if (!projectId) {
+      return { error: 'entry.projectId is required' };
+    }
+    if (!Number.isInteger(rank) || rank <= 0) {
+      return { error: 'entry.rank must be a positive integer' };
+    }
+    if (award.length > 100) {
+      return { error: 'entry.award must be at most 100 characters' };
+    }
+    if (seenProjects.has(projectId)) {
+      return { error: 'entries cannot contain duplicate projectId values' };
+    }
+    if (seenRanks.has(rank)) {
+      return { error: 'entries cannot contain duplicate rank values' };
+    }
+
+    seenProjects.add(projectId);
+    seenRanks.add(rank);
+    entries.push({ projectId, rank, award });
+  }
+
+  if (entries.length > 0) {
+    const projectCount = await prisma.project.count({
+      where: {
+        hackathonId,
+        id: { in: entries.map((entry) => entry.projectId) },
+      },
+    });
+    if (projectCount !== entries.length) {
+      return { error: 'entries contain projectId values that do not belong to this hackathon' };
+    }
+  }
+
+  return {
+    entries: entries.sort((a, b) => a.rank - b.rank),
+    published: rawPublished,
+  };
+}
+
 export function registerLeaderboardRoutes(
   app: Express,
   prisma: PrismaClient,
@@ -11,19 +86,29 @@ export function registerLeaderboardRoutes(
     const { hackathonId } = req.query;
     const hackathonIdValue = await getScopedHackathonId(prisma, hackathonId);
 
-    const hackathon = hackathonIdValue ? await prisma.hackathon.findUnique({
-      where: { id: hackathonIdValue },
-      select: { leaderboardData: true, leaderboardPublished: true }
-    }) : null;
+    if (!hackathonIdValue) {
+      return res.status(400).json({ error: 'hackathonId is required' });
+    }
 
-    const hackathonFull = hackathonIdValue ? await prisma.hackathon.findUnique({
+    const hackathon = await prisma.hackathon.findUnique({
       where: { id: hackathonIdValue },
-      select: { scoringCriteria: true },
-    }) : null;
-    const maxPossible = hackathonFull?.scoringCriteria?.reduce((sum, c) => sum + c.maxScore, 0) ?? 0;
+      select: { scoringCriteria: true, leaderboardData: true, leaderboardPublished: true },
+    });
+    if (!hackathon) {
+      return res.status(404).json({ error: 'Hackathon not found' });
+    }
 
-    if (hackathon?.leaderboardPublished && hackathon?.leaderboardData) {
-      const entries = hackathon.leaderboardData as { projectId: string; rank: number; award: string }[];
+    if (!hackathon.leaderboardPublished) {
+      return res.json([]);
+    }
+
+    const maxPossible = hackathon.scoringCriteria?.reduce((sum, c) => sum + c.maxScore, 0) ?? 0;
+    const curatedData = Array.isArray(hackathon.leaderboardData) && hackathon.leaderboardData.length > 0
+      ? hackathon.leaderboardData as { projectId: string; rank: number; award: string }[]
+      : null;
+
+    if (curatedData) {
+      const entries = curatedData;
       const projectIds = entries.map(e => e.projectId);
       const projects = await prisma.project.findMany({
         where: { id: { in: projectIds } },
@@ -104,12 +189,16 @@ export function registerLeaderboardRoutes(
       return res.status(404).json({ error: 'Hackathon not found' });
     }
 
-    const { entries, published } = req.body;
+    const validated = await validateLeaderboardPayload(prisma, currentHackathon.id, req.body);
+    if ('error' in validated) {
+      return res.status(400).json({ error: validated.error });
+    }
+
     const hackathon = await prisma.hackathon.update({
       where: { id: currentHackathon.id },
       data: {
-        leaderboardData: entries,
-        leaderboardPublished: published,
+        leaderboardData: validated.entries,
+        leaderboardPublished: validated.published,
       }
     });
     res.json(hackathon);
@@ -129,12 +218,24 @@ export function registerLeaderboardRoutes(
   });
 
   app.put('/api/hackathons/:id/leaderboard', requireAdmin, async (req, res) => {
-    const { entries, published } = req.body;
+    const hackathonExists = await prisma.hackathon.findUnique({
+      where: { id: req.params.id },
+      select: { id: true },
+    });
+    if (!hackathonExists) {
+      return res.status(404).json({ error: 'Hackathon not found' });
+    }
+
+    const validated = await validateLeaderboardPayload(prisma, req.params.id, req.body);
+    if ('error' in validated) {
+      return res.status(400).json({ error: validated.error });
+    }
+
     const hackathon = await prisma.hackathon.update({
       where: { id: req.params.id },
       data: {
-        leaderboardData: entries,
-        leaderboardPublished: published,
+        leaderboardData: validated.entries,
+        leaderboardPublished: validated.published,
       }
     });
     res.json(hackathon);
@@ -145,6 +246,9 @@ export function registerLeaderboardRoutes(
       where: { id: req.params.id },
       select: { leaderboardData: true, leaderboardPublished: true }
     });
+    if (!hackathon) {
+      return res.status(404).json({ error: 'Hackathon not found' });
+    }
     res.json(hackathon);
   });
 }

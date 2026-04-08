@@ -96,12 +96,12 @@ npx playwright codegen http://localhost:5173
 
 ### Admin Workflow (admin-flow.spec.ts)
 - Dashboard stats
-- Hackathons management
 - Projects list view
 - Assignment manager
+- Judge management
 - Leaderboard view
-- Scoring reports
-- Settings access
+- Activity logs / settings access
+- Legacy review route redirect
 
 ### Public Pages (public-pages.spec.ts)
 - Landing page

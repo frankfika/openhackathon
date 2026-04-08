@@ -158,7 +158,7 @@ export function AdminDashboard() {
             icon: Gavel,
             title: t('dashboard.next.track_judging', 'Track Judging Progress'),
             desc: t('dashboard.next.track_judging_desc', { count: stats?.pendingReviews || 0, defaultValue: '{{count}} reviews still pending.' }),
-            action: () => navigate(buildAdminPath(adminBasePath, 'reviews')),
+            action: () => navigate(buildAdminPath(adminBasePath, 'assignments')),
             primary: true,
           },
           {

@@ -115,7 +115,15 @@ app.use(helmet({
 }));
 app.use(cors(corsOptions));
 app.use(express.json({ limit: JSON_BODY_LIMIT, type: shouldParseJsonBody }));
-app.use('/uploads', express.static(UPLOADS_ROOT));
+app.use('/uploads', express.static(UPLOADS_ROOT, {
+  dotfiles: 'deny',
+  index: false,
+  redirect: false,
+  setHeaders: (res) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  },
+}));
 app.use('/api', apiRateLimiter);
 
 // ===== Routes =====

@@ -77,11 +77,11 @@ export function Leaderboard() {
     enabled: !!activeHackathon?.id,
   })
 
-  // Fetch admin config (always fetch so public can check published status)
+  // Fetch admin config (only needed for admin editing state)
   const { data: config } = useQuery({
     queryKey: ['leaderboard-config', activeHackathon?.id],
     queryFn: () => api.getLeaderboardConfig(activeHackathon!.id),
-    enabled: !!activeHackathon?.id,
+    enabled: !!activeHackathon?.id && isAdmin,
   })
 
   // Fetch all projects for admin to pick from
@@ -104,6 +104,8 @@ export function Leaderboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leaderboard'] })
       queryClient.invalidateQueries({ queryKey: ['leaderboard-config'] })
+      queryClient.invalidateQueries({ queryKey: ['current-hackathon'] })
+      queryClient.invalidateQueries({ queryKey: ['hackathons'] })
       toast.success(t('leaderboard.saved'))
       setEditing(false)
     },
@@ -199,7 +201,9 @@ export function Leaderboard() {
 
   // Public view: if not published, show placeholder
   const isPublicView = !location.pathname.startsWith(adminBasePath)
-  const isPublished = config?.leaderboardPublished ?? false
+  const isPublished = isAdmin
+    ? (config?.leaderboardPublished ?? false)
+    : Boolean(activeHackathon?.leaderboardPublished)
 
   if (isLoading) {
     return (

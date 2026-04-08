@@ -1,7 +1,7 @@
 import type { Express, RequestHandler } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import express from 'express';
-import { SINGLE_HACKATHON_MODE, MARKDOWN_DOC_BODY_LIMIT, asString } from '../config';
+import { SINGLE_HACKATHON_MODE, MARKDOWN_DOC_BODY_LIMIT, VALID_HACKATHON_STATUSES, asString } from '../config';
 import type { ScoringCriterionPayload } from '../types';
 import { isValidHttpUrl, isValidHttpOrRootRelativeUrl, getErrorMessage, normalizeScoringCriteriaPayload, MAX_TITLE_LENGTH, MAX_TAGLINE_LENGTH, MAX_CITY_LENGTH, MAX_PRIZE_POOL_LENGTH, MAX_URL_LENGTH } from '../utils/validation';
 import { getCurrentHackathon, listHackathonsWithRelations, resolveHackathonCoverGradient } from '../utils/hackathon';
@@ -106,7 +106,14 @@ export function registerHackathonRoutes(
     if (submissionSuccessHintImageUrlValue && !isValidHttpOrRootRelativeUrl(submissionSuccessHintImageUrlValue)) {
       return res.status(400).json({ error: 'submissionSuccessHintImageUrl must be a valid http(s) URL or root-relative path' });
     }
-    const statusValue = typeof status === 'string' && status.trim() ? status.trim() : 'draft';
+    const statusValue = typeof status === 'string' && status.trim()
+      ? status.trim().toLowerCase()
+      : 'draft';
+    if (!VALID_HACKATHON_STATUSES.has(statusValue)) {
+      return res.status(400).json({
+        error: `status must be one of: ${Array.from(VALID_HACKATHON_STATUSES).join(', ')}`,
+      });
+    }
     const coverGradientValue = resolveHackathonCoverGradient(coverGradient);
     const cityValue = asString(city) || null;
     if (cityValue && cityValue.length > MAX_CITY_LENGTH) {
@@ -204,8 +211,17 @@ export function registerHackathonRoutes(
 
     // Allow status transition (e.g. draft -> active), but block all other field edits once active+
     const LOCKED_STATUSES = new Set(['active', 'judging', 'completed']);
+    const statusValue = status !== undefined ? asString(status)?.toLowerCase() : undefined;
+    if (status !== undefined && !statusValue) {
+      return res.status(400).json({ error: 'status cannot be empty' });
+    }
+    if (statusValue && !VALID_HACKATHON_STATUSES.has(statusValue)) {
+      return res.status(400).json({
+        error: `status must be one of: ${Array.from(VALID_HACKATHON_STATUSES).join(', ')}`,
+      });
+    }
     const isLocked = LOCKED_STATUSES.has(existingHackathon.status);
-    const isStatusChangeOnly = status && Object.keys(req.body).filter(k => req.body[k] !== undefined).length === 1;
+    const isStatusChangeOnly = Boolean(statusValue) && Object.keys(req.body).filter(k => req.body[k] !== undefined).length === 1;
 
     if (isLocked && !isStatusChangeOnly) {
       return res.status(403).json({ error: 'Cannot update settings after hackathon has started' });
@@ -279,7 +295,7 @@ export function registerHackathonRoutes(
           city: cityValue,
           startAt: startAtValue ? new Date(startAtValue) : undefined,
           endAt: endAtValue ? new Date(endAtValue) : undefined,
-          status,
+          status: statusValue,
           coverGradient: coverGradient !== undefined ? resolveHackathonCoverGradient(coverGradient) : undefined,
           prizePool: prizePoolValue,
           docsUrl: docsUrl !== undefined ? (docsUrlValue || null) : undefined,

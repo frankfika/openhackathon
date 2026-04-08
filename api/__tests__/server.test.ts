@@ -271,6 +271,7 @@ describe('API integration tests (real database)', () => {
       expect(res.body.adminBasePath).toBe('/admin');
       expect(res.body.tabTitle).toBe('OpenHackathon');
       expect(res.body.showPoweredBy).toBe(true);
+      expect(await prisma.siteSetting.count()).toBe(0);
     });
 
     it('updates site settings and supports clearing logo url', async () => {
@@ -381,6 +382,8 @@ describe('API integration tests (real database)', () => {
         .get(uploadRes.body.url)
         .expect(200);
       expect(String(fileRes.headers['content-type'])).toContain('image/png');
+      expect(String(fileRes.headers['cache-control'])).toContain('immutable');
+      expect(fileRes.headers['x-content-type-options']).toBe('nosniff');
     });
 
     it('validates test email endpoint and reports missing smtp config', async () => {
@@ -531,6 +534,25 @@ describe('API integration tests (real database)', () => {
           endAt: '2026-02-03',
           status: 'draft',
         })
+        .expect(400);
+    });
+
+    it('rejects unsupported hackathon statuses when creating or updating', async () => {
+      await request(app)
+        .post('/api/hackathons')
+        .send({
+          title: 'City Hack',
+          tagline: 'Hack for good',
+          startAt: '2026-02-01',
+          endAt: '2026-02-03',
+          status: 'launched',
+        })
+        .expect(400);
+
+      const { hackathon } = await seedHackathon();
+      await request(app)
+        .put(`/api/hackathons/${hackathon.id}`)
+        .send({ status: 'archived' })
         .expect(400);
     });
 
@@ -1040,7 +1062,7 @@ describe('API integration tests (real database)', () => {
         .expect(400);
     });
 
-    it('deletes user and cascades assignment + score cleanup', async () => {
+    it('blocks deleting judge when assignments exist to preserve audit history', async () => {
       const { hackathon, criteria } = await seedHackathon();
       const judge = await createJudge('cascade.judge@example.com', 'Cascade Judge');
       const project = await createProject({
@@ -1063,15 +1085,39 @@ describe('API integration tests (real database)', () => {
         },
       });
 
-      await request(app).delete(`/api/users/${judge.id}`).expect(200);
+      const deleteRes = await request(app).delete(`/api/users/${judge.id}`).expect(409);
+      expect(deleteRes.body.code).toBe('USER_DELETE_BLOCKED_BY_ASSIGNMENTS');
 
       const userCount = await prisma.user.count({ where: { id: judge.id } });
       const assignmentCount = await prisma.assignment.count({ where: { judgeId: judge.id } });
       const scoreCount = await prisma.score.count({ where: { assignmentId: assignment.id } });
 
+      expect(userCount).toBe(1);
+      expect(assignmentCount).toBe(1);
+      expect(scoreCount).toBe(1);
+    });
+
+    it('deletes judge without assignments', async () => {
+      const judge = await createJudge('delete.ok@example.com', 'Delete OK');
+
+      await request(app).delete(`/api/users/${judge.id}`).expect(200);
+      const userCount = await prisma.user.count({ where: { id: judge.id } });
       expect(userCount).toBe(0);
-      expect(assignmentCount).toBe(0);
-      expect(scoreCount).toBe(0);
+    });
+
+    it('protects the last admin account from deletion', async () => {
+      const admin = await request(app)
+        .post('/api/users')
+        .send({
+          email: 'only.admin@example.com',
+          name: 'Only Admin',
+          password: 'AdminPass1',
+          role: 'admin',
+        })
+        .expect(200);
+
+      const deleteRes = await request(app).delete(`/api/users/${admin.body.id}`).expect(409);
+      expect(deleteRes.body.code).toBe('LAST_ADMIN_PROTECTED');
     });
 
     it('registers and unregisters judges per hackathon', async () => {
@@ -1385,7 +1431,7 @@ describe('API integration tests (real database)', () => {
       });
     });
 
-    it('returns score-based leaderboard and curated leaderboard when published', async () => {
+    it('hides leaderboard before publish and returns curated results after publish', async () => {
       const { hackathon } = await seedHackathon();
       const judge = await createJudge('leaderboard.judge@example.com', 'Leaderboard Judge');
 
@@ -1411,12 +1457,10 @@ describe('API integration tests (real database)', () => {
         totalScore: 91,
       });
 
-      const scoresBased = await request(app)
+      const beforePublish = await request(app)
         .get(`/api/leaderboard?hackathonId=${hackathon.id}`)
         .expect(200);
-      expect(scoresBased.body).toHaveLength(2);
-      expect(scoresBased.body[0].id).toBe(projectB.id);
-      expect(scoresBased.body[0].avgScore).toBe(91);
+      expect(beforePublish.body).toEqual([]);
 
       await request(app)
         .put(`/api/hackathons/${hackathon.id}/leaderboard`)
@@ -1446,6 +1490,100 @@ describe('API integration tests (real database)', () => {
       const saved = await request(app).get(`/api/hackathons/${hackathon.id}/leaderboard`).expect(200);
       expect(saved.body.leaderboardPublished).toBe(true);
       expect(saved.body.leaderboardData).toHaveLength(2);
+    });
+
+    it('returns score-based ranking when published without curated entries', async () => {
+      const { hackathon } = await seedHackathon();
+      const judge = await createJudge('leaderboard.fallback@example.com', 'Leaderboard Fallback Judge');
+
+      const projectA = await createProject({
+        hackathonId: hackathon.id,
+        title: 'Fallback A',
+      });
+      const projectB = await createProject({
+        hackathonId: hackathon.id,
+        title: 'Fallback B',
+      });
+
+      await createAssignment({
+        projectId: projectA.id,
+        judgeId: judge.id,
+        status: 'completed',
+        totalScore: 82,
+      });
+      await createAssignment({
+        projectId: projectB.id,
+        judgeId: judge.id,
+        status: 'completed',
+        totalScore: 93,
+      });
+
+      await request(app)
+        .put(`/api/hackathons/${hackathon.id}/leaderboard`)
+        .send({
+          entries: [],
+          published: true,
+        })
+        .expect(200);
+
+      const res = await request(app)
+        .get(`/api/leaderboard?hackathonId=${hackathon.id}`)
+        .expect(200);
+
+      expect(res.body).toHaveLength(2);
+      expect(res.body[0].id).toBe(projectB.id);
+      expect(res.body[1].id).toBe(projectA.id);
+    });
+
+    it('validates leaderboard payload and project ownership', async () => {
+      const { hackathon } = await seedHackathon();
+      const project = await createProject({
+        hackathonId: hackathon.id,
+        title: 'Leaderboard Validation Project',
+      });
+
+      await request(app)
+        .put(`/api/hackathons/${hackathon.id}/leaderboard`)
+        .send({
+          entries: [
+            { projectId: project.id, rank: 1, award: 'Gold' },
+            { projectId: project.id, rank: 2, award: 'Silver' },
+          ],
+          published: true,
+        })
+        .expect(400);
+
+      await request(app)
+        .put(`/api/hackathons/${hackathon.id}/leaderboard`)
+        .send({
+          entries: [{ projectId: project.id, rank: 0, award: 'Gold' }],
+          published: true,
+        })
+        .expect(400);
+
+      const otherHackathon = await prisma.hackathon.create({
+        data: {
+          title: 'Other Hackathon',
+          tagline: 'Other Tagline',
+          startAt: new Date('2026-03-01T00:00:00.000Z'),
+          endAt: new Date('2026-03-02T00:00:00.000Z'),
+          status: 'draft',
+          coverGradient: 'from-blue-500 to-cyan-500',
+          submissionSchema: {},
+        },
+      });
+
+      await request(app)
+        .put(`/api/hackathons/${otherHackathon.id}/leaderboard`)
+        .send({
+          entries: [{ projectId: project.id, rank: 1, award: 'Gold' }],
+          published: true,
+        })
+        .expect(400);
+    });
+
+    it('returns 404 for missing admin leaderboard config', async () => {
+      await request(app).get('/api/hackathons/non-existent-id/leaderboard').expect(404);
     });
 
     it('returns scoring report with completed assignments only', async () => {

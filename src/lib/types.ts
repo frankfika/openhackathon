@@ -46,6 +46,7 @@ export type Hackathon = {
   submissionSuccessHintText?: string
   submissionSuccessHintImageUrl?: string
   judgesPerProject?: number
+  leaderboardPublished?: boolean
 }
 
 export type HackathonUpsertInput = Partial<Omit<Hackathon, 'submissionSchema' | 'scoringCriteria'>> & {
@@ -168,6 +169,7 @@ export type ActivityAction =
   | 'submit' | 'assign' | 'unassign'
   | 'score' | 'update_score' | 'complete_review'
   | 'login' | 'logout' | 'invite'
+  | 'bulk_reset'
 
 export type ActivityEntityType =
   | 'project' | 'assignment' | 'score' | 'hackathon'
