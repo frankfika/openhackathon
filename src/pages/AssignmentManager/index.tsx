@@ -20,6 +20,8 @@ import { AssignmentToolbar } from './AssignmentToolbar'
 import { AssignmentListView } from './AssignmentListView'
 import { AssignmentMatrixView } from './AssignmentMatrixView'
 import { AssignmentPagination } from './AssignmentPagination'
+import { ScoreDistributionChart } from '@/components/ScoreDistributionChart'
+import { JudgeScoreComparison } from '@/components/JudgeScoreComparison'
 
 import {
   useAssignmentIndex,
@@ -171,6 +173,12 @@ export function AssignmentManager() {
   const filterCounts = useFilterCounts(filteredProjects, projectStats)
   const sortedProjects = useSortedProjects(statusFilteredProjects, projectStats)
   const pendingCount = usePendingCount(assignments)
+
+  // Calculate max possible score from scoring criteria
+  const maxScore = useMemo(() => {
+    const criteria = activeHackathon?.scoringCriteria || []
+    return criteria.reduce((sum, c) => sum + (c.maxScore || 0), 0)
+  }, [activeHackathon?.scoringCriteria])
 
   // Reset display page when filters change
   useEffect(() => {
@@ -411,6 +419,24 @@ export function AssignmentManager() {
       />
 
       <AssignmentStats stats={stats} judgesCount={judges.length} t={t} />
+
+      {/* Charts - only show when there's data */}
+      {stats.completedAssignments > 0 && maxScore > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-lg border p-4">
+            <ScoreDistributionChart
+              assignments={assignments}
+              maxScore={maxScore}
+            />
+          </div>
+          <div className="rounded-lg border p-4">
+            <JudgeScoreComparison
+              assignments={assignments}
+              judges={judges}
+            />
+          </div>
+        </div>
+      )}
 
       <AssignmentToolbar
         projectQuery={projectQuery}
