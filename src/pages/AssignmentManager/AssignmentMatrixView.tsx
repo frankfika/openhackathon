@@ -1,3 +1,4 @@
+import { memo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
@@ -21,6 +22,95 @@ interface AssignmentMatrixViewProps {
   t: (key: string) => string
 }
 
+interface ProjectMatrixRowProps {
+  project: Project
+  globalIndex: number
+  stats: ProjectStats | undefined
+  judges: AdminUser[]
+  focusedJudgeId: string
+  isMutating: boolean
+  getAssignment: (projectId: string, judgeId: string) => Assignment | undefined
+  onToggleAssignment: (projectId: string, judgeId: string) => void
+  adminBasePath: string
+  t: (key: string) => string
+}
+
+const ProjectMatrixRow = memo(function ProjectMatrixRow({
+  project,
+  globalIndex,
+  stats,
+  judges,
+  focusedJudgeId,
+  isMutating,
+  getAssignment,
+  onToggleAssignment,
+  adminBasePath,
+  t,
+}: ProjectMatrixRowProps) {
+  const navigate = useNavigate()
+
+  const handleProjectClick = () => {
+    navigate(`${buildAdminPath(adminBasePath, `projects/${project.id}`)}?tab=scores`)
+  }
+
+  const handleToggle = useCallback(
+    (judgeId: string) => {
+      onToggleAssignment(project.id, judgeId)
+    },
+    [onToggleAssignment, project.id]
+  )
+
+  return (
+    <TableRow key={project.id} className="h-10">
+      <TableCell className="sticky left-0 z-10 bg-background text-center text-muted-foreground text-xs tabular-nums">
+        {globalIndex + 1}
+      </TableCell>
+      <TableCell className="sticky left-10 z-10 bg-background">
+        <button
+          type="button"
+          onClick={handleProjectClick}
+          className="truncate text-sm text-left hover:underline block max-w-[220px]"
+        >
+          {project.title}
+        </button>
+        <p className="truncate text-[11px] font-mono text-muted-foreground max-w-[220px]">
+          {project.id}
+        </p>
+      </TableCell>
+      {judges.map((judge) => (
+        <TableCell
+          key={judge.id}
+          className={cn(
+            'text-center p-1',
+            judge.id === focusedJudgeId && 'bg-primary/10'
+          )}
+        >
+          <MatrixCell
+            assignment={getAssignment(project.id, judge.id)}
+            isMutating={isMutating}
+            onToggle={() => handleToggle(judge.id)}
+            t={t}
+          />
+        </TableCell>
+      ))}
+      <TableCell className="text-center bg-muted/10">
+        {stats && stats.averageScore > 0 ? (
+          <span className="text-sm font-semibold tabular-nums">
+            {stats.averageScore.toFixed(1)}
+          </span>
+        ) : (
+          <span className="text-muted-foreground/40">-</span>
+        )}
+      </TableCell>
+      <TableCell className="text-center bg-muted/10">
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {stats?.completedAssignments ?? 0}/{stats?.totalAssignments ?? 0}
+        </span>
+      </TableCell>
+    </TableRow>
+  )
+})
+
 export function AssignmentMatrixView({
   projects,
   judges,
@@ -34,7 +124,6 @@ export function AssignmentMatrixView({
   displayPageSize,
   t,
 }: AssignmentMatrixViewProps) {
-  const navigate = useNavigate()
   const { adminBasePath } = useAdminRoutes()
 
   return (
@@ -73,60 +162,22 @@ export function AssignmentMatrixView({
         <TableBody>
           {projects.map((project, index) => {
             const globalIndex = (displayPage - 1) * displayPageSize + index
-            const s = projectStats.get(project.id)
+            const stats = projectStats.get(project.id)
 
             return (
-              <TableRow key={project.id} className="h-10">
-                <TableCell className="sticky left-0 z-10 bg-background text-center text-muted-foreground text-xs tabular-nums">
-                  {globalIndex + 1}
-                </TableCell>
-                <TableCell className="sticky left-10 z-10 bg-background">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate(
-                        `${buildAdminPath(adminBasePath, `projects/${project.id}`)}?tab=scores`
-                      )
-                    }
-                    className="truncate text-sm text-left hover:underline block max-w-[220px]"
-                  >
-                    {project.title}
-                  </button>
-                  <p className="truncate text-[11px] font-mono text-muted-foreground max-w-[220px]">
-                    {project.id}
-                  </p>
-                </TableCell>
-                {judges.map((judge) => (
-                  <TableCell
-                    key={judge.id}
-                    className={cn(
-                      'text-center p-1',
-                      judge.id === focusedJudgeId && 'bg-primary/10'
-                    )}
-                  >
-                    <MatrixCell
-                      assignment={getAssignment(project.id, judge.id)}
-                      isMutating={isMutating}
-                      onToggle={() => onToggleAssignment(project.id, judge.id)}
-                      t={t}
-                    />
-                  </TableCell>
-                ))}
-                <TableCell className="text-center bg-muted/10">
-                  {s && s.averageScore > 0 ? (
-                    <span className="text-sm font-semibold tabular-nums">
-                      {s.averageScore.toFixed(1)}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground/40">-</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-center bg-muted/10">
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {s?.completedAssignments ?? 0}/{s?.totalAssignments ?? 0}
-                  </span>
-                </TableCell>
-              </TableRow>
+              <ProjectMatrixRow
+                key={project.id}
+                project={project}
+                globalIndex={globalIndex}
+                stats={stats}
+                judges={judges}
+                focusedJudgeId={focusedJudgeId}
+                isMutating={isMutating}
+                getAssignment={getAssignment}
+                onToggleAssignment={onToggleAssignment}
+                adminBasePath={adminBasePath}
+                t={t}
+              />
             )
           })}
         </TableBody>

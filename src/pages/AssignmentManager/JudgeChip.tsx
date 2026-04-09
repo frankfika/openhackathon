@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -11,7 +12,7 @@ interface JudgeChipProps {
   t: (key: string) => string
 }
 
-export function JudgeChip({
+function JudgeChipComponent({
   judgeName,
   status,
   totalScore,
@@ -65,3 +66,5 @@ export function JudgeChip({
     </span>
   )
 }
+
+export const JudgeChip = memo(JudgeChipComponent)

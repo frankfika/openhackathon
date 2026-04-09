@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Assignment } from '@/lib/types'
@@ -9,7 +10,7 @@ interface MatrixCellProps {
   t: (key: string) => string
 }
 
-export function MatrixCell({ assignment, isMutating, onToggle, t }: MatrixCellProps) {
+function MatrixCellComponent({ assignment, isMutating, onToggle, t }: MatrixCellProps) {
   if (!assignment) {
     return (
       <button
@@ -60,3 +61,5 @@ export function MatrixCell({ assignment, isMutating, onToggle, t }: MatrixCellPr
     </button>
   )
 }
+
+export const MatrixCell = memo(MatrixCellComponent)
