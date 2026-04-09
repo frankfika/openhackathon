@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { Toaster } from 'sonner'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Layout } from './components/Layout'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './lib/auth'
 import { ActiveHackathonProvider, useActiveHackathon } from './lib/active-hackathon'
 import { SiteBrandingProvider, useSiteBranding } from './lib/site-branding'
@@ -151,12 +152,21 @@ function AppRoutes() {
             <Route index element={<AdminDashboard />} />
             <Route path="hackathons" element={<Navigate to={adminBasePath} replace />} />
             <Route path="hackathons/:id" element={<Navigate to={adminBasePath} replace />} />
-            <Route path="hackathons/:id/settings" element={<HackathonSettings />} />
+            <Route
+              path="hackathons/:id/settings"
+              element={
+                <ErrorBoundary>
+                  <HackathonSettings />
+                </ErrorBoundary>
+              }
+            />
             <Route
               path="projects"
               element={
                 <RequireHackathonStarted adminBasePath={adminBasePath}>
-                  <Projects />
+                  <ErrorBoundary>
+                    <Projects />
+                  </ErrorBoundary>
                 </RequireHackathonStarted>
               }
             />
@@ -164,7 +174,9 @@ function AppRoutes() {
               path="projects/:id"
               element={
                 <RequireHackathonStarted adminBasePath={adminBasePath}>
-                  <ProjectDetail />
+                  <ErrorBoundary>
+                    <ProjectDetail />
+                  </ErrorBoundary>
                 </RequireHackathonStarted>
               }
             />
@@ -174,7 +186,9 @@ function AppRoutes() {
               path="assignments"
               element={
                 <RequireHackathonStarted adminBasePath={adminBasePath}>
-                  <AssignmentManager />
+                  <ErrorBoundary>
+                    <AssignmentManager />
+                  </ErrorBoundary>
                 </RequireHackathonStarted>
               }
             />
@@ -204,7 +218,14 @@ function AppRoutes() {
               }
             />
             <Route path="activity" element={<ActivityLog />} />
-            <Route path="settings" element={<Settings />} />
+            <Route
+              path="settings"
+              element={
+                <ErrorBoundary>
+                  <Settings />
+                </ErrorBoundary>
+              }
+            />
           </Route>
 
           <Route
