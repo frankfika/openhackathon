@@ -375,4 +375,42 @@ export const api = {
     return res.data
   },
 
+  // AI Services
+  analyzeProject: async (projectId: string) => {
+    const res = await axios.post(`${API_URL}/ai/analyze-project/${projectId}`)
+    return res.data
+  },
+  batchAnalyzeProjects: async (params: { projectIds?: string[]; hackathonId?: string }) => {
+    const res = await axios.post(`${API_URL}/ai/batch-analyze`, params)
+    return res.data
+  },
+  getScoringConsistency: async (hackathonId: string) => {
+    const res = await axios.get(`${API_URL}/ai/scoring-consistency/${hackathonId}`)
+    return res.data
+  },
+  generateContent: async (params: { type: string; context: any; language?: string; style?: string }) => {
+    const res = await axios.post(`${API_URL}/ai/generate-content`, params)
+    return res.data
+  },
+  optimizeDescription: async (description: string, language?: string, style?: string) => {
+    const res = await axios.post(`${API_URL}/ai/optimize-description`, { description, language, style })
+    return res.data
+  },
+  moderateContent: async (content: string, type?: string) => {
+    const res = await axios.post(`${API_URL}/ai/moderate-content`, { content, type })
+    return res.data
+  },
+  detectSimilarity: async (text1: string, text2: string) => {
+    const res = await axios.post(`${API_URL}/ai/detect-similarity`, { text1, text2 })
+    return res.data
+  },
+  checkPlagiarism: async (projectId: string) => {
+    const res = await axios.post(`${API_URL}/ai/check-plagiarism/${projectId}`)
+    return res.data
+  },
+  getJudgeSuggestions: async (assignmentId: string) => {
+    const res = await axios.get(`${API_URL}/ai/judge-suggestions/${assignmentId}`)
+    return res.data
+  },
+
 }

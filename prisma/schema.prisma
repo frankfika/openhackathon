@@ -191,3 +191,15 @@ model ActivityLog {
   @@index([actorId])
   @@index([entityType, entityId])
 }
+
+model AIAssessment {
+  id        String   @id @default(uuid())
+  projectId String
+  type      String   // quality_assessment, plagiarism_check, etc.
+  result    Json     // Stores the AI analysis result
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, type])
+  @@index([createdAt])
+}

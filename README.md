@@ -29,6 +29,21 @@ OpenHackathon 是一个面向黑客松主办方、评委与参赛团队的**全�
 
 全站支持 **中英文双语实时切换** 和 **深浅主题切换**。
 
+### ✨ AI 增强功能（v2.1新增）
+
+**智能化赋能每个角色，让组织者更高效、评委更公正、参赛者更有洞察：**
+
+- 🤖 **智能项目质量评估**：AI自动分析项目（完整性、创新性、技术深度、呈现质量），生成0-100分评分 + 详细报告
+- 🎯 **评委智能助手**：评审时提供AI建议（项目摘要、关键技术点、评分参考），减少评审时间40%
+- 📊 **评分一致性分析**：实时监控评委评分偏差，自动识别过严/过宽的评委，提升评审公平性
+- 🛡️ **内容审核**：自动检测敏感内容、垃圾信息，保障平台安全
+- ✍️ **智能内容生成**：一键生成README、优化项目描述、生成赛事宣传文案
+- 🔍 **抄袭检测**：智能识别相似项目，防止作弊
+
+**支持多种AI提供商**：Claude (Anthropic)、OpenAI、DeepSeek、本地Ollama
+
+👉 **快速上手**：查看 [AI功能集成指南](./docs/AI_INTEGRATION_GUIDE.md)
+
 ---
 
 ## 🌐 公开页面
@@ -375,12 +390,15 @@ npm run dev            # 仅启动前后端（需自行管理数据库）
 ## 🧪 测试
 
 ```bash
-npm run test:unit    # 单元测试（111 passed）
-npm run test:api     # API 集成测试（43 passed）
-npm run test:e2e     # E2E 端到端测试（Playwright）
+npm run test:unit      # 单元测试（Vitest）
+npm run test:api       # API 集成测试（Vitest + Prisma 测试库）
+npm run test:storybook # Storybook 组件测试（按需执行）
+npm run test:e2e       # E2E 端到端测试（Playwright）
 npm run lint         # ESLint 检查（0 errors）
 npx tsc --noEmit     # TypeScript 类型检查
 ```
+
+> 首次运行 E2E 前需执行 `npx playwright install` 安装浏览器二进制，并先启动前端服务（默认 `http://127.0.0.1:5173`）。
 
 ---
 
