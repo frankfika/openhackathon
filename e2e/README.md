@@ -15,6 +15,16 @@ e2e/
 
 ## Running Tests
 
+Before running Playwright tests:
+
+```bash
+# Install browser binaries (first time / after Playwright upgrades)
+npx playwright install
+
+# Start the app in another terminal
+npm run dev
+```
+
 ### Using the test runner script
 
 ```bash
@@ -123,7 +133,7 @@ npx playwright codegen http://localhost:5173
 2. Import the test utilities:
 
 ```typescript
-import { test, expect } from '@playwright/test';
+import { test, expect } from 'playwright/test';
 
 test.describe('Feature Name', () => {
   test('should do something', async ({ page }) => {

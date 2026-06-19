@@ -43,8 +43,8 @@ export function AIAnalysisPanel({ projectId, className }: AIAnalysisPanelProps) 
   const { data: assessment, isLoading, error } = useQuery<ProjectAssessment>({
     queryKey: ['ai-assessment', projectId],
     queryFn: async () => {
-      const response = await api.post(`/ai/analyze-project/${projectId}`)
-      return response.data
+      const data = await api.analyzeProject(projectId)
+      return data
     },
     staleTime: 60 * 60 * 1000, // 1小时缓存
   })
@@ -52,8 +52,8 @@ export function AIAnalysisPanel({ projectId, className }: AIAnalysisPanelProps) 
   // 重新分析
   const reanalyzeMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post(`/ai/analyze-project/${projectId}`)
-      return response.data
+      const data = await api.analyzeProject(projectId)
+      return data
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ai-assessment', projectId] })

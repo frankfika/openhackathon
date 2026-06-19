@@ -8,7 +8,6 @@ interface AssignmentHeaderProps {
   hackathonId: string | undefined
   judgesCount: number
   projectsCount: number
-  judgesPerProject: number | null
   effectiveJudgesPerProject: number
   pendingCount: number
   isMutating: boolean
@@ -27,7 +26,6 @@ export function AssignmentHeader({
   hackathonId,
   judgesCount,
   projectsCount,
-  judgesPerProject,
   effectiveJudgesPerProject,
   pendingCount,
   isMutating,

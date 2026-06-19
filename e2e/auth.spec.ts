@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from 'playwright/test';
 
 test.describe('Authentication Flow', () => {
   test('should navigate to login page', async ({ page }) => {

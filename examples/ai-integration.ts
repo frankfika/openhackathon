@@ -4,7 +4,9 @@
  * 这个文件展示了如何在OpenHackathon中集成和使用AI功能
  */
 
-import { AIService, getAIService } from '../api/services/ai'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import { getAIService } from '../api/services/ai'
 import { prisma } from '../api/config'
 
 // ==================== 示例1：分析单个项目 ====================

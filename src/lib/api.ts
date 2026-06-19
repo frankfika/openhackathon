@@ -388,7 +388,7 @@ export const api = {
     const res = await axios.get(`${API_URL}/ai/scoring-consistency/${hackathonId}`)
     return res.data
   },
-  generateContent: async (params: { type: string; context: any; language?: string; style?: string }) => {
+  generateContent: async (params: { type: string; context: Record<string, unknown>; language?: string; style?: string }) => {
     const res = await axios.post(`${API_URL}/ai/generate-content`, params)
     return res.data
   },

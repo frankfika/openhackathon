@@ -198,8 +198,11 @@ Notes:
 ```bash
 npm run test:unit
 npm run test:api
+npm run test:storybook
 npm run test:e2e
 ```
+
+> Before the first E2E run, install Playwright browsers with `npx playwright install`, then start the frontend (default `http://127.0.0.1:5173`).
 
 ## 🏗️ Deployment
 ### Docker Compose

@@ -136,9 +136,8 @@ export function AssignmentManager() {
 
   // Filtering
   const filteredProjects = useMemo(() => {
-    const normalizedQuery = projectQuery.trim().toLowerCase()
-    return projects.filter((project) => {
-      if (normalizedQuery) {
+    const searchTextByProjectId = new Map(
+      projects.map((project) => {
         const searchableText = [
           project.title,
           project.oneLiner,
@@ -150,6 +149,14 @@ export function AssignmentManager() {
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
+        return [project.id, searchableText] as const
+      })
+    )
+
+    const normalizedQuery = projectQuery.trim().toLowerCase()
+    return projects.filter((project) => {
+      if (normalizedQuery) {
+        const searchableText = searchTextByProjectId.get(project.id) || ''
         if (!searchableText.includes(normalizedQuery)) return false
       }
       for (const [fieldId, selectedValue] of Object.entries(submissionFilters)) {
@@ -331,7 +338,6 @@ export function AssignmentManager() {
           hackathonId={hackathonId}
           judgesCount={judges.length}
           projectsCount={projects.length}
-          judgesPerProject={judgesPerProject}
           effectiveJudgesPerProject={effectiveJudgesPerProject}
           pendingCount={pendingCount}
           isMutating={isMutating}
@@ -360,7 +366,6 @@ export function AssignmentManager() {
           hackathonId={hackathonId}
           judgesCount={judges.length}
           projectsCount={projects.length}
-          judgesPerProject={judgesPerProject}
           effectiveJudgesPerProject={effectiveJudgesPerProject}
           pendingCount={pendingCount}
           isMutating={isMutating}
@@ -403,7 +408,6 @@ export function AssignmentManager() {
         hackathonId={hackathonId}
         judgesCount={judges.length}
         projectsCount={projects.length}
-        judgesPerProject={judgesPerProject}
         effectiveJudgesPerProject={effectiveJudgesPerProject}
         pendingCount={pendingCount}
         isMutating={isMutating}
@@ -460,14 +464,12 @@ export function AssignmentManager() {
         <AssignmentListView
           projects={pagedProjects}
           judges={judges}
-          assignments={assignments}
           projectStats={projectStats}
           projectAssignmentsMap={projectAssignmentsMap}
           judgeMap={judgeMap}
           isMutating={isMutating}
           onRemoveAssignment={removeAssignment}
           onAddAssignment={addAssignment}
-          getAssignment={getAssignment}
           displayPage={displayPage}
           displayPageSize={DISPLAY_PAGE_SIZE}
           t={t}

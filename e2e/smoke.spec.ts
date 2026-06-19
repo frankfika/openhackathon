@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from 'playwright/test';
 
 /**
  * Smoke tests - quick tests to verify the application is working

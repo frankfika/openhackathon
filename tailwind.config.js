@@ -17,15 +17,14 @@ export default {
   		extend: {
   			fontFamily: {
   				sans: [
-					'"Plus Jakarta Sans"',
+					'"Geist"',
 					'"Noto Sans SC"',
 					'"PingFang SC"',
 					'"Microsoft YaHei"',
 					'sans-serif'
   				],
   				display: [
-					'"Space Grotesk"',
-					'"Plus Jakarta Sans"',
+					'"Geist"',
 					'"Noto Sans SC"',
 					'sans-serif'
   				]

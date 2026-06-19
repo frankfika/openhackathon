@@ -1,6 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from 'playwright/test';
 
-async function loginAsAdmin(page: import('@playwright/test').Page) {
+async function loginAsAdmin(page: import('playwright/test').Page) {
   await page.goto('/login');
   await page.locator('input[type="email"]').fill('admin@openhackathon.com');
   await page.locator('input[type="password"]').fill('password');

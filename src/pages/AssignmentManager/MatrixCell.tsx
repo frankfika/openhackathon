@@ -1,6 +1,5 @@
 import { memo } from 'react'
 import { Plus } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import type { Assignment } from '@/lib/types'
 
 interface MatrixCellProps {

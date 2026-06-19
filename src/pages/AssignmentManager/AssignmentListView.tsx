@@ -10,14 +10,12 @@ import type { ProjectStats } from './types'
 interface AssignmentListViewProps {
   projects: Project[]
   judges: AdminUser[]
-  assignments: Assignment[]
   projectStats: Map<string, ProjectStats>
   projectAssignmentsMap: Map<string, Assignment[]>
   judgeMap: Map<string, AdminUser>
   isMutating: boolean
   onRemoveAssignment: (id: string) => void
   onAddAssignment: (projectId: string, judgeId: string) => void
-  getAssignment: (projectId: string, judgeId: string) => Assignment | undefined
   displayPage: number
   displayPageSize: number
   t: (key: string) => string
@@ -129,14 +127,12 @@ const ProjectRow = memo(function ProjectRow({
 export function AssignmentListView({
   projects,
   judges,
-  assignments,
   projectStats,
   projectAssignmentsMap,
   judgeMap,
   isMutating,
   onRemoveAssignment,
   onAddAssignment,
-  getAssignment,
   displayPage,
   displayPageSize,
   t,

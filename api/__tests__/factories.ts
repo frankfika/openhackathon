@@ -8,6 +8,7 @@
 import { randomUUID } from 'crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 const DEFAULT_PASSWORD = 'Secret123';
 
@@ -274,7 +275,7 @@ export async function createSiteSettings(
  * Build an admin auth token for API requests
  */
 export function buildAdminToken(userId: string, email: string, name = 'Test Admin'): string {
-  return `Bearer ${require('jsonwebtoken').sign(
+  return `Bearer ${jwt.sign(
     { sub: userId, email, name, role: 'admin' },
     process.env.JWT_SECRET || 'test-secret'
   )}`;
@@ -284,7 +285,7 @@ export function buildAdminToken(userId: string, email: string, name = 'Test Admi
  * Build a judge auth token for API requests
  */
 export function buildJudgeToken(userId: string, email: string, name = 'Test Judge'): string {
-  return `Bearer ${require('jsonwebtoken').sign(
+  return `Bearer ${jwt.sign(
     { sub: userId, email, name, role: 'judge' },
     process.env.JWT_SECRET || 'test-secret'
   )}`;
@@ -296,9 +297,9 @@ export function buildJudgeToken(userId: string, email: string, name = 'Test Judg
 export class TestScenarioBuilder {
   private prisma: FactoryContext;
   public hackathon: HackathonWithCriteria | null = null;
-  public judges: Prisma.UserGetPayload<{}>[] = [];
-  public projects: Prisma.ProjectGetPayload<{}>[] = [];
-  public assignments: Prisma.AssignmentGetPayload<{}>[] = [];
+  public judges: Prisma.UserGetPayload<Prisma.UserDefaultArgs>[] = [];
+  public projects: Prisma.ProjectGetPayload<Prisma.ProjectDefaultArgs>[] = [];
+  public assignments: Prisma.AssignmentGetPayload<Prisma.AssignmentDefaultArgs>[] = [];
 
   constructor(prisma: FactoryContext) {
     this.prisma = prisma;

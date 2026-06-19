@@ -41,7 +41,7 @@ import { registerJudgeRoutes } from './routes/judges';
 import { registerUserRoutes } from './routes/users';
 import { registerActivityLogRoutes } from './routes/activity-logs';
 import { registerSystemResetRoutes } from './routes/system-reset';
-import aiRoutes from './routes/ai';
+import { registerAIRoutes } from './routes/ai';
 
 // Import types to ensure Express augmentation is loaded
 import './types';
@@ -146,7 +146,7 @@ registerActivityLogRoutes(app, prisma, { requireAdmin });
 registerSystemResetRoutes(app, prisma, { requireAdmin });
 
 // AI Routes (supports both admin and judge access)
-app.use('/api/ai', aiRoutes);
+registerAIRoutes(app, prisma, { requireAuth, requireAdmin });
 
 // ===== Catch-all =====
 

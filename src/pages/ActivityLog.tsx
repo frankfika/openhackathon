@@ -42,6 +42,7 @@ const actionLabels: Record<ActivityAction, string> = {
   logout: '退出',
   invite: '邀请',
   bulk_reset: '批量重置',
+  ai_analyze: 'AI分析',
 }
 
 const entityLabels: Record<ActivityEntityType, string> = {

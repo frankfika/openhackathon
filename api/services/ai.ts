@@ -3,6 +3,8 @@
  * 支持多模型提供商：Claude (Anthropic)、OpenAI、本地模型
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { z } from 'zod'
 
 // ==================== 类型定义 ====================
@@ -128,7 +130,7 @@ class AIService {
    * 通用AI调用接口
    */
   private async callAI(prompt: string, schema?: z.ZodSchema): Promise<any> {
-    const { provider, apiKey, baseURL, model, maxTokens, temperature } = this.config
+    const { provider, apiKey } = this.config
 
     if (!apiKey && provider !== 'local') {
       throw new Error(`API key is required for provider: ${provider}`)
@@ -471,7 +473,7 @@ ${project.tags ? `标签：${project.tags.join(', ')}` : ''}
     try {
       const result = await this.callAI(prompt, ModerationResultSchema)
       return ModerationResultSchema.parse(result)
-    } catch (error) {
+    } catch {
       // 保守策略：AI失败时标记为需要审核
       return {
         isAppropriate: false,

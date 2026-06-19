@@ -81,7 +81,7 @@ export type ActivityAction =
   | 'submit' | 'assign' | 'unassign'
   | 'score' | 'update_score' | 'complete_review'
   | 'login' | 'logout' | 'invite'
-  | 'bulk_reset';
+  | 'bulk_reset' | 'ai_analyze';
 
 export type ActivityEntityType =
   | 'project' | 'assignment' | 'score' | 'hackathon'

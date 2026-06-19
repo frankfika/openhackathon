@@ -15,6 +15,22 @@ import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 
+interface ConsistencyJudge {
+  judgeId: string
+  judgeName: string
+  bias: 'balanced' | 'too_strict' | 'too_lenient'
+  avgScore: number
+  stdDeviation: number
+  biasScore: number
+  suggestion: string
+}
+
+interface ModerationFlag {
+  type: string
+  severity: string
+  description: string
+}
+
 export function AIFeatures() {
   const { activeHackathon } = useActiveHackathon()
   const queryClient = useQueryClient()
@@ -181,7 +197,7 @@ export function AIFeatures() {
 
               {consistencyData && Array.isArray(consistencyData) && consistencyData.length > 0 && (
                 <div className="space-y-3 mt-4">
-                  {consistencyData.map((judge: any) => (
+                  {consistencyData.map((judge: ConsistencyJudge) => (
                     <div key={judge.judgeId} className="rounded-lg border p-4">
                       <div className="flex items-center justify-between mb-2">
                         <h3 className="font-semibold">{judge.judgeName}</h3>
@@ -280,7 +296,7 @@ export function AIFeatures() {
                       <div className="mt-3">
                         <p className="text-sm font-medium mb-2">检测到的问题：</p>
                         <ul className="space-y-1">
-                          {moderateMutation.data.flags.map((flag: any, i: number) => (
+                          {moderateMutation.data.flags.map((flag: ModerationFlag, i: number) => (
                             <li key={i} className="text-sm flex items-start gap-2">
                               <Badge variant={flag.severity === 'high' ? 'destructive' : 'secondary'}>
                                 {flag.type}
