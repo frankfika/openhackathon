@@ -28,6 +28,8 @@ import { createAuthMiddleware, apiRateLimiter, authRateLimiter, submissionRateLi
 // Import route registration functions
 import { registerHealthRoutes } from './routes/health';
 import { registerAuthRoutes } from './routes/auth';
+import { registerWeb3AuthRoutes } from './routes/web3-auth';
+import { registerIdentityRoutes } from './routes/identity';
 import { registerSetupRoutes } from './routes/setup';
 import { registerSiteSettingsRoutes } from './routes/site-settings';
 import { registerHackathonRoutes } from './routes/hackathons';
@@ -131,6 +133,8 @@ app.use('/api', apiRateLimiter);
 
 registerHealthRoutes(app, prisma);
 registerAuthRoutes(app, prisma, { authRateLimiter });
+registerWeb3AuthRoutes(app, prisma, { authRateLimiter, requireAuth });
+registerIdentityRoutes(app, prisma);
 registerSetupRoutes(app, prisma);
 registerSiteSettingsRoutes(app, prisma, { requireAdmin, defaultSiteSettings: DEFAULT_SITE_SETTINGS as unknown as Record<string, unknown> });
 registerHackathonRoutes(app, prisma, { requireAdmin });

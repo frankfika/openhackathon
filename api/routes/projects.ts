@@ -6,6 +6,7 @@ import { normalizeEmail, isValidEmail, validateSearchInput, MAX_TITLE_LENGTH, MA
 import { getScopedHackathonId, parseProjectSubmissionFilters, buildProjectSubmissionFilterClause } from '../utils/hackathon';
 import { generateSubmissionReceiptId, sendSubmissionReceiptEmail } from '../utils/email';
 import { logActivity } from '../utils/activity';
+import { awardPoints, resolveSubmitterUserId } from '../services/points';
 
 export function registerProjectRoutes(
   app: Express,
@@ -247,6 +248,24 @@ export function registerProjectRoutes(
       },
       ipAddress: req.ip,
     });
+
+    // Award cross-hackathon "participated" points if the submitter is a Web3 user.
+    // Matches by linked email; no-op for non-Web3 submitters and idempotent.
+    try {
+      const submitterUserId = await resolveSubmitterUserId(prisma, {
+        submitterEmail: submitterEmailValue,
+      });
+      if (submitterUserId) {
+        await awardPoints(prisma, {
+          userId: submitterUserId,
+          hackathonId: hackathonIdValue,
+          activityType: 'participated',
+          metadata: { projectId: project.id, projectTitle: titleValue },
+        });
+      }
+    } catch (error) {
+      console.error('Failed to award participation points:', error);
+    }
 
     res.json({
       ...projectWithReceipt,

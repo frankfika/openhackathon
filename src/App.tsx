@@ -2,6 +2,10 @@ import React, { Suspense, lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { WagmiProvider } from 'wagmi'
+import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
+import '@rainbow-me/rainbowkit/styles.css'
+import { wagmiConfig } from './lib/wagmi-config'
 import { Layout } from './components/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './lib/auth'
@@ -31,6 +35,8 @@ const Docs = lazy(() => import('./pages/Docs').then((mod) => ({ default: mod.Doc
 const Settings = lazy(() => import('./pages/Settings').then((mod) => ({ default: mod.Settings })))
 const ActivityLog = lazy(() => import('./pages/ActivityLog').then((mod) => ({ default: mod.ActivityLogPage })))
 const SetupPage = lazy(() => import('./pages/SetupPage').then((mod) => ({ default: mod.SetupPage })))
+const GlobalLeaderboard = lazy(() => import('./pages/GlobalLeaderboard').then((mod) => ({ default: mod.GlobalLeaderboard })))
+const UserProfile = lazy(() => import('./pages/UserProfile').then((mod) => ({ default: mod.UserProfile })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -132,6 +138,8 @@ function AppRoutes() {
             <Route path="/submit/success" element={<SubmitSuccess />} />
             <Route path="/projects" element={<Navigate to="/" replace />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/global-leaderboard" element={<GlobalLeaderboard />} />
+            <Route path="/profile/:userId" element={<UserProfile />} />
           </Route>
 
           <Route path="/setup" element={<SetupPage />} />
@@ -250,13 +258,17 @@ function AppRoutes() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <SiteBrandingProvider>
-        <AuthProvider>
-          <ActiveHackathonProvider>
-            <AppRoutes />
-          </ActiveHackathonProvider>
-        </AuthProvider>
-      </SiteBrandingProvider>
+      <WagmiProvider config={wagmiConfig}>
+        <RainbowKitProvider theme={darkTheme()}>
+          <SiteBrandingProvider>
+            <AuthProvider>
+              <ActiveHackathonProvider>
+                <AppRoutes />
+              </ActiveHackathonProvider>
+            </AuthProvider>
+          </SiteBrandingProvider>
+        </RainbowKitProvider>
+      </WagmiProvider>
     </QueryClientProvider>
   )
 }

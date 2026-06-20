@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { asString } from '../config';
 import type { AssignmentScorePayload } from '../types';
 import { logActivity } from '../utils/activity';
+import { awardPoints } from '../services/points';
 
 export function registerScoreRoutes(
   app: Express,
@@ -116,6 +117,21 @@ export function registerScoreRoutes(
       },
       ipAddress: req.ip,
     });
+
+    // Award cross-hackathon "judged" points the first time a review is completed.
+    // No-op for non-Web3 judges and idempotent per (judge, hackathon).
+    if (assignment.status === 'completed' && existing.status !== 'completed') {
+      try {
+        await awardPoints(prisma, {
+          userId: viewer.id,
+          hackathonId: assignment.project.hackathonId,
+          activityType: 'judged',
+          metadata: { assignmentId },
+        });
+      } catch (error) {
+        console.error('Failed to award judging points:', error);
+      }
+    }
 
     res.json(assignment);
   });

@@ -10,7 +10,13 @@ const mockLogin = vi.fn()
 vi.mock('@/lib/auth', () => ({
   useAuth: () => ({
     login: mockLogin,
+    loginWithUser: vi.fn(),
   }),
+}))
+
+// WalletConnect needs WagmiProvider context, which is out of scope for this test.
+vi.mock('@/components/WalletConnect', () => ({
+  WalletConnect: () => null,
 }))
 
 vi.mock('@/lib/admin-routing', () => ({

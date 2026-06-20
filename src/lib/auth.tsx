@@ -47,6 +47,7 @@ export function clearAuthForCurrentPath() {
 type AuthContextType = {
   user: User | null
   login: (email: string, password: string) => Promise<User>
+  loginWithUser: (loginResult: User & { token?: string }) => User
   logout: () => void
   isLoading: boolean
   error: string | null
@@ -123,6 +124,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  /** Persist a user + token obtained from any login flow (e.g. Web3). */
+  const loginWithUser = useCallback((loginResult: User & { token?: string }) => {
+    const { token, ...userData } = loginResult
+    const role = userData.role === 'judge' ? 'judge' : 'admin'
+    setUser(userData)
+    localStorage.setItem(getUserKeyForRole(role), JSON.stringify(userData))
+    if (token) {
+      localStorage.setItem(getTokenKeyForRole(role), token)
+    }
+    return userData
+  }, [])
+
   const logout = useCallback(() => {
     const isJudgePath = window.location.pathname.startsWith('/judge')
     if (isJudgePath) {
@@ -136,7 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading, error }}>
+    <AuthContext.Provider value={{ user, login, loginWithUser, logout, isLoading, error }}>
       {children}
     </AuthContext.Provider>
   )

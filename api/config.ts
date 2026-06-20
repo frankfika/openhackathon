@@ -72,6 +72,36 @@ export const UPLOADS_ROOT = path.resolve(process.cwd(), process.env.UPLOADS_DIR 
 export const UPLOAD_IMAGES_DIR = path.join(UPLOADS_ROOT, 'images');
 export const IMAGE_UPLOAD_LIMIT = process.env.IMAGE_UPLOAD_LIMIT || '5mb';
 export const SINGLE_HACKATHON_MODE = process.env.SINGLE_HACKATHON_MODE !== 'false';
+
+// ===== Web3 configuration =====
+export const ENABLE_WEB3_LOGIN = process.env.ENABLE_WEB3_LOGIN !== 'false';
+export const WEB3_NONCE_TTL_MS = readPositiveInteger(process.env.WEB3_NONCE_TTL_MS, 5 * 60 * 1000);
+export const SUPPORTED_CHAINS = (process.env.SUPPORTED_CHAINS || 'ethereum,polygon,base,arbitrum,optimism,solana')
+  .split(',')
+  .map((chain) => chain.trim().toLowerCase())
+  .filter(Boolean);
+export const WEB3_DEFAULT_ROLE = asString(process.env.WEB3_DEFAULT_ROLE) || 'judge';
+
+// On-chain attestation
+export const ENABLE_ONCHAIN_STORAGE = process.env.ENABLE_ONCHAIN_STORAGE === 'true';
+export const REGISTRY_CONTRACT_ADDRESS = asString(process.env.REGISTRY_CONTRACT_ADDRESS);
+export const ONCHAIN_PRIVATE_KEY = asString(process.env.ONCHAIN_PRIVATE_KEY || process.env.ADMIN_PRIVATE_KEY);
+export const ONCHAIN_CHAIN = asString(process.env.ONCHAIN_CHAIN) || 'polygon';
+export const RPC_URL_ETHEREUM = asString(process.env.RPC_URL_ETHEREUM);
+export const RPC_URL_POLYGON = asString(process.env.RPC_URL_POLYGON);
+export const RPC_URL_BASE = asString(process.env.RPC_URL_BASE);
+export const RPC_URL_ARBITRUM = asString(process.env.RPC_URL_ARBITRUM);
+export const RPC_URL_OPTIMISM = asString(process.env.RPC_URL_OPTIMISM);
+
+// Points rules (configurable)
+export const POINTS_RULES = {
+  participated: readPositiveInteger(process.env.POINTS_PARTICIPATED, 10),
+  judged: readPositiveInteger(process.env.POINTS_JUDGED, 20),
+  awarded: readPositiveInteger(process.env.POINTS_AWARDED, 50),
+  won_first: readPositiveInteger(process.env.POINTS_WON_FIRST, 200),
+  won_second: readPositiveInteger(process.env.POINTS_WON_SECOND, 150),
+  won_third: readPositiveInteger(process.env.POINTS_WON_THIRD, 100),
+} as const;
 export const HACKATHON_STATUS_PRIORITY: Record<string, number> = {
   active: 0,
   judging: 1,

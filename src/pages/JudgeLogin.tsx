@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import { Loader2, Scale } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '@/lib/auth'
+import { WalletConnect } from '@/components/WalletConnect'
 
 type LoginFormValues = {
   email: string
@@ -20,7 +21,7 @@ type LoginFormValues = {
 export function JudgeLogin() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { login } = useAuth()
+  const { login, loginWithUser } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const loginSchema = useMemo(
     () =>
@@ -110,6 +111,29 @@ export function JudgeLogin() {
               {t('auth.sign_in')}
             </Button>
           </form>
+
+          <div className="relative my-2">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border/60" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">{t('auth.or') ?? 'or'}</span>
+            </div>
+          </div>
+
+          <WalletConnect
+            signInLabel={t('auth.sign_in_with_wallet') ?? 'Sign in with wallet'}
+            onSignIn={(result) => {
+              if (!result) return
+              if (result.role !== 'judge') {
+                toast.error(t('auth.judge_login_wrong_role'))
+                return
+              }
+              loginWithUser(result)
+              toast.success(t('auth.welcome'))
+              navigate('/judge')
+            }}
+          />
         </CardContent>
       </Card>
     </div>

@@ -27,7 +27,7 @@ export function registerAuthRoutes(
       }
 
       const user = await prisma.user.findUnique({ where: { email: emailValue } });
-      if (!user) {
+      if (!user || !user.password) {
         return res.status(401).json({ error: 'Invalid email or password' });
       }
 

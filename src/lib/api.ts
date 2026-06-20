@@ -10,6 +10,8 @@ import {
   HackathonUpsertInput,
   AdminUser,
   ActivityLog,
+  GlobalLeaderboardEntry,
+  CrossHackathonActivityEntry,
 } from './types'
 
 const API_URL = '/api'
@@ -325,6 +327,58 @@ export const api = {
   // Auth
   login: async (email: string, password: string): Promise<User & { token?: string }> => {
     const res = await axios.post<User & { token?: string }>(`${API_URL}/auth/login`, { email, password })
+    return res.data
+  },
+
+  // Web3 authentication
+  getWeb3Nonce: async (address: string, chain: string): Promise<{ nonce: string; message: string; address: string }> => {
+    const res = await axios.post<{ nonce: string; message: string; address: string }>(
+      `${API_URL}/auth/web3/nonce`,
+      { address, chain },
+    )
+    return res.data
+  },
+  verifyWeb3: async (payload: {
+    address: string
+    chain: string
+    chainId?: number
+    signature: string
+    message: string
+    nonce: string
+  }): Promise<User & { token?: string }> => {
+    const res = await axios.post<User & { token?: string }>(`${API_URL}/auth/web3/verify`, payload)
+    return res.data
+  },
+  linkWallet: async (payload: {
+    address: string
+    chain: string
+    chainId?: number
+    signature: string
+    message: string
+    nonce: string
+  }): Promise<{ success: boolean; user: User }> => {
+    const res = await axios.post<{ success: boolean; user: User }>(`${API_URL}/auth/link-wallet`, payload)
+    return res.data
+  },
+
+  // Cross-hackathon identity & global leaderboard
+  getGlobalLeaderboard: async (params?: { chain?: string; limit?: number }) => {
+    const res = await axios.get<{ leaderboard: GlobalLeaderboardEntry[]; total: number }>(
+      `${API_URL}/leaderboard/global-web3`,
+      { params },
+    )
+    return res.data
+  },
+  getGlobalProfile: async (userId: string) => {
+    const res = await axios.get<{
+      user: User
+      stats: { globalPoints: number; participationCount: number; judgeCount: number; awardCount: number }
+      activities: CrossHackathonActivityEntry[]
+    }>(`${API_URL}/users/${userId}/global-profile`)
+    return res.data
+  },
+  getIdentityByWallet: async (address: string, chain: string) => {
+    const res = await axios.get(`${API_URL}/identity/${address}`, { params: { chain } })
     return res.data
   },
 

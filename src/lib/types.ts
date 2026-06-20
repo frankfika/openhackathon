@@ -9,11 +9,51 @@ export type ScoringCriterion = {
 
 export type User = {
   id: string
-  email: string
+  email: string | null
   name: string
   role: UserRole
   avatarUrl?: string
   judgeId?: string // Link to Judge record
+  isWeb3User?: boolean
+  globalPoints?: number
+  participationCount?: number
+  judgeCount?: number
+  awardCount?: number
+  wallets?: WalletAddress[]
+}
+
+export type WalletAddress = {
+  address: string
+  chain: string
+  chainId?: number | null
+  isPrimary?: boolean
+  verifiedAt?: string
+}
+
+export type GlobalLeaderboardEntry = {
+  rank: number
+  userId: string
+  name: string
+  avatarUrl?: string
+  primaryWallet: { address: string; chain: string } | null
+  wallets: { address: string; chain: string }[]
+  globalPoints: number
+  participationCount: number
+  judgeCount: number
+  awardCount: number
+  lastActive: string
+}
+
+export type CrossHackathonActivityEntry = {
+  hackathon: string
+  hackathonDate?: string
+  type: string
+  points: number
+  date: string
+  onChain: boolean
+  onChainStatus?: string | null
+  txHash?: string | null
+  explorerUrl?: string | null
 }
 
 export type SubmissionField = {

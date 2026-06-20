@@ -81,7 +81,9 @@
     "judge_login_title": "评委入口",
     "judge_login_desc": "使用评委账号登录，开始评审工作",
     "judge_login_wrong_role": "该账号不是评委，请前往管理员登录页面。",
-    "admin_login_wrong_role": "该账号是评委，请前往评委登录页 /judge/login。"
+    "admin_login_wrong_role": "该账号是评委，请前往评委登录页 /judge/login。",
+    "or": "或",
+    "sign_in_with_wallet": "使用钱包登录"
   },
   "dashboard": {
     "title": "工作台",
@@ -589,6 +591,45 @@
     "saved": "排行榜已保存",
     "save_failed": "保存失败",
     "not_published_yet": "排行榜尚未发布"
+  },
+  "globalLeaderboard": {
+    "title": "全球 Web3 排行榜",
+    "subtitle": "钱包认证的建设者与评委在多个黑客松中积累的跨赛事声誉。",
+    "builder": "位建设者",
+    "builders": "位建设者",
+    "all_chains": "全部链",
+    "loading": "正在加载排行榜…",
+    "empty_title": "暂无排名用户。",
+    "empty_desc": "当钱包认证用户参与、评审并在各赛事中获奖时，积分将自动累计。",
+    "wallets": "{{count}} 个钱包",
+    "points": "积分",
+    "participated": "参赛",
+    "judged": "评审",
+    "awards": "获奖"
+  },
+  "userProfile": {
+    "not_found": "未找到该用户资料。",
+    "not_opted_in": "未开启跨赛事追踪",
+    "points": "积分",
+    "participated": "参赛",
+    "judged": "评审",
+    "awards": "获奖",
+    "linked_wallets": "已关联钱包",
+    "primary": "主钱包",
+    "activity": "跨赛事活动",
+    "no_activity": "暂无记录。",
+    "on_chain": "链上存证",
+    "pending": "待确认",
+    "activity_participated": "参赛",
+    "activity_judged": "评审",
+    "activity_awarded": "获奖",
+    "activity_won_first": "一等奖",
+    "activity_won_second": "二等奖",
+    "activity_won_third": "三等奖"
+  },
+  "wallet": {
+    "connect_wallet": "连接钱包",
+    "wrong_network": "网络错误"
   },
   "reports": {
     "title": "评审报告",

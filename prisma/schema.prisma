@@ -12,17 +12,33 @@ datasource db {
 
 model User {
   id        String   @id @default(uuid())
-  email     String   @unique
+  email     String?  @unique  // Optional for Web3-only users
   name      String
   role      String   // admin, judge
-  password  String   // hashed
+  password  String?  // Optional for Web3-only users (hashed)
   avatarUrl String?
+
+  // Web3 fields
+  wallets            WalletAddress[]
+  primaryWalletId    String?         @unique
+  isWeb3User         Boolean         @default(false)  // Has wallet or registered via wallet
+
+  // Global cross-hackathon stats (only for Web3 users)
+  globalPoints       Int             @default(0)
+  participationCount Int             @default(0)  // Number of hackathons participated
+  judgeCount         Int             @default(0)  // Number of times served as judge
+  awardCount         Int             @default(0)  // Number of awards won
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   assignments Assignment[]
   projects    Project[]
   hackathonMemberships HackathonJudge[]
+  crossHackathonActivities CrossHackathonActivity[]
+
+  @@index([globalPoints])
+  @@index([isWeb3User])
 }
 
 model Hackathon {
@@ -49,6 +65,7 @@ model Hackathon {
   scoringCriteria  ScoringCriterion[]
   judges           HackathonJudge[]
   activityLogs     ActivityLog[]
+  crossHackathonActivities CrossHackathonActivity[]
 }
 
 model HackathonJudge {
@@ -202,4 +219,46 @@ model AIAssessment {
 
   @@index([projectId, type])
   @@index([createdAt])
+}
+
+model WalletAddress {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  address       String   // Wallet address (checksummed for EVM, base58 for Solana)
+  chain         String   // Chain identifier: ethereum, polygon, base, solana, etc.
+  chainId       Int?     // EVM chain ID (1, 137, 8453, etc.), null for Solana
+
+  isPrimary     Boolean  @default(false)  // Primary wallet marker
+  verifiedAt    DateTime @default(now())
+  lastUsedAt    DateTime @default(now())
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([address, chain])
+  @@index([userId])
+  @@index([address])
+}
+
+model CrossHackathonActivity {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  hackathonId   String
+  hackathon     Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+
+  activityType  String   // participated, judged, awarded, won_first, won_second, won_third
+  points        Int      // Points earned for this activity
+  metadata      Json?    // Additional info: projectId, rank, award, etc.
+
+  onChainTxHash String?  // Optional: on-chain proof transaction hash
+  onChainStatus String?  // pending, confirmed, failed
+
+  createdAt     DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([hackathonId, activityType])
 }

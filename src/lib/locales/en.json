@@ -81,7 +81,9 @@
     "judge_login_title": "Judge Portal",
     "judge_login_desc": "Sign in with your judge account to start reviewing",
     "judge_login_wrong_role": "This account is not a judge. Please use the admin login page.",
-    "admin_login_wrong_role": "This account is a judge. Please use the judge login page at /judge/login."
+    "admin_login_wrong_role": "This account is a judge. Please use the judge login page at /judge/login.",
+    "or": "or",
+    "sign_in_with_wallet": "Sign in with wallet"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -588,6 +590,45 @@
     "saved": "Leaderboard saved",
     "save_failed": "Failed to save",
     "not_published_yet": "Leaderboard has not been published yet"
+  },
+  "globalLeaderboard": {
+    "title": "Global Web3 Leaderboard",
+    "subtitle": "Cross-hackathon reputation accumulated by wallet-verified builders and judges.",
+    "builder": "builder",
+    "builders": "builders",
+    "all_chains": "All chains",
+    "loading": "Loading leaderboard…",
+    "empty_title": "No ranked builders yet.",
+    "empty_desc": "Points accrue as wallet-verified users participate, judge, and win across hackathons.",
+    "wallets": "{{count}} wallets",
+    "points": "points",
+    "participated": "Participated",
+    "judged": "Judged",
+    "awards": "Awards"
+  },
+  "userProfile": {
+    "not_found": "Profile not found.",
+    "not_opted_in": "Not opted into cross-hackathon tracking",
+    "points": "Points",
+    "participated": "Participated",
+    "judged": "Judged",
+    "awards": "Awards",
+    "linked_wallets": "Linked Wallets",
+    "primary": "Primary",
+    "activity": "Cross-Hackathon Activity",
+    "no_activity": "No recorded activity yet.",
+    "on_chain": "On-chain",
+    "pending": "pending",
+    "activity_participated": "Participated",
+    "activity_judged": "Judged",
+    "activity_awarded": "Awarded",
+    "activity_won_first": "1st Place",
+    "activity_won_second": "2nd Place",
+    "activity_won_third": "3rd Place"
+  },
+  "wallet": {
+    "connect_wallet": "Connect Wallet",
+    "wrong_network": "Wrong network"
   },
   "reports": {
     "title": "Scoring Report",

@@ -5,19 +5,30 @@ export type UserRole = 'admin' | 'judge';
 export type AuthUser = {
   id: string;
   role: UserRole;
-  email: string;
+  email: string | null;
   name: string;
 };
 
 export type JwtPayload = {
   sub: string;
   role: UserRole;
-  email: string;
+  email: string | null;
   name: string;
   iss?: string;
   aud?: string | string[];
   iat?: number;
   exp?: number;
+};
+
+export type WalletChain = string; // ethereum, polygon, base, arbitrum, optimism, solana, etc.
+
+export type Web3VerifyPayload = {
+  address: string;
+  chain: WalletChain;
+  chainId?: number;
+  signature: string;
+  message: string;
+  nonce: string;
 };
 
 export type SubmissionReceiptEmailPayload = {
@@ -81,7 +92,9 @@ export type ActivityAction =
   | 'submit' | 'assign' | 'unassign'
   | 'score' | 'update_score' | 'complete_review'
   | 'login' | 'logout' | 'invite'
-  | 'bulk_reset' | 'ai_analyze';
+  | 'bulk_reset' | 'ai_analyze'
+  | 'web3_login' | 'link_wallet' | 'unlink_wallet'
+  | 'points_awarded' | 'onchain_record';
 
 export type ActivityEntityType =
   | 'project' | 'assignment' | 'score' | 'hackathon'

@@ -43,13 +43,13 @@ export function getAuthUserFromRequest(req: express.Request): AuthUser | null {
       audience: JWT_AUDIENCE,
     }) as JwtPayload;
     const role = asUserRole(decoded.role);
-    if (!role || !decoded.sub || !decoded.email || !decoded.name) {
+    if (!role || !decoded.sub || !decoded.name) {
       return null;
     }
     return {
       id: decoded.sub,
       role,
-      email: decoded.email,
+      email: decoded.email ?? null,
       name: decoded.name,
     };
   } catch {

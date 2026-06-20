@@ -1,6 +1,7 @@
 import type { Express, RequestHandler } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { getScopedHackathonId, getCurrentHackathon } from '../utils/hackathon';
+import { processLeaderboardPoints } from '../services/points';
 
 type LeaderboardEntryInput = {
   projectId: string;
@@ -201,6 +202,16 @@ export function registerLeaderboardRoutes(
         leaderboardPublished: validated.published,
       }
     });
+
+    // Award cross-hackathon points to winners when published.
+    if (validated.published && validated.entries.length > 0) {
+      try {
+        await processLeaderboardPoints(prisma, currentHackathon.id, validated.entries);
+      } catch (error) {
+        console.error('Failed to process leaderboard points:', error);
+      }
+    }
+
     res.json(hackathon);
   });
 
@@ -238,6 +249,16 @@ export function registerLeaderboardRoutes(
         leaderboardPublished: validated.published,
       }
     });
+
+    // Award cross-hackathon points to winners when published.
+    if (validated.published && validated.entries.length > 0) {
+      try {
+        await processLeaderboardPoints(prisma, req.params.id, validated.entries);
+      } catch (error) {
+        console.error('Failed to process leaderboard points:', error);
+      }
+    }
+
     res.json(hackathon);
   });
 
