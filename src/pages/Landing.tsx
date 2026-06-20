@@ -87,7 +87,7 @@ function HeroSection() {
   ]
 
   return (
-    <section className="dinq-hero relative isolate grid min-h-[calc(100dvh-4rem)] grid-rows-[1fr_auto] overflow-hidden px-5 pb-12 pt-20 md:min-h-[calc(100dvh-4rem)] md:px-8 md:pb-16 md:pt-28">
+    <section className="dinq-hero relative isolate grid min-h-[calc(100dvh-5rem)] grid-rows-[1fr_auto] overflow-hidden px-5 pb-12 pt-0 md:min-h-[calc(100dvh-5rem)] md:px-8 md:pb-16">
       <div className="dinq-dot-bg" aria-hidden="true" />
       <div className="dinq-grain" aria-hidden="true" />
 

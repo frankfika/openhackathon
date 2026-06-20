@@ -127,7 +127,7 @@ export function Layout() {
         )}
       </header>
 
-      <main className="flex flex-1 flex-col">
+      <main className="flex flex-1 flex-col pt-20">
         <div key={location.pathname} className="route-enter flex flex-1 flex-col">
           <Outlet />
         </div>
