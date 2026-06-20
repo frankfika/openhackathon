@@ -1,15 +1,19 @@
 <div align="center">
 
 # OpenHackathon
-> Open Source Hackathon Management Platform · 开源黑客松管理平台
+> Open Source Hackathon Management Platform · 开源黑客松全流程管理平台
 
 ![OpenHackathon Home](./docs/assets/home.png)
 
-![Version](https://img.shields.io/badge/Version-1.1.0-blue?style=flat-square)
+### From hackathon creation to leaderboard publishing — all in one place
+
+![Version](https://img.shields.io/badge/Version-2.1-blue?style=flat-square)
 ![Stack](https://img.shields.io/badge/Stack-React%20%7C%20Express%20%7C%20PostgreSQL-1f6feb?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
+![Tests](https://img.shields.io/badge/Tests-154%20passed-2ea44f?style=flat-square)
+![i18n](https://img.shields.io/badge/i18n-English%20%7C%20中文-9cf?style=flat-square)
 
-[Capabilities](#-capabilities) • [Screenshots](#-screenshots) • [UX Baseline](#-ux-baseline) • [Quick Start](#-quick-start) • [Deployment](#-deployment) • [Release](#-release)
+[Features](#-features) • [Screenshots](#-screenshots) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Deployment](#-deployment)
 
 [简体中文](./README.md) | __English__
 
@@ -17,86 +21,171 @@
 </div>
 
 ## 📖 Introduction
-OpenHackathon is an end-to-end platform for hackathon organizers, judges, and participants:
-- Organizers manage hackathon settings, scoring criteria, assignments, and leaderboard publishing.
-- Judges review assigned projects, submit scores, and leave feedback in one workspace.
-- Participants submit projects publicly and track results on the leaderboard.
 
-## ✨ Capabilities
-### 1. Hackathon Setup and Status Management
-- Single-hackathon-first workflow with clear status progression (`draft` / `upcoming` / `active` / `judging` / `completed`).
-- Configurable scoring criteria, submission schema, and event metadata.
+OpenHackathon is an end-to-end management platform for hackathon organizers, judges, and participants, covering the complete workflow from event creation, project submission, review assignment, scoring, and leaderboard publishing.
+
+The platform provides three independent entry points:
+- **Participants** (public access): browse the event homepage, submit projects, and view leaderboards
+- **Admins** (`/admin/login`): manage hackathon settings, projects, judges, assignments, leaderboards, and site settings
+- **Judges** (`/judge/login`): view assigned review tasks, submit scores, and leave feedback
+
+The entire site supports **real-time Chinese/English switching**, **light/dark/system theme switching**, **font size and font family adjustments**, and **Web3 wallet login with cross-hackathon points**.
+
+---
+
+## ✨ Features
+
+### 1. Public Event Pages
+Participants can browse the current hackathon without logging in:
+- Event title, tagline, and status badge (Draft / Upcoming / Active / Judging / Completed)
+- City, date range, and prize pool
+- Countdown timer and submission CTA
+- Responsive light/dark theme support
+
+![Home](./docs/assets/home.png)
+
+### 2. Project Submission & Receipts
+- Submission form fields are fully configurable by organizers in the admin panel
+- Built-in fields: project name (required), email (required), name (optional)
+- Automatic receipt ID generation (e.g. `SUB-20260228-ABC123`)
+- SMTP support for sending confirmation emails automatically
+
+![Submit](./docs/assets/submit.png)
+
+### 3. Admin Dashboard
+After login, admins enter the dashboard with a sidebar grouped by domain:
+- **Hackathon**: Projects / Assignments / Leaderboard
+- **Judges**: Judge Management
+- **Settings**: Hackathon Settings / Activity Log / Site Settings / AI Features
 
 ![Dashboard](./docs/assets/dashboard.png)
 
-### 2. Branding and SEO White-Label
-- Editable site name, logo, tab title, SEO title/description, and favicon in admin settings.
-- Default brand is `OpenHackathon`, with runtime customization support.
+### 4. Review Assignment & Scoring
+- Random or manual judge-to-project assignment
+- Real-time statistics: Total Projects, Average Score, Completion Rate, Judges
+- List view and matrix view
+- Scoring criteria are customizable by admins, with the total required to equal exactly 100 points
 
-![Settings](./docs/assets/settings.png)
+![Assignments](./docs/assets/assignments.png)
 
-### 3. Judging and Scoring Workflow
-- Assignment management, score submission, comments, and status transitions.
-- Reports aggregate progress and scores by project and by judge.
+### 5. AI Enhancement System (v2.1)
+AI-powered capabilities for every role:
+- 🤖 **Project Quality Assessment**: AI automatically analyzes projects and generates a 0-100 score with detailed reports
+- 🎯 **Judge Assistant**: provides AI suggestions, project summaries, key technical points, and scoring references during review
+- 📊 **Scoring Consistency Analysis**: monitors judge score deviations in real time and identifies overly strict or lenient judges
+- 🛡️ **Content Moderation**: automatically detects sensitive content and spam
+- ✍️ **Smart Content Generation**: one-click README generation, project description optimization, and event marketing copy
+- 🔍 **Plagiarism Detection**: intelligently identifies similar projects
 
-![Features](./docs/assets/features.png)
+Supports multiple AI providers: Claude (Anthropic), OpenAI, DeepSeek, and local Ollama.
 
-### 4. Admin Review Operations Architecture
-- Core admin operations are centered on `${adminBasePath}/projects`, `${adminBasePath}/assignments`, `${adminBasePath}/judges`, `${adminBasePath}/leaderboard`, `${adminBasePath}/activity`.
-- `adminBasePath` is configurable in Site Settings and controls admin entry paths.
-- Judge identity is global, while assignment eligibility is hackathon-scoped via `HackathonJudge`.
-- Legacy routes like `${adminBasePath}/reviews` and `${adminBasePath}/reports` are redirected for compatibility.
-- Current architecture details are documented in [Admin Review Architecture](./docs/admin-review-architecture.md).
+![AI Features](./docs/assets/ai-features.png)
 
-### 5. Unified Event Details Entry (No Rules/Docs Duplication)
-- Public navigation now uses one `Event Details` entry instead of separate duplicated `Rules` and `Docs`.
-- Source fallback priority: `gitbookUrl` → `rulesUrl` → `detailsUrl`.
-- Admin hackathon settings support all three links for incremental content rollout.
+### 6. Web3 Multi-Chain Identity & Points
+- 🔗 **Wallet Login**: RainbowKit + wagmi-based EVM wallet login via SIWE
+- 🏆 **Cross-Hackathon Points**: Web3 users carry global points, participation count, judging count, and award count across events
+- 🌐 **Global Leaderboard**: `Global Leaderboard` shows platform-wide user rankings
+- 👤 **User Profile Page**: displays wallet address, point history, and participation records
+- ⛓️ **Optional On-Chain Attestations**: admins can write key data on-chain as verifiable attestations (optional)
 
-### 6. Public Submission Receipt and Email Notification
-- `/submit` now requires only contact email; backend generates a receipt ID automatically (for example `SUB-20260228-ABC123`).
-- Backend can send receipt emails via SMTP and persists delivery status (`emailSent`, failure reason, last attempt timestamp).
-- Admin can manually resend a receipt via `POST /api/projects/:id/receipt/resend`.
+![Global Leaderboard](./docs/assets/leaderboard.png)
 
-## 📧 Submission Receipt Email Setup
-Configure these variables in `.env` (full template in `.env.example`):
+### 7. Appearance & Accessibility
+- 🌙 Light / Dark / System theme modes
+- 🔤 Font size: Small / Normal / Large
+- 🖋️ Font family: Geist / System UI
+- ♿ Semantic colors, high contrast, and keyboard accessibility
 
-```bash
-SUBMISSION_RECEIPT_PREFIX=SUB
-SUBMISSION_EMAIL_ENABLED=true
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your_smtp_user
-SMTP_PASS=your_smtp_password
-SUBMISSION_RECEIPT_FROM="OpenHackathon <no-reply@example.com>"
-SUBMISSION_RECEIPT_REPLY_TO=ops@example.com
-SUBMISSION_RECEIPT_SUBJECT="[{{hackathonTitle}}] Submission Receipt {{receiptId}}"
-SUBMISSION_EMAIL_TIMEOUT_MS=10000
-```
+![Site Settings](./docs/assets/site-settings.png)
 
-Notes:
-- When `SUBMISSION_EMAIL_ENABLED=false`, receipt IDs are still generated and persisted, while email sending is skipped (`emailFailureReason=disabled`).
-- `SUBMISSION_RECEIPT_SUBJECT` supports `{{hackathonTitle}}`, `{{receiptId}}`, and `{{projectTitle}}`.
-- If SMTP is temporarily unavailable, use the resend endpoint to re-deliver receipt emails.
+### 8. White-Label Branding & Site Settings
+- Custom site name, logo, favicon, and browser tab title
+- SEO title and description
+- Footer "Powered By" text and link
+- Custom admin entry path (`adminBasePath`)
+
+---
 
 ## 🖼️ Screenshots
-| Home | Projects | Leaderboard |
+
+| Home | Submit | Public Leaderboard |
 |---|---|---|
-| ![Home](./docs/assets/home.png) | ![Projects](./docs/assets/projects.png) | ![Leaderboard](./docs/assets/leaderboard.png) |
+| ![Home](./docs/assets/home.png) | ![Submit](./docs/assets/submit.png) | ![Leaderboard](./docs/assets/leaderboard.png) |
 
-| Judging | Settings |
+| Admin Login | Judge Login | Admin Dashboard |
+|---|---|---|
+| ![Admin Login](./docs/assets/login.png) | ![Judge Login](./docs/assets/judge-login.png) | ![Dashboard](./docs/assets/dashboard.png) |
+
+| Projects | Assignments | Judges |
+|---|---|---|
+| ![Projects](./docs/assets/projects.png) | ![Assignments](./docs/assets/assignments.png) | ![Judges](./docs/assets/judges.png) |
+
+| Hackathon Settings | Submission Form | Scoring Criteria |
+|---|---|---|
+| ![Settings](./docs/assets/settings.png) | ![Submission Form](./docs/assets/submission-form.png) | ![Scoring](./docs/assets/scoring.png) |
+
+| Leaderboard Admin | Activity Log | Site Settings |
+|---|---|---|
+| ![Leaderboard Admin](./docs/assets/leaderboard-admin.png) | ![Activity](./docs/assets/activity.png) | ![Site Settings](./docs/assets/site-settings.png) |
+
+| AI Features Center | Judge Workspace |
 |---|---|
-| ![Judging](./docs/assets/judging.png) | ![Settings](./docs/assets/settings.png) |
+| ![AI Features](./docs/assets/ai-features.png) | ![Judging](./docs/assets/judging.png) |
 
-## 🎨 UX Baseline
-- Homepage visual structure is aligned with `docs/assets/home.png` as the reference baseline.
-- Admin and judge workspaces share one premium glass-style component system (buttons, cards, inputs, tables, dialogs, tabs).
-- Key management pages (projects, assignments, judges, settings) follow the same hierarchy: overview section + panel section + table section.
+---
+
+## 🏛️ Architecture
+
+### Tech Stack
+| Layer | Technology |
+|---|---|
+| Frontend | React 18 + Vite + TailwindCSS + shadcn/ui + React Query + react-i18next |
+| Backend | Express.js + Prisma ORM + PostgreSQL |
+| Web3 | wagmi + RainbowKit + viem + Solana Wallet Adapter |
+| Testing | Vitest (unit + API) + Playwright (E2E) |
+| Deployment | GitHub Actions → PM2 + Nginx |
+
+### Backend Modular Architecture
+```
+api/
+├── server.ts          # Express application entry
+├── config.ts          # Environment variables and constants
+├── middleware.ts      # JWT auth, role checks, rate limiting
+├── routes/            # Route modules
+│   ├── auth.ts        # Login/register (separate admin + judge flows)
+│   ├── hackathons.ts  # Hackathon CRUD
+│   ├── projects.ts    # Project submission, editing, deletion
+│   ├── assignments.ts # Review assignment
+│   ├── scores.ts      # Score submission
+│   ├── judges.ts      # Judge management
+│   ├── ai.ts          # AI feature APIs
+│   ├── web3-auth.ts   # Web3 wallet login
+│   ├── identity.ts    # Cross-hackathon identity and points
+│   ├── leaderboard.ts # Leaderboard management
+│   ├── site-settings.ts # Site settings
+│   └── ...
+└── services/          # Business services
+    ├── ai.ts          # AI service
+    ├── identity.ts    # Web3 identity service
+    ├── points.ts      # Points service
+    └── onchain.ts     # On-chain interactions
+```
+
+### Security
+| Mechanism | Description |
+|---|---|
+| JWT Authentication | Separate admin / judge tokens with issuer/audience validation |
+| Input Validation | Whitelist validation + length limits + SQL/XSS keyword filtering |
+| Rate Limiting | Global 1200/15min + login 20/15min + submission 30/10min |
+| CORS | Comma-separated domain whitelist support |
+| File Uploads | Type/size whitelist + safe filename filtering |
+
+---
 
 ## 🚀 Quick Start
+
 ### Requirements
-- Node.js 20+ (recommended)
+- Node.js 20+
 - Docker + Docker Compose
 
 ### One-Command Dev Startup
@@ -107,126 +196,102 @@ npm install
 npm run dev:up
 ```
 
-This command now handles the full local dev bootstrap:
-- Loads `.env`, or falls back to `.env.example` if `.env` is missing
-- Starts PostgreSQL with `docker compose`
-- Waits for the database to become ready and runs `npx prisma db push`
-- Does not create default admin accounts; first-run admin creation is handled by Setup Wizard
-- Launches the existing frontend and API dev processes via `npm run dev`
+This automatically starts PostgreSQL, waits for the database, syncs the Prisma schema, and launches the frontend and backend dev servers.
 
-Common commands:
+The first visit will enter the **Setup Wizard** (`/setup`) to create the initial admin account and hackathon.
+
+### Common Commands
 ```bash
-# Initialize demo data (this wipes current data before reseeding)
-npm run dev:up:seed
-
-# Ensure built-in development accounts only (without full seed)
-./dev-stack.sh up --dev-users
-
-# Stop the Docker database container
-npm run dev:down
+npm run dev:up         # Start dev stack (without seed data)
+npm run dev:up:seed    # Start dev stack + seed demo data
+npm run dev:down       # Stop database containers
+npm run db:reset:seed  # Reset + seed demo data
+npm run dev            # Start frontend + backend only (manage DB yourself)
 ```
 
-### Local Development
+### Default Accounts (seed data)
+| Role | Email | Password |
+|---|---|---|
+| Admin | `admin@openhackathon.com` | `password` |
+| Judge | `alice@techgiants.com` | `password` |
+| Judge | `bob@venturecap.com` | `password` |
+| Judge | `charlie@designstudio.io` | `password` |
+| Empty judge | `judge1@openhackathon.com` | `password` |
+
+---
+
+## 🧪 Testing
+
 ```bash
-git clone https://github.com/frankfika/openhackathon.git
-cd openhackathon
-npm install
-
-# Manual mode: use this if you manage PostgreSQL yourself
-npx prisma db push
-npm run db:seed
-
-# Reset to initial state (no default admin, Setup Wizard will create first admin)
-npm run db:reset
-
-# Reset and reseed demo data (includes default admin accounts)
-npm run db:reset:seed
-
-# Start frontend + backend
-npm run dev
+npm run test:unit      # Unit tests (Vitest)
+npm run test:api       # API integration tests
+npm run test:storybook # Storybook component tests
+npm run test:e2e       # E2E tests (Playwright)
+npm run lint           # ESLint
+npx tsc --noEmit       # TypeScript type check
 ```
 
-Default seed accounts:
-- Admin: `admin@openhackathon.com` / `password`
-- Backup admin: `ops@openhackathon.com` / `password`
-- Judge: `alice@techgiants.com` / `password`
-- Empty judge account: `judge1@openhackathon.com` / `password`
-- Empty judge account: `judge2@openhackathon.com` / `password`
-- Empty judge account: `judge3@openhackathon.com` / `password`
-
-### 🌱 Seed Data Guide
-The full demo seed (`npm run dev:up:seed` / `npm run db:seed`) creates:
-- `10` built-in accounts
-- `7` hackathons
-- `32` projects
-- `44` review assignments
-
-Diversity:
-- Covers `active`, `upcoming`, `draft`, `judging`, and `completed` event states.
-- Includes AI, FinTech, Climate, Web3, EdTech, Health, and CyberSecurity themes.
-- Mixes single-round and multi-round setups, completed/in-progress/pending reviews, and submissions with repo links, demo links, or text-heavy payloads.
-- Intentionally includes both data-rich hackathons and almost-empty hackathons so empty states, reports, filters, and onboarding flows can all be tested.
-
-Suggested usage:
-- Full admin workspace: `admin@openhackathon.com`
-- Full judge workspace: `alice@techgiants.com`, `bob@venturecap.com`, `charlie@designstudio.io`, `diana@aifund.com`, `evan@dev.tools`
-- Empty judge states: `judge1@openhackathon.com`, `judge2@openhackathon.com`, `judge3@openhackathon.com`
-- Clean admin identity: `ops@openhackathon.com`
-- Setup Wizard testing: the wizard is driven by hackathon configuration, not by whether the account is empty. Use any admin account, then either create a new hackathon or switch to a sparse event such as `Green Earth Hackathon` or `EdTech Remote Jam`, which only have `0-1` round configured.
-
-### 🧪 Scenario Matrix
-| Scenario | Recommended account | Recommended hackathon | Why |
-|---|---|---|---|
-| Full admin dashboard | `admin@openhackathon.com` | `Global AI Challenge 2026` | This is the default `active` event and has the richest mix of projects, assignments, scores, and reports. |
-| Judge workspace with active tasks | `alice@techgiants.com` | `Global AI Challenge 2026` | Includes `completed`, `in_progress`, and `pending` assignments in one place. |
-| Judge empty state | `judge1@openhackathon.com` | Any | This account has no assignments, so it is ideal for empty-list and empty-panel validation. |
-| Completed-event and historical data | `admin@openhackathon.com` | `Web3 World Championship` | Best for validating completed-event behavior and finished review data. |
-| In-progress judging views | `admin@openhackathon.com` | `EdTech Remote Jam` or `CyberSec Challenge 2026` | Both include live review activity and mixed judging progress. |
-| Fresh admin onboarding | `ops@openhackathon.com` | A newly created hackathon | Best way to validate first-run admin flows and sparse states. |
-| Setup Wizard prompt | `ops@openhackathon.com` | A newly created hackathon or `Green Earth Hackathon` | `Green Earth Hackathon` has only `1` session, which matches the wizard suggestion rule. |
-| Single-session configuration | `admin@openhackathon.com` | `EdTech Remote Jam` | Useful for testing wizard behavior when a hackathon already has one round configured. |
-| Multi-round configuration | `admin@openhackathon.com` | `Global AI Challenge 2026` / `CyberSec Challenge 2026` | Good coverage for two-round structures, scoring setup, and populated workflows. |
-| No-project / no-assignment state | `ops@openhackathon.com` | `FinTech Asia Summit` / `Health Innovation Summit` | These have baseline event configuration but no projects or assignments, which is useful for empty-state validation. |
-
-Notes:
-- `npm run dev:up:seed` and `npm run db:seed` both delete current application data before reseeding demo content.
-- `npm run dev:up` does not auto-create built-in accounts. Use `./dev-stack.sh up --dev-users` if needed.
-- `Ctrl+C` stops the frontend and API processes; use `npm run dev:down` to stop the Docker database container.
-- If port `3001` or `5173` is already in use, the script fails fast and prints the process holding that port.
-
-### Testing
-```bash
-npm run test:unit
-npm run test:api
-npm run test:storybook
-npm run test:e2e
-```
-
-> Before the first E2E run, install Playwright browsers with `npx playwright install`, then start the frontend (default `http://127.0.0.1:5173`).
+---
 
 ## 🏗️ Deployment
+
+### Live Demo
+> **Demo: http://49.234.25.35**
+
+### One-Click Deploy (Ubuntu)
+```bash
+curl -fsSL https://raw.githubusercontent.com/frankfika/openhackathon/main/scripts/deploy-server.sh | bash
+```
+
+### CI/CD Auto Deploy
+Pushing to `main` triggers GitHub Actions deployment:
+```bash
+git push origin main
+```
+
 ### Docker Compose
 ```bash
 docker compose up -d --build
 ```
 
-Keep this flow if you want web, API, and database all inside containers; for normal local development, prefer `npm run dev:up`.
-
 Default ports:
-- Web: `5173`
-- API: `3001`
-- PostgreSQL: `5432`
-- Adminer: `8080`
+| Service | Port |
+|---|---|
+| Web | `5173` |
+| API | `3001` |
+| PostgreSQL | `5432` |
+| Adminer | `8080` |
 
-## 🧰 Screenshot Script
-README screenshots are captured from a real running app (not mocked):
+---
+
+## 📸 Screenshot Script
+
+All README screenshots are captured from a real running app:
 ```bash
-BASE_URL=http://localhost:5173 node scripts/capture-screenshots.mjs
+npm run dev
+node scripts/capture-screenshots.mjs
 ```
 
-## 📦 Release
+---
+
+## 📝 Changelog
+
+### v2.1 (2026-06)
+- ✨ AI enhancement system: project quality assessment, judge assistant, scoring consistency analysis, content moderation, smart generation, plagiarism detection
+- 🔗 Web3 multi-chain identity: wallet login, cross-hackathon points, global leaderboard, optional on-chain attestations
+- 🎨 Appearance settings: theme switching, font size / font family adjustments
+- 🐛 Fixed dark mode and fixed header overlap issues
+
+### v2.0 (2026-03)
+- 🏆 Complete hackathon management workflow
+- 🌐 Chinese/English i18n and light/dark themes
+- 📊 Review assignment, scoring, and leaderboard management
+- 🛡️ JWT auth, rate limiting, and activity logs
+
+---
+
+## 📦 Releases
 - Releases: https://github.com/frankfika/openhackathon/releases
-- Use semantic version tags (`vX.Y.Z`) with release notes.
 
 ## 📄 License
 MIT
