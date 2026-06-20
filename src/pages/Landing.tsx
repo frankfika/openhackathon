@@ -29,20 +29,20 @@ const staggerContainer = {
 }
 
 const statusColor: Record<string, string> = {
-  active: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700',
-  upcoming: 'border-blue-500/25 bg-blue-500/10 text-blue-700',
-  completed: 'border-stone-500/25 bg-stone-500/10 text-stone-700',
-  draft: 'border-amber-500/30 bg-amber-400/14 text-amber-800',
-  judging: 'border-sky-500/30 bg-sky-500/10 text-sky-700',
+  active: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400',
+  upcoming: 'border-blue-500/25 bg-blue-500/10 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400',
+  completed: 'border-stone-500/25 bg-stone-500/10 text-stone-700 dark:border-stone-500/30 dark:bg-stone-500/10 dark:text-stone-400',
+  draft: 'border-amber-500/30 bg-amber-400/14 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400',
+  judging: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-400',
 }
 
 function CountdownBlock({ value, label }: { value: number; label: string }) {
   return (
     <div className="min-w-0 flex-1 text-center">
-      <div className="font-display text-[30px] font-semibold leading-none tracking-[-0.04em] text-[#171717] md:text-[38px]">
+      <div className="font-display text-[30px] font-semibold leading-none tracking-[-0.04em] text-foreground md:text-[38px]">
         {String(value).padStart(2, '0')}
       </div>
-      <div className="mt-2 text-xs font-medium text-[#747474] md:text-sm">{label}</div>
+      <div className="mt-2 text-xs font-medium text-muted-foreground md:text-sm">{label}</div>
     </div>
   )
 }
@@ -111,7 +111,7 @@ function HeroSection() {
             const x = 88 + col * 58 + ((row % 2) * 19)
             const y = 44 + row * 48 + ((col % 3) * 5)
             const opacity = 0.06 + ((index * 7) % 8) / 100
-            return <circle key={index} cx={x} cy={y} r="2.4" fill="#171717" opacity={opacity} />
+            return <circle key={index} cx={x} cy={y} r="2.4" className="text-foreground" fill="currentColor" opacity={opacity} />
           })}
           <path className="dinq-map-route" d="M185 238 C360 92 610 92 752 226" stroke="url(#routeGrad)" />
           <path className="dinq-map-route dinq-map-route-delay" d="M752 226 C850 138 970 146 1050 224" stroke="url(#routeGrad)" />
@@ -123,7 +123,7 @@ function HeroSection() {
           ].map(([cx, cy]) => (
             <g key={`${cx}-${cy}`}>
               <circle className="dinq-map-pulse" cx={cx} cy={cy} r="23" fill="url(#nodeGlow)" />
-              <circle cx={cx} cy={cy} r="5.5" fill="#a98150" />
+              <circle cx={cx} cy={cy} r="5.5" className="text-primary" fill="currentColor" />
             </g>
           ))}
         </svg>
@@ -148,7 +148,7 @@ function HeroSection() {
         </motion.div>
 
         <motion.h1
-          className="dinq-display mt-7 max-w-[980px] text-balance text-[clamp(3.25rem,9.5vw,8.6rem)] font-semibold leading-[0.84] tracking-[-0.075em] text-[#171717]"
+          className="dinq-display mt-7 max-w-[980px] text-balance text-[clamp(3.25rem,9.5vw,8.6rem)] font-semibold leading-[0.84] tracking-[-0.075em] text-foreground"
           variants={fadeUp}
           transition={{ duration: 0.72, ease: [0.23, 1, 0.32, 1] }}
         >
@@ -156,7 +156,7 @@ function HeroSection() {
         </motion.h1>
 
         <motion.p
-          className="mt-7 max-w-[760px] text-pretty text-base leading-7 text-[#747474] md:text-lg"
+          className="mt-7 max-w-[760px] text-pretty text-base leading-7 text-muted-foreground md:text-lg"
           variants={fadeUp}
           transition={{ duration: 0.65, ease: [0.23, 1, 0.32, 1] }}
         >
@@ -164,19 +164,19 @@ function HeroSection() {
         </motion.p>
 
         <motion.div
-          className="dinq-search mt-9 flex min-h-[60px] w-full max-w-[880px] items-center rounded-full border border-[#171717] bg-white/80 pl-5 pr-[66px] shadow-[0_22px_48px_rgba(24,27,32,0.09),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl md:pl-7"
+          className="dinq-search mt-9 flex min-h-[60px] w-full max-w-[880px] items-center rounded-full border border-foreground/80 bg-background/80 pl-5 pr-[66px] shadow-[0_22px_48px_rgba(24,27,32,0.09),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl dark:border-white/30 dark:bg-slate-900/80 dark:shadow-[0_22px_48px_rgba(0,0,0,0.35)] md:pl-7"
           variants={fadeUp}
           transition={{ duration: 0.65, ease: [0.23, 1, 0.32, 1] }}
         >
-          <span className="mr-3 hidden text-[#a98150] md:inline-flex">
+          <span className="mr-3 hidden text-primary md:inline-flex">
             <Search className="h-5 w-5" />
           </span>
-          <span className="min-w-0 flex-1 truncate text-left text-sm text-[#747474] md:text-base">
+          <span className="min-w-0 flex-1 truncate text-left text-sm text-muted-foreground md:text-base">
             {h.city ? `${h.city} · ${scheduleText}` : scheduleText}
           </span>
           <Link
             to="/submit"
-            className="absolute bottom-1 right-1 top-1 inline-grid aspect-square place-items-center rounded-full bg-[#171717] text-white transition-all duration-300 hover:scale-[1.03] hover:bg-[#2f2b27]"
+            className="absolute bottom-1 right-1 top-1 inline-grid aspect-square place-items-center rounded-full bg-foreground text-background transition-all duration-300 hover:scale-[1.03] hover:bg-foreground/90 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
             aria-label={t('landing.hero.submit_project')}
           >
             <ArrowRight className="h-5 w-5" />
@@ -209,17 +209,17 @@ function HeroSection() {
             transition={{ duration: 0.68, ease: [0.23, 1, 0.32, 1] }}
           >
             <div className="dinq-countdown-glow" aria-hidden="true" />
-            <div className="grid grid-cols-3 divide-x divide-[#171717]/10">
+            <div className="grid grid-cols-3 divide-x divide-border">
               <CountdownBlock value={countdown.days} label={t('landing.hero.countdown_days')} />
               <CountdownBlock value={countdown.hours} label={t('landing.hero.countdown_hours')} />
               <CountdownBlock value={countdown.minutes} label={t('landing.hero.countdown_minutes')} />
             </div>
-            <p className="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-[#8a8177]">
+            <p className="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
               {h.status === 'active' ? t('landing.hero.countdown_to_submission') : t('landing.hero.countdown_to_start')}
             </p>
           </motion.div>
         ) : hasSchedule ? (
-          <motion.p className="mt-10 text-sm font-medium text-[#747474]" variants={fadeUp}>
+          <motion.p className="mt-10 text-sm font-medium text-muted-foreground" variants={fadeUp}>
             {t('landing.hero.event_ended')}
           </motion.p>
         ) : null}
@@ -237,15 +237,15 @@ function HeroSection() {
           return (
             <motion.li
               key={stat.label}
-              className="dinq-stat-card list-none rounded-[24px] border border-[#171717]/10 bg-white/58 p-5 text-left backdrop-blur-xl"
+              className="dinq-stat-card list-none rounded-[24px] border border-border bg-background/60 p-5 text-left backdrop-blur-xl dark:bg-slate-900/60"
               variants={fadeUp}
               transition={{ duration: 0.55, ease: [0.23, 1, 0.32, 1] }}
             >
-              <div className="mb-5 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#171717] text-white">
+              <div className="mb-5 inline-flex h-10 w-10 items-center justify-center rounded-full bg-foreground text-background dark:bg-white dark:text-slate-900">
                 <Icon className="h-4 w-4" />
               </div>
-              <div className="truncate font-display text-2xl font-semibold tracking-[-0.04em] text-[#171717]">{stat.value}</div>
-              <div className="mt-1 text-sm text-[#747474]">{stat.label}</div>
+              <div className="truncate font-display text-2xl font-semibold tracking-[-0.04em] text-foreground">{stat.value}</div>
+              <div className="mt-1 text-sm text-muted-foreground">{stat.label}</div>
             </motion.li>
           )
         })}
@@ -283,12 +283,12 @@ function FeatureBand() {
       <div className="mx-auto max-w-[1160px]">
         <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#a98150]">OpenHackathon</p>
-            <h2 className="dinq-display mt-3 max-w-[620px] text-4xl font-semibold tracking-[-0.06em] text-[#171717] md:text-6xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">OpenHackathon</p>
+            <h2 className="dinq-display mt-3 max-w-[620px] text-4xl font-semibold tracking-[-0.06em] text-foreground md:text-6xl">
               Build, submit, judge. All in one flow.
             </h2>
           </div>
-          <p className="max-w-[360px] text-sm leading-6 text-[#747474]">
+          <p className="max-w-[360px] text-sm leading-6 text-muted-foreground">
             A calm public face for participants, with direct paths into every important action.
           </p>
         </div>
@@ -297,15 +297,15 @@ function FeatureBand() {
           {items.map((item) => {
             const Icon = item.icon
             return (
-              <Link key={item.title} to={item.href} className="dinq-feature-card group rounded-[28px] border border-[#171717]/10 bg-white/72 p-6 backdrop-blur-xl">
+              <Link key={item.title} to={item.href} className="dinq-feature-card group rounded-[28px] border border-border bg-background/70 p-6 backdrop-blur-xl dark:bg-slate-900/70">
                 <div className="mb-10 flex items-center justify-between">
-                  <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#f1ece3] text-[#171717]">
+                  <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-accent text-foreground dark:bg-slate-800 dark:text-white">
                     <Icon className="h-5 w-5" />
                   </span>
-                  <ArrowRight className="h-4 w-4 text-[#171717] opacity-40 transition-all duration-300 group-hover:translate-x-1 group-hover:opacity-100" />
+                  <ArrowRight className="h-4 w-4 text-foreground opacity-40 transition-all duration-300 group-hover:translate-x-1 group-hover:opacity-100" />
                 </div>
-                <h3 className="text-xl font-semibold tracking-[-0.03em] text-[#171717]">{item.title}</h3>
-                <p className="mt-3 text-sm leading-6 text-[#747474]">{item.desc}</p>
+                <h3 className="text-xl font-semibold tracking-[-0.03em] text-foreground">{item.title}</h3>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">{item.desc}</p>
               </Link>
             )
           })}

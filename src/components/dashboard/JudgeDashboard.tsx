@@ -88,7 +88,7 @@ export function JudgeDashboard() {
                   return (
                     <div
                       key={assignment.id}
-                      className="flex flex-col gap-3 rounded-2xl border border-white/70 bg-white/78 p-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-900/10 md:flex-row md:items-center md:justify-between"
+                      className="flex flex-col gap-3 rounded-2xl border border-border/50 bg-background/80 p-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-900/10 dark:bg-slate-900/80 md:flex-row md:items-center md:justify-between"
                     >
                       <div className="space-y-1">
                         <div className="font-semibold">{assignment.project?.title}</div>
@@ -120,7 +120,7 @@ export function JudgeDashboard() {
             <p className="text-sm text-muted-foreground mb-4">
               {t('dashboard.judge.ai_desc', 'Use the scoring rubric to ensure fair and consistent evaluation of all projects.')}
             </p>
-            <div className="rounded-lg border border-primary/20 bg-white/75 p-3 text-xs backdrop-blur">
+            <div className="rounded-lg border border-primary/20 bg-background/75 p-3 text-xs backdrop-blur dark:bg-slate-900/75">
               <strong>{t('dashboard.judge.ai_copilot_tip_title', 'Pro Tip:')}</strong>{' '}
               {t('dashboard.judge.ai_copilot_tip', 'Click "Start Review" to access the detailed scoring interface.')}
             </div>

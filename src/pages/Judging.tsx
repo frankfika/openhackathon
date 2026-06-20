@@ -369,7 +369,7 @@ export function Judging() {
                   </div>
 
                   {selectedProject.description && (
-                    <div className="rounded-2xl border border-white/40 bg-background/60 p-4 prose prose-sm max-w-none dark:prose-invert">
+                    <div className="rounded-2xl border border-border/40 bg-background/60 p-4 prose prose-sm max-w-none dark:prose-invert">
                       <div className="whitespace-pre-wrap text-sm text-foreground/80">
                         {selectedProject.description}
                       </div>
@@ -390,11 +390,11 @@ export function Judging() {
                   )}
 
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl border border-white/40 bg-background/70 p-3">
+                    <div className="rounded-xl border border-border/40 bg-background/70 p-3">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">{t('projects.project_id')}</p>
                       <p className="mt-1 font-mono text-sm break-all">{selectedProject.id}</p>
                     </div>
-                    <div className="rounded-xl border border-white/40 bg-background/70 p-3">
+                    <div className="rounded-xl border border-border/40 bg-background/70 p-3">
                       <p className="text-xs uppercase tracking-wide text-muted-foreground">{t('projects.submitter')}</p>
                       <p className="mt-1 text-sm font-medium">{selectedProject.submitterName || t('common.anonymous')}</p>
                       <p className="text-xs text-muted-foreground break-all">{selectedProject.submitterEmail}</p>
@@ -411,7 +411,7 @@ export function Judging() {
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2">
                         {visibleSubmissionEntries.map((entry) => (
-                          <div key={entry.key} className="rounded-xl border border-white/40 bg-background/70 p-3">
+                          <div key={entry.key} className="rounded-xl border border-border/40 bg-background/70 p-3">
                             <p className="text-xs uppercase tracking-wide text-muted-foreground">{entry.label}</p>
                             <p className="mt-1 whitespace-pre-wrap text-sm">{entry.value}</p>
                           </div>
@@ -447,7 +447,7 @@ export function Judging() {
                   ) : (
                     <div className="space-y-6">
                       {scoringCriteria.map((criterion) => (
-                        <div key={criterion.id} className="rounded-xl border border-white/40 bg-background/70 p-4 space-y-3">
+                        <div key={criterion.id} className="rounded-xl border border-border/40 bg-background/70 p-4 space-y-3">
                           <div className="flex items-center justify-between">
                             <Label className="text-base font-medium">{criterion.name}</Label>
                             <span className="text-sm font-semibold tabular-nums">
@@ -486,7 +486,7 @@ export function Judging() {
                         </div>
                       ))}
 
-                      <div className="rounded-xl border border-white/40 bg-background/80 p-4">
+                      <div className="rounded-xl border border-border/40 bg-background/80 p-4">
                         <div className="flex items-center justify-between">
                           <span className="font-medium">{t('judging.total_score', 'Total Score')}</span>
                           <span className="text-2xl font-bold tabular-nums">{totalScore}</span>

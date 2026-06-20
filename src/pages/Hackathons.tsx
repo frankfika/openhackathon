@@ -154,7 +154,7 @@ export function Hackathons() {
                               disabled={updatingId === h.id}
                             >
                               <SelectTrigger
-                                className="h-7 w-auto gap-1 rounded-full bg-white/60 px-3 text-xs font-medium backdrop-blur border-0"
+                                className="h-7 w-auto gap-1 rounded-full bg-background/60 px-3 text-xs font-medium backdrop-blur border-0 dark:bg-slate-900/60"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {updatingId === h.id ? (
@@ -172,7 +172,7 @@ export function Hackathons() {
                               </SelectContent>
                             </Select>
                           ) : (
-                            <div className="inline-flex items-center rounded-full bg-white/60 px-3 py-1 text-xs font-medium text-foreground/80 backdrop-blur">
+                            <div className="inline-flex items-center rounded-full bg-background/60 px-3 py-1 text-xs font-medium text-foreground/80 backdrop-blur dark:bg-slate-900/60">
                               {t(`hackathons.status.${h.status}`)}
                             </div>
                           )}
@@ -195,7 +195,7 @@ export function Hackathons() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="rounded-full bg-white/40 backdrop-blur hover:bg-white/60"
+                            className="rounded-full bg-background/40 backdrop-blur hover:bg-background/60 dark:bg-slate-900/40 dark:hover:bg-slate-900/60"
                             onClick={(e) => {
                               e.stopPropagation()
                               handleSwitchAndNavigate(h.id, buildAdminPath(adminBasePath, `hackathons/${h.id}/settings`))
@@ -206,7 +206,7 @@ export function Hackathons() {
                         )}
                         <Button
                           variant="outline"
-                          className="rounded-full bg-white/40 backdrop-blur hover:bg-white/60"
+                          className="rounded-full bg-background/40 backdrop-blur hover:bg-background/60 dark:bg-slate-900/40 dark:hover:bg-slate-900/60"
                           onClick={(e) => {
                             e.stopPropagation()
                             handleSwitchAndNavigate(h.id, buildAdminPath(adminBasePath, 'projects'))

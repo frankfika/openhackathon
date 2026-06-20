@@ -3,9 +3,11 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { Toaster } from 'sonner'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
-import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
+import { RainbowKitProvider, darkTheme, lightTheme } from '@rainbow-me/rainbowkit'
 import '@rainbow-me/rainbowkit/styles.css'
 import { wagmiConfig } from './lib/wagmi-config'
+import { useTheme } from './hooks/useTheme'
+import { useFontSettings } from './hooks/useFontSettings'
 import { Layout } from './components/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './lib/auth'
@@ -37,6 +39,7 @@ const ActivityLog = lazy(() => import('./pages/ActivityLog').then((mod) => ({ de
 const SetupPage = lazy(() => import('./pages/SetupPage').then((mod) => ({ default: mod.SetupPage })))
 const GlobalLeaderboard = lazy(() => import('./pages/GlobalLeaderboard').then((mod) => ({ default: mod.GlobalLeaderboard })))
 const UserProfile = lazy(() => import('./pages/UserProfile').then((mod) => ({ default: mod.UserProfile })))
+const AIFeatures = lazy(() => import('./pages/AIFeatures').then((mod) => ({ default: mod.AIFeatures })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,7 +51,12 @@ const queryClient = new QueryClient({
     },
   },
 })
-const RouteLoader = () => <div className="py-16 text-center text-muted-foreground">Loading...</div>
+const RouteLoader = () => (
+  <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+    <p className="text-sm text-muted-foreground">Loading...</p>
+  </div>
+)
 
 function LandingRouteEntry() {
   const [checking, setChecking] = React.useState(true)
@@ -157,7 +165,7 @@ function AppRoutes() {
               </RequireRole>
             }
           >
-            <Route index element={<AdminDashboard />} />
+            <Route index element={<ErrorBoundary><AdminDashboard /></ErrorBoundary>} />
             <Route path="hackathons" element={<Navigate to={adminBasePath} replace />} />
             <Route path="hackathons/:id" element={<Navigate to={adminBasePath} replace />} />
             <Route
@@ -188,7 +196,7 @@ function AppRoutes() {
                 </RequireHackathonStarted>
               }
             />
-            <Route path="judging" element={<LegacyJudgingHubRedirect adminBasePath={adminBasePath} />} />
+            <Route path="judging" element={<ErrorBoundary><LegacyJudgingHubRedirect adminBasePath={adminBasePath} /></ErrorBoundary>} />
             <Route path="reviews" element={<Navigate to={buildAdminPath(adminBasePath, 'assignments')} replace />} />
             <Route
               path="assignments"
@@ -205,7 +213,9 @@ function AppRoutes() {
               path="judging/:id"
               element={
                 <RequireHackathonStarted adminBasePath={adminBasePath}>
-                  <JudgingDetail />
+                  <ErrorBoundary>
+                    <JudgingDetail />
+                  </ErrorBoundary>
                 </RequireHackathonStarted>
               }
             />
@@ -213,7 +223,9 @@ function AppRoutes() {
               path="judges"
               element={
                 <RequireHackathonStarted adminBasePath={adminBasePath}>
-                  <JudgeManagement />
+                  <ErrorBoundary>
+                    <JudgeManagement />
+                  </ErrorBoundary>
                 </RequireHackathonStarted>
               }
             />
@@ -221,11 +233,20 @@ function AppRoutes() {
               path="leaderboard"
               element={
                 <RequireHackathonStarted adminBasePath={adminBasePath}>
-                  <Leaderboard />
+                  <ErrorBoundary>
+                    <Leaderboard />
+                  </ErrorBoundary>
                 </RequireHackathonStarted>
               }
             />
-            <Route path="activity" element={<ActivityLog />} />
+            <Route
+              path="ai-features"
+              element={
+                <ErrorBoundary>
+                  <AIFeatures />
+                </ErrorBoundary>
+              }
+            />
             <Route
               path="settings"
               element={
@@ -244,8 +265,8 @@ function AppRoutes() {
               </RequireRole>
             }
           >
-            <Route index element={<Judging />} />
-            <Route path="review/:id" element={<JudgingDetail />} />
+            <Route index element={<ErrorBoundary><Judging /></ErrorBoundary>} />
+            <Route path="review/:id" element={<ErrorBoundary><JudgingDetail /></ErrorBoundary>} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -255,11 +276,22 @@ function AppRoutes() {
   )
 }
 
+function ThemedRainbowKitProvider({ children }: { children: React.ReactNode }) {
+  const { isDark } = useTheme()
+  return (
+    <RainbowKitProvider theme={isDark ? darkTheme() : lightTheme()}>
+      {children}
+    </RainbowKitProvider>
+  )
+}
+
 function App() {
+  useFontSettings()
+
   return (
     <QueryClientProvider client={queryClient}>
       <WagmiProvider config={wagmiConfig}>
-        <RainbowKitProvider theme={darkTheme()}>
+        <ThemedRainbowKitProvider>
           <SiteBrandingProvider>
             <AuthProvider>
               <ActiveHackathonProvider>
@@ -267,7 +299,7 @@ function App() {
               </ActiveHackathonProvider>
             </AuthProvider>
           </SiteBrandingProvider>
-        </RainbowKitProvider>
+        </ThemedRainbowKitProvider>
       </WagmiProvider>
     </QueryClientProvider>
   )

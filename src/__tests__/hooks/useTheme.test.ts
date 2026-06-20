@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useTheme } from '@/hooks/useTheme'
 
@@ -77,5 +77,25 @@ describe('useTheme', () => {
     })
     expect(document.documentElement.classList.contains('light')).toBe(true)
     expect(document.documentElement.classList.contains('dark')).toBe(false)
+  })
+
+  it('isDark follows system dark preference when theme is system', () => {
+    const darkMatchMedia = vi.fn((query: string) => ({
+      matches: query === '(prefers-color-scheme: dark)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+    vi.spyOn(window, 'matchMedia').mockImplementation(darkMatchMedia as unknown as typeof window.matchMedia)
+
+    localStorage.setItem('theme', 'system')
+    const { result } = renderHook(() => useTheme())
+
+    expect(result.current.isDark).toBe(true)
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
   })
 })

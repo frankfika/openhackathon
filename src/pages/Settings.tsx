@@ -9,6 +9,7 @@ import { BrandingTab } from './settings/BrandingTab'
 import { EmailTab } from './settings/EmailTab'
 import { AITab } from './settings/AITab'
 import { SystemToolsTab } from './settings/SystemToolsTab'
+import { AppearanceTab } from './settings/AppearanceTab'
 
 export function Settings() {
   const { t } = useTranslation()
@@ -45,6 +46,9 @@ export function Settings() {
           <TabsTrigger value="branding" className="min-w-[120px] flex-1">
             {t('settings.tab_branding', 'Branding')}
           </TabsTrigger>
+          <TabsTrigger value="appearance" className="min-w-[120px] flex-1">
+            {t('settings.tab_appearance', 'Appearance')}
+          </TabsTrigger>
           <TabsTrigger value="email" className="min-w-[120px] flex-1">
             {t('settings.tab_email', 'Email')}
           </TabsTrigger>
@@ -58,6 +62,10 @@ export function Settings() {
 
         <TabsContent value="branding" className="space-y-4">
           <BrandingTab siteSettings={siteSettings} />
+        </TabsContent>
+
+        <TabsContent value="appearance" className="space-y-4">
+          <AppearanceTab />
         </TabsContent>
 
         <TabsContent value="email" className="space-y-4">

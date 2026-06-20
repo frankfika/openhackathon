@@ -17,14 +17,14 @@ export default {
   		extend: {
   			fontFamily: {
   				sans: [
-					'"Geist"',
+					'var(--font-family-base, "Geist")',
 					'"Noto Sans SC"',
 					'"PingFang SC"',
 					'"Microsoft YaHei"',
 					'sans-serif'
   				],
   				display: [
-					'"Geist"',
+					'var(--font-family-base, "Geist")',
 					'"Noto Sans SC"',
 					'sans-serif'
   				]

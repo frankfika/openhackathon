@@ -6,6 +6,9 @@
 
 @layer base {
   :root {
+    --font-size-scale: 1;
+    --font-family-base: "Geist", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+
     --background: 206 45% 98%;
     --foreground: 214 31% 15%;
 
@@ -89,9 +92,11 @@
   }
   html {
     scroll-behavior: smooth;
+    font-size: calc(16px * var(--font-size-scale));
   }
   body {
-    @apply bg-background text-foreground antialiased font-sans;
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-family-base);
     position: relative;
     overflow-x: hidden;
     background-image:
@@ -100,6 +105,14 @@
       radial-gradient(ellipse at 88% 104%, rgba(190, 215, 255, 0.3), transparent 44%),
       linear-gradient(180deg, #fffefd 0%, #fffdf9 48%, #fff 78%);
     background-attachment: fixed;
+  }
+
+  .dark body {
+    background-image:
+      radial-gradient(circle at 50% 36%, rgba(30, 41, 59, 0.52), transparent 30rem),
+      radial-gradient(ellipse at 20% 108%, rgba(56, 189, 248, 0.15), transparent 48%),
+      radial-gradient(ellipse at 88% 104%, rgba(99, 102, 241, 0.15), transparent 44%),
+      linear-gradient(180deg, #0f172a 0%, #1e293b 48%, #0f172a 78%);
   }
   h1,
   h2,
@@ -126,6 +139,12 @@ body::before {
   animation: aurora-float 20s ease-in-out infinite alternate;
 }
 
+.dark body::before {
+  background:
+    radial-gradient(660px circle at 20% 20%, rgba(56, 189, 248, 0.08), transparent 68%),
+    radial-gradient(760px circle at 78% 70%, rgba(139, 92, 246, 0.08), transparent 70%);
+}
+
 body::after {
   background:
     linear-gradient(rgba(23, 23, 23, 0.03) 1px, transparent 1px),
@@ -133,6 +152,12 @@ body::after {
   background-size: 44px 44px;
   mask-image: linear-gradient(180deg, transparent 0%, #000 22%, #000 72%, transparent 100%);
   animation: aurora-float 24s ease-in-out infinite alternate-reverse;
+}
+
+.dark body::after {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
 }
 
 ::selection {
@@ -205,6 +230,10 @@ body::after {
   @apply bg-[#171717] text-white shadow-lg shadow-stone-900/10 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#33302d] hover:shadow-xl hover:shadow-stone-900/15;
 }
 
+.dark .grand-cta {
+  @apply bg-slate-100 text-slate-900 shadow-lg shadow-black/25 hover:bg-white hover:shadow-xl hover:shadow-black/30;
+}
+
 .premium-grid-bg {
   background-image: none;
 }
@@ -271,6 +300,12 @@ body::after {
     linear-gradient(180deg, #fffefd 0%, #fffdf9 48%, #fff 78%);
 }
 
+.dark .dinq-hero {
+  background:
+    radial-gradient(circle at 50% 52%, rgba(30, 41, 59, 0.44), transparent 28rem),
+    linear-gradient(180deg, #0f172a 0%, #1e293b 48%, #0f172a 78%);
+}
+
 .dinq-dot-bg {
   pointer-events: none;
   position: absolute;
@@ -285,6 +320,11 @@ body::after {
   opacity: 0.22;
 }
 
+.dark .dinq-dot-bg {
+  background-image:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.13) 1px, transparent 1.5px);
+}
+
 .dinq-grain {
   pointer-events: none;
   position: absolute;
@@ -294,6 +334,12 @@ body::after {
   mix-blend-mode: multiply;
   background-image:
     repeating-radial-gradient(circle at 0 0, rgba(23, 23, 23, 0.055) 0 1px, transparent 1px 4px);
+}
+
+.dark .dinq-grain {
+  mix-blend-mode: screen;
+  background-image:
+    repeating-radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.055) 0 1px, transparent 1px 4px);
 }
 
 .dinq-world-map {
@@ -362,6 +408,10 @@ body::after {
   filter: blur(18px);
 }
 
+.dark .dinq-countdown-glow {
+  background: radial-gradient(ellipse at 50% 50%, rgba(15, 23, 42, 0.98) 0%, rgba(15, 23, 42, 0.74) 46%, transparent 72%);
+}
+
 .dinq-primary-button {
   border: 1px solid #171717;
   background: #171717;
@@ -379,6 +429,18 @@ body::after {
   box-shadow: 0 20px 42px rgba(23, 23, 23, 0.2);
 }
 
+.dark .dinq-primary-button {
+  border-color: #e2e8f0;
+  background: #e2e8f0;
+  color: #0f172a;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.25);
+}
+
+.dark .dinq-primary-button:hover {
+  background: #f1f5f9;
+  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.3);
+}
+
 .dinq-secondary-button {
   border: 1px solid rgba(23, 23, 23, 0.18);
   background: rgba(255, 255, 255, 0.72);
@@ -394,6 +456,17 @@ body::after {
   border-color: rgba(23, 23, 23, 0.42);
   background: rgba(255, 255, 255, 0.9);
   transform: translateY(-2px);
+}
+
+.dark .dinq-secondary-button {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(30, 41, 59, 0.72);
+  color: #e2e8f0;
+}
+
+.dark .dinq-secondary-button:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(30, 41, 59, 0.9);
 }
 
 .dinq-stat-card,
@@ -414,6 +487,21 @@ body::after {
   box-shadow:
     0 34px 82px -42px rgba(24, 27, 32, 0.46),
     inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.dark .dinq-stat-card,
+.dark .dinq-feature-card {
+  box-shadow:
+    0 28px 70px -46px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.dark .dinq-stat-card:hover,
+.dark .dinq-feature-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 34px 82px -42px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 @keyframes dinq-route {
