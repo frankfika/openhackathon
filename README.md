@@ -13,7 +13,7 @@
 ![Tests](https://img.shields.io/badge/Tests-154%20passed-2ea44f?style=flat-square)
 ![i18n](https://img.shields.io/badge/i18n-English%20%7C%20中文-9cf?style=flat-square)
 
-[核心功能](#-核心功能) • [界面导览](#-界面导览) • [架构](#-架构) • [快速开始](#-快速开始) • [部署](#-部署)
+[核心功能](#-核心功能) • [界面导览](#-界面导览) • [架构](#-架构) • [快速开始](#-快速开始) • [部署](#-部署) • [开发者上手](./docs/setup-wizard.md)
 
 __简体中文__ | [English](./README_EN.md)
 
@@ -217,6 +217,8 @@ npm run dev            # 仅启动前后端（需自行管理数据库）
 | 评委 | `bob@venturecap.com` | `password` |
 | 评委 | `charlie@designstudio.io` | `password` |
 | 空评委 | `judge1@openhackathon.com` | `password` |
+
+> **注意**：上表只展示部分账号，完整列表与"为什么没有 `seed.ts`"的说明见 [docs/setup-wizard.md](./docs/setup-wizard.md)。新开发者请优先阅读该文档。
 
 ---
 

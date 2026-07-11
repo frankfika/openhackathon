@@ -13,7 +13,7 @@
 ![Tests](https://img.shields.io/badge/Tests-154%20passed-2ea44f?style=flat-square)
 ![i18n](https://img.shields.io/badge/i18n-English%20%7C%20中文-9cf?style=flat-square)
 
-[Features](#-features) • [Screenshots](#-screenshots) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Deployment](#-deployment)
+[Features](#-features) • [Screenshots](#-screenshots) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Deployment](#-deployment) • [Dev Onboarding](./docs/setup-wizard.md)
 
 [简体中文](./README.md) | __English__
 
@@ -217,6 +217,10 @@ npm run dev            # Start frontend + backend only (manage DB yourself)
 | Judge | `bob@venturecap.com` | `password` |
 | Judge | `charlie@designstudio.io` | `password` |
 | Empty judge | `judge1@openhackathon.com` | `password` |
+
+> **Note**: the table above is a subset. The full account list and the rationale
+> for "why there is no `seed.ts`" live in [docs/setup-wizard.md](./docs/setup-wizard.md).
+> New contributors should read that doc first.
 
 ---
 
