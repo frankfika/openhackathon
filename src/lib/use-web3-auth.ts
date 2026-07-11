@@ -66,7 +66,6 @@ export function useWeb3Auth() {
   }, [address, isConnected, chainId])
 
   const chainSupported = isChainSupported(chainId)
-  const backendChain = chainNameFromId(chainId)
 
   const signIn = useCallback(async (): Promise<(User & { token?: string }) | null> => {
     // Always read the latest state from the ref, not the closure.

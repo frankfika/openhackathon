@@ -208,7 +208,7 @@ export function AIGenerateModal({
     setErrorCode('UNKNOWN')
   }, [initialTheme, initialTracks, initialPrizePool, initialDeadline, i18n.language])
 
-  function addTrack() {
+  const addTrack = useCallback(() => {
     const value = trackDraft.trim()
     if (!value) return
     if (tracks.includes(value)) {
@@ -218,11 +218,14 @@ export function AIGenerateModal({
     if (tracks.length >= 5) return
     setTracks([...tracks, value])
     setTrackDraft('')
-  }
+  }, [trackDraft, tracks])
 
-  function removeTrack(value: string) {
-    setTracks(tracks.filter((tr) => tr !== value))
-  }
+  const removeTrack = useCallback(
+    (value: string) => {
+      setTracks(tracks.filter((tr) => tr !== value))
+    },
+    [tracks]
+  )
 
   async function runGenerate() {
     setPhase('loading')
@@ -494,7 +497,7 @@ export function AIGenerateModal({
         )}
       </div>
     )
-  }, [mode, t, theme, focus, criterionCount, language, tone, tracks, trackDraft, prizePool, deadline, includeRunnerUps])
+  }, [mode, t, theme, focus, criterionCount, language, tone, tracks, trackDraft, prizePool, deadline, includeRunnerUps, addTrack, removeTrack])
 
   const canSubmit = useMemo(() => {
     if (mode === 'criteria') return true
@@ -641,14 +644,12 @@ export function AIGenerateModal({
                   <DraftEditor
                     value={draftZh}
                     onChange={setDraftZh}
-                    onCopy={() => navigator.clipboard.writeText(draftZh)}
                   />
                 </TabsContent>
                 <TabsContent value="en">
                   <DraftEditor
                     value={draftEn}
                     onChange={setDraftEn}
-                    onCopy={() => navigator.clipboard.writeText(draftEn)}
                   />
                 </TabsContent>
               </Tabs>
@@ -656,13 +657,11 @@ export function AIGenerateModal({
               <DraftEditor
                 value={draftZh}
                 onChange={setDraftZh}
-                onCopy={() => navigator.clipboard.writeText(draftZh)}
               />
             ) : (
               <DraftEditor
                 value={draftEn}
                 onChange={setDraftEn}
-                onCopy={() => navigator.clipboard.writeText(draftEn)}
               />
             )}
 
@@ -694,11 +693,9 @@ export function AIGenerateModal({
 function DraftEditor({
   value,
   onChange,
-  onCopy,
 }: {
   value: string
   onChange: (v: string) => void
-  onCopy: () => void
 }) {
   const { t } = useTranslation()
   return (
