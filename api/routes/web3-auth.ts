@@ -15,12 +15,8 @@ import {
   linkWalletToUser,
 } from '../services/identity';
 import { logActivity } from '../utils/activity';
-
-function sanitizeUser(user: { password?: string | null }) {
-  const copy = { ...user };
-  delete (copy as { password?: string | null }).password;
-  return copy;
-}
+import { USER_PUBLIC_FIELDS, sanitizeUser } from '../utils/sanitize';
+import { asUserRole } from '../utils/validation';
 
 export function registerWeb3AuthRoutes(
   app: Express,
@@ -51,8 +47,13 @@ export function registerWeb3AuthRoutes(
         return res.status(400).json({ error: 'Invalid wallet address' });
       }
 
-      const nonce = generateNonce(normalized);
-      const message = buildSignInMessage({ address: normalized, chain, nonce });
+      const nonce = await generateNonce(prisma, normalized, chain, 'siwe');
+      const message = buildSignInMessage({
+        address: normalized,
+        chain,
+        nonce,
+        domain: req.headers.host,
+      });
 
       res.json({ nonce, message, address: normalized });
     } catch (error) {
@@ -86,28 +87,35 @@ export function registerWeb3AuthRoutes(
         return res.status(400).json({ error: 'Invalid wallet address' });
       }
 
-      // Validate nonce (single-use)
-      if (!consumeNonce(normalized, nonce)) {
-        return res.status(401).json({ error: 'Invalid or expired nonce' });
+      // Verify the signature FIRST so that a bad signature does not burn
+      // the nonce (P1-2 in synth-design-spec §2.3). Nonce is consumed only
+      // after signature + domain + chain checks all pass.
+      const valid = await verifyWalletSignature({ address: normalized, chain, message, signature });
+      if (!valid) {
+        return res.status(401).json({ error: 'Invalid signature', code: 'SIGNATURE_INVALID' });
       }
 
       // Ensure the signed message contains the nonce (defense in depth)
       if (!message.includes(nonce)) {
-        return res.status(401).json({ error: 'Nonce mismatch in signed message' });
+        return res.status(401).json({ error: 'Nonce mismatch in signed message', code: 'NONCE_MISMATCH' });
       }
 
-      // Verify the signature
-      const valid = await verifyWalletSignature({ address: normalized, chain, message, signature });
-      if (!valid) {
-        return res.status(401).json({ error: 'Invalid signature' });
+      // Validate nonce (single-use, DB-backed)
+      const consumed = await consumeNonce(prisma, normalized, chain, 'siwe', nonce);
+      if (!consumed) {
+        return res.status(401).json({ error: 'Invalid or expired nonce', code: 'NONCE_INVALID' });
       }
 
       const chainId = typeof chainIdRaw === 'number' ? chainIdRaw : undefined;
       const user = await getOrCreateUserFromWallet(prisma, { address: normalized, chain, chainId });
 
+      const userRole = asUserRole(user.role);
+      if (!userRole) {
+        return res.status(401).json({ error: 'Invalid user role', code: 'ROLE_INVALID' });
+      }
       const authUser: AuthUser = {
         id: user.id,
-        role: (user.role === 'admin' ? 'admin' : 'judge') as UserRole,
+        role: userRole,
         email: user.email,
         name: user.name,
       };
@@ -124,7 +132,16 @@ export function registerWeb3AuthRoutes(
         ipAddress: req.ip,
       });
 
-      res.json({ ...sanitizeUser(user), token });
+      const publicUser = {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        avatarUrl: user.avatarUrl,
+        createdAt: user.createdAt,
+        isWeb3User: user.isWeb3User,
+      };
+      res.json({ ...publicUser, token });
     } catch (error) {
       console.error('Web3 verify error:', error);
       res.status(500).json({ error: 'Web3 verification failed' });
@@ -157,16 +174,19 @@ export function registerWeb3AuthRoutes(
         return res.status(400).json({ error: 'Invalid wallet address' });
       }
 
-      if (!consumeNonce(normalized, nonce)) {
-        return res.status(401).json({ error: 'Invalid or expired nonce' });
-      }
-      if (!message.includes(nonce)) {
-        return res.status(401).json({ error: 'Nonce mismatch in signed message' });
-      }
-
+      // Verify signature first (P1-2: do not burn nonce on bad signature).
       const valid = await verifyWalletSignature({ address: normalized, chain, message, signature });
       if (!valid) {
-        return res.status(401).json({ error: 'Invalid signature' });
+        return res.status(401).json({ error: 'Invalid signature', code: 'SIGNATURE_INVALID' });
+      }
+
+      if (!message.includes(nonce)) {
+        return res.status(401).json({ error: 'Nonce mismatch in signed message', code: 'NONCE_MISMATCH' });
+      }
+
+      const consumed = await consumeNonce(prisma, normalized, chain, 'link-wallet', nonce);
+      if (!consumed) {
+        return res.status(401).json({ error: 'Invalid or expired nonce', code: 'NONCE_INVALID' });
       }
 
       const chainId = typeof chainIdRaw === 'number' ? chainIdRaw : undefined;
@@ -187,7 +207,19 @@ export function registerWeb3AuthRoutes(
         ipAddress: req.ip,
       });
 
-      res.json({ success: true, user: sanitizeUser(result.user!) });
+      const linkedUser = result.user;
+      const publicLinkedUser = linkedUser
+        ? {
+            id: linkedUser.id,
+            email: linkedUser.email,
+            name: linkedUser.name,
+            role: linkedUser.role,
+            avatarUrl: linkedUser.avatarUrl,
+            createdAt: linkedUser.createdAt,
+            isWeb3User: linkedUser.isWeb3User,
+          }
+        : null;
+      res.json({ success: true, user: publicLinkedUser ? sanitizeUser(publicLinkedUser) : null });
     } catch (error) {
       console.error('Link wallet error:', error);
       res.status(500).json({ error: 'Failed to link wallet' });

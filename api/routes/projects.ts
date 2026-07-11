@@ -7,6 +7,7 @@ import { getScopedHackathonId, parseProjectSubmissionFilters, buildProjectSubmis
 import { generateSubmissionReceiptId, sendSubmissionReceiptEmail } from '../utils/email';
 import { logActivity } from '../utils/activity';
 import { awardPoints, resolveSubmitterUserId } from '../services/points';
+import { USER_PUBLIC_FIELDS, PROJECT_SUBMITTER_PUBLIC_FIELDS } from '../utils/sanitize';
 
 export function registerProjectRoutes(
   app: Express,
@@ -61,7 +62,7 @@ export function registerProjectRoutes(
           orderBy: { createdAt: 'desc' },
           include: {
             // Don't include `user: true` — that returns the password hash.
-            user: { select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true } },
+            user: { select: USER_PUBLIC_FIELDS },
             assignments: {
               select: {
                 id: true,
@@ -83,7 +84,7 @@ export function registerProjectRoutes(
       where,
       include: lite ? undefined : {
         // Don't include `user: true` — that returns the password hash.
-        user: { select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true } },
+        user: { select: USER_PUBLIC_FIELDS },
         assignments: {
           select: {
             id: true,
@@ -104,7 +105,10 @@ export function registerProjectRoutes(
       where: { id: req.params.id },
       include: {
         user: {
-          select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true },
+          // Public endpoint — never expose email/role/createdAt to anonymous
+          // visitors. The full USER_PUBLIC_FIELDS is reserved for
+          // authenticated admin/judge callers.
+          select: PROJECT_SUBMITTER_PUBLIC_FIELDS,
         },
         assignments: {
           // Do NOT include `judge: true` here — this endpoint is public (no auth

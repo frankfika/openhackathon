@@ -6,6 +6,7 @@ import type { AuthUser } from '../types';
 import { normalizeEmail, isValidEmail, isValidPassword } from '../utils/validation';
 import { resolveHackathonCoverGradient } from '../utils/hackathon';
 import { signTokenForUser } from '../utils/crypto';
+import { USER_PUBLIC_FIELDS } from '../utils/sanitize';
 
 export function registerSetupRoutes(app: Express, prisma: PrismaClient) {
   app.get('/api/setup/status', async (_req, res) => {
@@ -93,10 +94,18 @@ export function registerSetupRoutes(app: Express, prisma: PrismaClient) {
         name: result.admin.name,
       };
       const token = signTokenForUser(authUser);
-      const adminWithoutPassword = { ...result.admin } as Record<string, unknown>;
-      delete adminWithoutPassword.password;
 
-      res.json({ admin: { ...adminWithoutPassword, token }, hackathon: result.hackathon });
+      // Re-fetch via the public-fields whitelist so we never echo a
+      // password column.
+      const publicAdmin = await prisma.user.findUnique({
+        where: { id: result.admin.id },
+        select: USER_PUBLIC_FIELDS,
+      });
+
+      res.json({
+        admin: publicAdmin ? { ...publicAdmin, token } : null,
+        hackathon: result.hackathon,
+      });
     } catch (error) {
       console.error('Setup error:', error);
       res.status(500).json({ error: 'Setup failed' });

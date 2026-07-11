@@ -40,7 +40,7 @@ export function registerUserRoutes(
       if (!roleValue) {
         return res.status(400).json({ error: 'role must be admin or judge' });
       }
-      const existing = await prisma.user.findUnique({ where: { email: emailValue } });
+      const existing = await prisma.user.findUnique({ where: { email: emailValue }, select: { id: true } });
       if (existing) {
         return res.status(409).json({ error: 'A user with this email already exists' });
       }

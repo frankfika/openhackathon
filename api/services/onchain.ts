@@ -92,7 +92,12 @@ export async function recordAchievementOnChain(
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { wallets: true },
+    select: {
+      id: true,
+      wallets: {
+        select: { id: true, address: true, chain: true, isPrimary: true },
+      },
+    },
   });
   if (!user) return null;
 

@@ -3,6 +3,7 @@ import type { PrismaClient, Prisma } from '@prisma/client';
 import { asString, SUPPORTED_CHAINS } from '../config';
 import { resolveUserByWallet } from '../services/identity';
 import { normalizeWalletAddress } from '../utils/siwe';
+import { PROJECT_SUBMITTER_PUBLIC_FIELDS, sanitizeUser, USER_PUBLIC_FIELDS } from '../utils/sanitize';
 
 const EVM_EXPLORERS: Record<string, string> = {
   ethereum: 'https://etherscan.io/tx/',
@@ -97,7 +98,11 @@ export function registerIdentityRoutes(app: Express, prisma: PrismaClient) {
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        include: { wallets: true },
+        select: {
+          ...USER_PUBLIC_FIELDS,
+          isWeb3User: true,
+          wallets: { select: { address: true, chain: true, isPrimary: true, verifiedAt: true } },
+        },
       });
 
       if (!user) {
@@ -165,7 +170,17 @@ export function registerIdentityRoutes(app: Express, prisma: PrismaClient) {
         where,
         orderBy: { globalPoints: 'desc' },
         take: limit,
-        include: { wallets: true },
+        select: {
+          id: true,
+          name: true,
+          avatarUrl: true,
+          globalPoints: true,
+          participationCount: true,
+          judgeCount: true,
+          awardCount: true,
+          updatedAt: true,
+          wallets: { select: { address: true, chain: true, isPrimary: true, lastUsedAt: true } },
+        },
       });
 
       const leaderboard = users.map((user, index) => {

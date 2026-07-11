@@ -1,7 +1,15 @@
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { WEB3_DEFAULT_ROLE } from '../config';
+import { USER_PUBLIC_FIELDS, sanitizeUser } from '../utils/sanitize';
 
-export type WalletUserResult = Prisma.UserGetPayload<{ include: { wallets: true } }>;
+/** Selects the public user columns plus wallet data — safe to return. */
+const USER_WITH_WALLETS_SELECT = {
+  ...USER_PUBLIC_FIELDS,
+  isWeb3User: true,
+  wallets: { select: { address: true, chain: true, chainId: true, isPrimary: true, verifiedAt: true, lastUsedAt: true } },
+} as const;
+
+export type WalletUserResult = Prisma.UserGetPayload<{ select: typeof USER_WITH_WALLETS_SELECT }>;
 
 /** Find a user by wallet address + chain. Returns null if no match. */
 export async function resolveUserByWallet(
@@ -9,9 +17,9 @@ export async function resolveUserByWallet(
   address: string,
   chain: string,
 ): Promise<WalletUserResult | null> {
-  const wallet = await prisma.walletAddress.findUnique({
-    where: { address_chain: { address, chain } },
-    include: { user: { include: { wallets: true } } },
+  const wallet = await prisma.walletAddress.findFirst({
+    where: { address, chain },
+    select: { user: { select: USER_WITH_WALLETS_SELECT } },
   });
   return wallet?.user ?? null;
 }
@@ -32,17 +40,51 @@ export async function getOrCreateUserFromWallet(
 ): Promise<WalletUserResult> {
   const { address, chain, chainId } = params;
 
-  const existing = await resolveUserByWallet(prisma, address, chain);
-  if (existing) {
-    await prisma.walletAddress.update({
-      where: { address_chain: { address, chain } },
+  // 1) Direct hit on (address, chain) — same chain.
+  const direct = await resolveUserByWallet(prisma, address, chain);
+  if (direct) {
+    await prisma.walletAddress.updateMany({
+      where: { address, chain },
       data: { lastUsedAt: new Date() },
     });
-    return existing;
+    return direct;
   }
 
-  // Create a fresh Web3 user with this wallet as primary.
-  const role = WEB3_DEFAULT_ROLE === 'admin' ? 'admin' : 'judge';
+  // 2) Cross-chain fallback: a user may have already registered this
+  // address under a different chain (e.g. mainnet first, then sepolia).
+  // Merge the wallet into the existing user rather than creating a new one.
+  const crossChain = await prisma.walletAddress.findFirst({
+    where: { address, NOT: { chain } },
+    select: { user: { select: USER_WITH_WALLETS_SELECT } },
+  });
+  if (crossChain) {
+    const existingUser = crossChain.user;
+    try {
+      await prisma.walletAddress.create({
+        data: {
+          userId: existingUser.id,
+          address,
+          chain,
+          chainId: chainId ?? null,
+          isPrimary: false,
+        },
+      });
+    } catch (err) {
+      // The (address, chain) unique is still in force (transitional);
+      // if it fires, treat as success — the wallet already belongs to
+      // this user via the other-chain row.
+      if (!(err as { code?: string }).code?.startsWith('P2002')) throw err;
+    }
+    const merged = await prisma.user.findUnique({
+      where: { id: existingUser.id },
+      select: USER_WITH_WALLETS_SELECT,
+    });
+    if (merged) return merged;
+  }
+
+  // 3) Brand-new Web3 user. The role is configurable via
+  // WEB3_DEFAULT_ROLE (defaults to 'user' per spec P0-4).
+  const role = WEB3_DEFAULT_ROLE;
   const user = await prisma.user.create({
     data: {
       name: walletDisplayName(address, chain),
@@ -57,7 +99,7 @@ export async function getOrCreateUserFromWallet(
         },
       },
     },
-    include: { wallets: true },
+    select: USER_WITH_WALLETS_SELECT,
   });
 
   return user;
@@ -73,28 +115,32 @@ export async function linkWalletToUser(
 ): Promise<{ user?: WalletUserResult; error?: 'wallet_taken' }> {
   const { userId, address, chain, chainId } = params;
 
-  const existingWallet = await prisma.walletAddress.findUnique({
-    where: { address_chain: { address, chain } },
+  // Look up the wallet under (address, chain). If it exists and belongs
+  // to a different user, refuse. The same user may legitimately link
+  // the same (address, chainId) pair multiple times — we treat that as
+  // a no-op success.
+  const existingWallet = await prisma.walletAddress.findFirst({
+    where: { address, chain },
+    select: { id: true, userId: true },
   });
 
   if (existingWallet && existingWallet.userId !== userId) {
     return { error: 'wallet_taken' };
   }
 
-  // If already linked to this same user, just ensure isWeb3User and return.
+  // Already linked to this user — just bump isWeb3User.
   if (existingWallet && existingWallet.userId === userId) {
     const user = await prisma.user.update({
       where: { id: userId },
       data: { isWeb3User: true },
-      include: { wallets: true },
+      select: USER_WITH_WALLETS_SELECT,
     });
     return { user };
   }
 
-  // Determine if this is the user's first wallet (becomes primary).
   const walletCount = await prisma.walletAddress.count({ where: { userId } });
 
-  const user = await prisma.user.update({
+  await prisma.user.update({
     where: { id: userId },
     data: {
       isWeb3User: true,
@@ -107,8 +153,11 @@ export async function linkWalletToUser(
         },
       },
     },
-    include: { wallets: true },
   });
 
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: USER_WITH_WALLETS_SELECT,
+  });
   return { user };
 }

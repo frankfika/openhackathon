@@ -17,6 +17,53 @@ import {
 import type { AuthUser, JwtPayload } from './types';
 import { normalizeEmail, asUserRole } from './utils/validation';
 
+export type AuthErrorCode =
+  | 'TOKEN_MISSING'
+  | 'TOKEN_EXPIRED'
+  | 'TOKEN_INVALID'
+  | 'TOKEN_NOT_ACTIVE'
+  | 'TOKEN_ALGORITHM_REJECTED'
+  | 'TOKEN_PAYLOAD_INVALID'
+  | 'ROLE_INVALID';
+
+interface AuthError {
+  status: 401 | 403;
+  body: { error: string; code: AuthErrorCode };
+}
+
+/**
+ * Verify a JWT and translate the error into a structured AuthError.
+ * Each of the four canonical jsonwebtoken error classes maps to a
+ * distinct client-facing code so the front-end interceptor can route
+ * them to login / refresh / resend appropriately.
+ */
+export function verifyJwt(token: string): { payload?: JwtPayload; error?: AuthError } {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET, {
+      algorithms: ['HS256'],
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    }) as JwtPayload;
+    return { payload: decoded };
+  } catch (err) {
+    if (err instanceof jwt.TokenExpiredError) {
+      return { error: { status: 401, body: { error: 'Token expired', code: 'TOKEN_EXPIRED' } } };
+    }
+    if (err instanceof jwt.NotBeforeError) {
+      return { error: { status: 401, body: { error: 'Token not active', code: 'TOKEN_NOT_ACTIVE' } } };
+    }
+    if (err instanceof jwt.JsonWebTokenError) {
+      // "invalid signature", "jwt malformed", "invalid algorithm", etc.
+      const message = err.message.toLowerCase();
+      if (message.includes('algorithm')) {
+        return { error: { status: 401, body: { error: 'Unsupported algorithm', code: 'TOKEN_ALGORITHM_REJECTED' } } };
+      }
+      return { error: { status: 401, body: { error: 'Token invalid', code: 'TOKEN_INVALID' } } };
+    }
+    return { error: { status: 401, body: { error: 'Token invalid', code: 'TOKEN_INVALID' } } };
+  }
+}
+
 export function getAuthUserFromRequest(req: express.Request): AuthUser | null {
   if (AUTH_DISABLED) {
     const testRole = asUserRole(req.header('x-test-role')) || 'admin';
@@ -36,40 +83,55 @@ export function getAuthUserFromRequest(req: express.Request): AuthUser | null {
   const token = authorization.slice('Bearer '.length).trim();
   if (!token) return null;
 
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET, {
-      algorithms: ['HS256'],
-      issuer: JWT_ISSUER,
-      audience: JWT_AUDIENCE,
-    }) as JwtPayload;
-    const role = asUserRole(decoded.role);
-    if (!role || !decoded.sub || !decoded.name) {
-      return null;
-    }
-    return {
-      id: decoded.sub,
-      role,
-      email: decoded.email ?? null,
-      name: decoded.name,
-    };
-  } catch {
-    return null;
-  }
+  const { payload, error } = verifyJwt(token);
+  if (error || !payload) return null;
+
+  const role = asUserRole(payload.role);
+  if (!role || !payload.sub || !payload.name) return null;
+  return {
+    id: payload.sub,
+    role,
+    email: payload.email ?? null,
+    name: payload.name,
+  };
 }
 
 function createGetValidatedAuthUser(prisma: PrismaClient) {
-  return async function getValidatedAuthUserFromRequest(req: express.Request): Promise<AuthUser | null> {
-    const authUser = getAuthUserFromRequest(req);
-    if (!authUser) {
-      return null;
+  return async function getValidatedAuthUserFromRequest(
+    req: express.Request,
+  ): Promise<{ user: AuthUser | null; error?: AuthError }> {
+    if (AUTH_DISABLED) {
+      const testRole = asUserRole(req.header('x-test-role')) || 'admin';
+      return {
+        user: {
+          id: req.header('x-test-user-id') || 'test-user',
+          role: testRole,
+          email: req.header('x-test-email') || 'test@example.com',
+          name: req.header('x-test-name') || 'Test User',
+        },
+      };
     }
 
-    if (AUTH_DISABLED) {
-      return authUser;
+    const authorization = req.header('authorization');
+    if (!authorization || !authorization.startsWith('Bearer ')) {
+      return { user: null, error: { status: 401, body: { error: 'Missing token', code: 'TOKEN_MISSING' } } };
+    }
+    const token = authorization.slice('Bearer '.length).trim();
+    if (!token) {
+      return { user: null, error: { status: 401, body: { error: 'Missing token', code: 'TOKEN_MISSING' } } };
+    }
+    const { payload, error: jwtError } = verifyJwt(token);
+    if (jwtError || !payload) {
+      return { user: null, error: jwtError };
+    }
+
+    const role = asUserRole(payload.role);
+    if (!role || !payload.sub || !payload.name) {
+      return { user: null, error: { status: 401, body: { error: 'Token payload invalid', code: 'TOKEN_PAYLOAD_INVALID' } } };
     }
 
     const dbUser = await prisma.user.findUnique({
-      where: { id: authUser.id },
+      where: { id: payload.sub },
       select: {
         id: true,
         email: true,
@@ -79,19 +141,21 @@ function createGetValidatedAuthUser(prisma: PrismaClient) {
     });
 
     if (!dbUser) {
-      return null;
+      return { user: null, error: { status: 401, body: { error: 'User not found', code: 'TOKEN_PAYLOAD_INVALID' } } };
     }
 
-    const role = asUserRole(dbUser.role);
-    if (!role) {
-      return null;
+    const dbRole = asUserRole(dbUser.role);
+    if (!dbRole) {
+      return { user: null, error: { status: 401, body: { error: 'Invalid user role', code: 'ROLE_INVALID' } } };
     }
 
     return {
-      id: dbUser.id,
-      role,
-      email: dbUser.email,
-      name: dbUser.name,
+      user: {
+        id: dbUser.id,
+        role: dbRole,
+        email: dbUser.email,
+        name: dbUser.name,
+      },
     };
   };
 }
@@ -100,23 +164,25 @@ export function createAuthMiddleware(prisma: PrismaClient) {
   const getValidatedAuthUserFromRequest = createGetValidatedAuthUser(prisma);
 
   async function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
-    const authUser = await getValidatedAuthUserFromRequest(req);
-    if (!authUser) {
+    const { user, error } = await getValidatedAuthUserFromRequest(req);
+    if (!user || error) {
+      if (error) return res.status(error.status).json(error.body);
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    req.authUser = authUser;
+    req.authUser = user;
     next();
   }
 
   async function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
-    const authUser = await getValidatedAuthUserFromRequest(req);
-    if (!authUser) {
+    const { user, error } = await getValidatedAuthUserFromRequest(req);
+    if (!user || error) {
+      if (error) return res.status(error.status).json(error.body);
       return res.status(401).json({ error: 'Unauthorized' });
     }
-    if (authUser.role !== 'admin') {
+    if (user.role !== 'admin') {
       return res.status(403).json({ error: 'Admin access required' });
     }
-    req.authUser = authUser;
+    req.authUser = user;
     next();
   }
 
