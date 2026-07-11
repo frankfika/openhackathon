@@ -1,7 +1,7 @@
 import type { Express, RequestHandler } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { asString, ENABLE_WEB3_LOGIN, SUPPORTED_CHAINS } from '../config';
-import type { AuthUser, UserRole } from '../types';
+import type { AuthUser } from '../types';
 import { signTokenForUser } from '../utils/crypto';
 import {
   generateNonce,
@@ -90,7 +90,15 @@ export function registerWeb3AuthRoutes(
       // Verify the signature FIRST so that a bad signature does not burn
       // the nonce (P1-2 in synth-design-spec §2.3). Nonce is consumed only
       // after signature + domain + chain checks all pass.
-      const valid = await verifyWalletSignature({ address: normalized, chain, message, signature });
+      const chainIdForSig = typeof chainIdRaw === 'number' ? chainIdRaw : undefined;
+      const valid = await verifyWalletSignature({
+        address: normalized,
+        chain,
+        chainId: chainIdForSig,
+        message,
+        signature,
+        expectedDomain: req.headers.host,
+      });
       if (!valid) {
         return res.status(401).json({ error: 'Invalid signature', code: 'SIGNATURE_INVALID' });
       }
@@ -106,8 +114,7 @@ export function registerWeb3AuthRoutes(
         return res.status(401).json({ error: 'Invalid or expired nonce', code: 'NONCE_INVALID' });
       }
 
-      const chainId = typeof chainIdRaw === 'number' ? chainIdRaw : undefined;
-      const user = await getOrCreateUserFromWallet(prisma, { address: normalized, chain, chainId });
+      const user = await getOrCreateUserFromWallet(prisma, { address: normalized, chain, chainId: chainIdForSig });
 
       const userRole = asUserRole(user.role);
       if (!userRole) {
@@ -175,7 +182,15 @@ export function registerWeb3AuthRoutes(
       }
 
       // Verify signature first (P1-2: do not burn nonce on bad signature).
-      const valid = await verifyWalletSignature({ address: normalized, chain, message, signature });
+      const chainIdForLink = typeof chainIdRaw === 'number' ? chainIdRaw : undefined;
+      const valid = await verifyWalletSignature({
+        address: normalized,
+        chain,
+        chainId: chainIdForLink,
+        message,
+        signature,
+        expectedDomain: req.headers.host,
+      });
       if (!valid) {
         return res.status(401).json({ error: 'Invalid signature', code: 'SIGNATURE_INVALID' });
       }
@@ -189,8 +204,7 @@ export function registerWeb3AuthRoutes(
         return res.status(401).json({ error: 'Invalid or expired nonce', code: 'NONCE_INVALID' });
       }
 
-      const chainId = typeof chainIdRaw === 'number' ? chainIdRaw : undefined;
-      const result = await linkWalletToUser(prisma, { userId, address: normalized, chain, chainId });
+      const result = await linkWalletToUser(prisma, { userId, address: normalized, chain, chainId: chainIdForLink });
 
       if (result.error === 'wallet_taken') {
         return res.status(409).json({ error: 'This wallet is already linked to another account' });

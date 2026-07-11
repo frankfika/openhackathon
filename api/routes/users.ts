@@ -13,8 +13,9 @@ export function registerUserRoutes(
 ) {
   app.get('/api/users', requireAdmin, async (req, res) => {
     const { role } = req.query;
+    const roleFilter = asString(role);
     const users = await prisma.user.findMany({
-      where: role ? { role: String(role) } : {},
+      where: roleFilter ? { role: roleFilter as 'admin' | 'judge' } : {},
       select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true }
     });
     res.json(users);

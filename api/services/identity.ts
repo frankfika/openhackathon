@@ -6,6 +6,10 @@ import { USER_PUBLIC_FIELDS, sanitizeUser } from '../utils/sanitize';
 const USER_WITH_WALLETS_SELECT = {
   ...USER_PUBLIC_FIELDS,
   isWeb3User: true,
+  globalPoints: true,
+  participationCount: true,
+  judgeCount: true,
+  awardCount: true,
   wallets: { select: { address: true, chain: true, chainId: true, isPrimary: true, verifiedAt: true, lastUsedAt: true } },
 } as const;
 
@@ -83,8 +87,11 @@ export async function getOrCreateUserFromWallet(
   }
 
   // 3) Brand-new Web3 user. The role is configurable via
-  // WEB3_DEFAULT_ROLE (defaults to 'user' per spec P0-4).
-  const role = WEB3_DEFAULT_ROLE;
+  // WEB3_DEFAULT_ROLE (defaults to 'user' per spec P0-4). Coerce
+  // to the typed enum to satisfy Prisma's UserRole input.
+  const role = (['admin', 'judge', 'user'].includes(WEB3_DEFAULT_ROLE)
+    ? WEB3_DEFAULT_ROLE
+    : 'user') as 'admin' | 'judge' | 'user';
   const user = await prisma.user.create({
     data: {
       name: walletDisplayName(address, chain),
@@ -99,10 +106,10 @@ export async function getOrCreateUserFromWallet(
         },
       },
     },
-    select: USER_WITH_WALLETS_SELECT,
+    include: { wallets: { select: { address: true, chain: true, chainId: true, isPrimary: true, verifiedAt: true, lastUsedAt: true } } },
   });
 
-  return user;
+  return user as unknown as WalletUserResult;
 }
 
 /**

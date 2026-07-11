@@ -101,6 +101,10 @@ export function registerIdentityRoutes(app: Express, prisma: PrismaClient) {
         select: {
           ...USER_PUBLIC_FIELDS,
           isWeb3User: true,
+          globalPoints: true,
+          participationCount: true,
+          judgeCount: true,
+          awardCount: true,
           wallets: { select: { address: true, chain: true, isPrimary: true, verifiedAt: true } },
         },
       });
