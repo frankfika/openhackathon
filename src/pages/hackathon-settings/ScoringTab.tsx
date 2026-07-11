@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScoringCriteriaBuilder } from '@/components/ScoringCriteriaBuilder'
 import { ScoringCriterion } from '@/lib/types'
 import { useTranslation } from 'react-i18next'
+import { Sparkles } from 'lucide-react'
+import { AIGenerateModal, AICriterionSuggestion } from '@/components/ai/AIGenerateModal'
 
 export interface ScoringTabProps {
   isLocked: boolean
@@ -12,6 +15,7 @@ export interface ScoringTabProps {
   onSaveScoringCriteria: (criteria: ScoringCriterion[]) => void
   onSaveJudgesPerProject: () => Promise<void>
   updateMutationIsPending: boolean
+  hackathonId?: string
 }
 
 export function ScoringTab({
@@ -22,8 +26,23 @@ export function ScoringTab({
   onSaveScoringCriteria,
   onSaveJudgesPerProject,
   updateMutationIsPending,
+  hackathonId,
 }: ScoringTabProps) {
   const { t } = useTranslation()
+  const [isAICriteriaOpen, setIsAICriteriaOpen] = useState(false)
+
+  function applyCriteria(suggestions: AICriterionSuggestion[]) {
+    // Translate AI suggestions into the project's ScoringCriterion shape.
+    // weight stays on the criterion; maxScore defaults to 10.
+    const criteria: ScoringCriterion[] = suggestions.map((s, idx) => ({
+      id: `criterion_${idx + 1}_${Date.now().toString(36)}`,
+      name: s.name,
+      weight: s.weight,
+      maxScore: s.maxScore ?? 10,
+      sortOrder: s.sortOrder ?? idx + 1,
+    }))
+    onSaveScoringCriteria(criteria)
+  }
 
   return (
     <>
@@ -55,6 +74,18 @@ export function ScoringTab({
               {t('common.save_changes')}
             </Button>
           )}
+          {hackathonId && !isLocked && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1"
+              onClick={() => setIsAICriteriaOpen(true)}
+              data-testid="open-ai-criteria"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+              {t('ai.generate.open_button_criteria')}
+            </Button>
+          )}
         </div>
       </div>
       </fieldset>
@@ -69,6 +100,16 @@ export function ScoringTab({
         <ScoringCriteriaBuilder
           initialCriteria={scoringCriteria}
           onSave={onSaveScoringCriteria}
+        />
+      )}
+
+      {hackathonId && (
+        <AIGenerateModal
+          hackathonId={hackathonId}
+          mode="criteria"
+          open={isAICriteriaOpen}
+          onOpenChange={setIsAICriteriaOpen}
+          onApplyCriteria={applyCriteria}
         />
       )}
     </>

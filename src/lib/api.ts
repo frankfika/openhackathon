@@ -467,4 +467,60 @@ export const api = {
     return res.data
   },
 
+  // AI Document Generation (spec block 3 §3.2)
+  generateHackathonDescription: async (params: {
+    hackathonId: string
+    theme?: string
+    tracks?: string[]
+    prizePool?: string
+    submissionDeadline?: string
+    tone?: 'professional' | 'casual' | 'academic' | 'tech-evangelist'
+    language?: 'zh' | 'en' | 'both'
+  }) => {
+    const res = await axios.post(
+      `${API_URL}/ai/hackathons/${params.hackathonId}/generate-description`,
+      {
+        theme: params.theme,
+        tracks: params.tracks,
+        prizePool: params.prizePool,
+        submissionDeadline: params.submissionDeadline,
+        tone: params.tone,
+        language: params.language,
+      }
+    )
+    return res.data
+  },
+  generateHackathonNews: async (params: {
+    hackathonId: string
+    language?: 'zh' | 'en' | 'both'
+    tone?: 'professional' | 'casual' | 'academic' | 'tech-evangelist'
+    includeRunnerUps?: boolean
+  }) => {
+    const res = await axios.post(
+      `${API_URL}/ai/hackathons/${params.hackathonId}/generate-news`,
+      {
+        language: params.language,
+        tone: params.tone,
+        includeRunnerUps: params.includeRunnerUps,
+      }
+    )
+    return res.data
+  },
+  suggestHackathonCriteria: async (params: {
+    hackathonId: string
+    theme?: string
+    focus?: string
+    criterionCount?: number
+  }) => {
+    const res = await axios.post(
+      `${API_URL}/ai/hackathons/${params.hackathonId}/suggest-criteria`,
+      {
+        theme: params.theme,
+        focus: params.focus,
+        criterionCount: params.criterionCount,
+      }
+    )
+    return res.data
+  },
+
 }

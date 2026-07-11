@@ -399,6 +399,7 @@ export function HackathonSettings() {
             markdownDoc={markdownDoc}
             uploadMarkdownMutation={uploadMarkdownMutation}
             deleteMarkdownMutation={deleteMarkdownMutation}
+            hackathonId={id}
           />
         </TabsContent>
 
@@ -427,6 +428,7 @@ export function HackathonSettings() {
               await updateMutation.mutateAsync({ judgesPerProject })
             }}
             updateMutationIsPending={updateMutation.isPending}
+            hackathonId={id}
           />
         </TabsContent>
 

@@ -352,4 +352,64 @@ describe('api client', () => {
       })
     })
   })
+
+  describe('AI document generation (block 3 §3.2)', () => {
+    it('generateHackathonDescription posts to /api/ai/hackathons/:id/generate-description', async () => {
+      mockedAxios.post.mockResolvedValue({ data: { draft: { zh: 'x', en: 'y' } } })
+
+      const result = await api.generateHackathonDescription({
+        hackathonId: 'h1',
+        theme: 'web3',
+        tracks: ['DePIN'],
+        prizePool: '50,000 USDC',
+        tone: 'professional',
+        language: 'both',
+      })
+
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        '/api/ai/hackathons/h1/generate-description',
+        expect.objectContaining({
+          theme: 'web3',
+          tracks: ['DePIN'],
+          prizePool: '50,000 USDC',
+          tone: 'professional',
+          language: 'both',
+        })
+      )
+      expect(result.draft.zh).toBe('x')
+      expect(result.draft.en).toBe('y')
+    })
+
+    it('generateHackathonNews posts to /api/ai/hackathons/:id/generate-news', async () => {
+      mockedAxios.post.mockResolvedValue({ data: { draft: {}, projects: ['p1'] } })
+
+      await api.generateHackathonNews({
+        hackathonId: 'h1',
+        language: 'both',
+        tone: 'professional',
+        includeRunnerUps: true,
+      })
+
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        '/api/ai/hackathons/h1/generate-news',
+        expect.objectContaining({ includeRunnerUps: true })
+      )
+    })
+
+    it('suggestHackathonCriteria posts to /api/ai/hackathons/:id/suggest-criteria', async () => {
+      mockedAxios.post.mockResolvedValue({ data: { suggestions: [] } })
+
+      await api.suggestHackathonCriteria({
+        hackathonId: 'h1',
+        theme: 't',
+        focus: 'f',
+        criterionCount: 6,
+      })
+
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        '/api/ai/hackathons/h1/suggest-criteria',
+        expect.objectContaining({ criterionCount: 6 })
+      )
+    })
+  })
 })

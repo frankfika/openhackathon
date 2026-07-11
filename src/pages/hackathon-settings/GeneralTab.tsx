@@ -10,9 +10,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { Loader2, Check, FileText, BookOpenText, Trash2, ChevronDown, Upload } from 'lucide-react'
+import { Loader2, Check, FileText, BookOpenText, Trash2, ChevronDown, Upload, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
+import { AIGenerateModal } from '@/components/ai/AIGenerateModal'
 
 const GRADIENT_PRESETS = [
   { name: 'Violet Fusion', value: 'from-violet-600/20 via-fuchsia-500/10 to-indigo-600/20' },
@@ -60,6 +61,8 @@ export interface GeneralTabProps {
   markdownDoc: MarkdownDoc | null | undefined
   uploadMarkdownMutation: UseMutationResult<unknown, Error, { fileName?: string; content: string; isBase64?: boolean }>
   deleteMarkdownMutation: UseMutationResult<unknown, Error, void>
+  /** Hackathon id, used to scope AI doc-gen requests. */
+  hackathonId?: string
 }
 
 export function GeneralTab({
@@ -76,6 +79,7 @@ export function GeneralTab({
   markdownDoc,
   uploadMarkdownMutation,
   deleteMarkdownMutation,
+  hackathonId,
 }: GeneralTabProps) {
   const { t } = useTranslation()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -83,7 +87,9 @@ export function GeneralTab({
   const [isDragging, setIsDragging] = useState(false)
   const [isUploadingSuccessHintImage, setIsUploadingSuccessHintImage] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [isAIDescriptionOpen, setIsAIDescriptionOpen] = useState(false)
 
+  const watchedValues = watch()
   const watchedSubmissionSuccessHintImageUrl = watch('submissionSuccessHintImageUrl')
 
   const processMarkdownFile = useCallback(async (file: File) => {
@@ -202,9 +208,24 @@ export function GeneralTab({
           </div>
 
           <div className="space-y-3 rounded-2xl border border-border/60 p-4">
-            <div className="flex items-center gap-2">
-              <BookOpenText className="h-4 w-4 text-primary" />
-              <Label>{t('settings.docs_section', '赛事详情内容')}</Label>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <BookOpenText className="h-4 w-4 text-primary" />
+                <Label>{t('settings.docs_section', '赛事详情内容')}</Label>
+              </div>
+              {hackathonId && !isLocked && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => setIsAIDescriptionOpen(true)}
+                  data-testid="open-ai-description"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                  {t('ai.generate.open_button_description')}
+                </Button>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">{t('settings.docs_section_desc', '以下两种方式选其一。本地文档优先展示，外链作为备用。')}</p>
 
@@ -446,6 +467,32 @@ export function GeneralTab({
           </fieldset>
         </form>
       </CardContent>
+
+      {hackathonId && (
+        <AIGenerateModal
+          hackathonId={hackathonId}
+          mode="description"
+          open={isAIDescriptionOpen}
+          onOpenChange={setIsAIDescriptionOpen}
+          initialTheme={watchedValues.tagline || ''}
+          initialTracks={[]}
+          initialPrizePool={watchedValues.prizePool || ''}
+          initialDeadline={watchedValues.endAt ? `${watchedValues.endAt}T23:59` : ''}
+          onApplyDraft={async (draft) => {
+            // Persist the AI-generated markdown to the same endpoint that
+            // the file upload uses, so the existing "Last updated" badge
+            // and preview flow pick it up. When the backend grows the
+            // new `descriptionZh` / `descriptionEn` fields, this can be
+            // switched to `api.updateHackathon(hackathonId, { ... })`.
+            const content = draft.zh || draft.en || ''
+            if (!content) return
+            await uploadMarkdownMutation.mutateAsync({
+              fileName: 'ai-generated.md',
+              content,
+            })
+          }}
+        />
+      )}
     </Card>
   )
 }

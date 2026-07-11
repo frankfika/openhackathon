@@ -5,7 +5,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Sparkles, Loader2, CheckCircle2, AlertCircle, Wand2, Brain, Shield, FileText } from 'lucide-react'
+import { Sparkles, Loader2, CheckCircle2, AlertCircle, Wand2, Brain, Shield, FileText, Newspaper, ListChecks } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -14,6 +14,8 @@ import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { useActiveHackathon } from '@/lib/active-hackathon'
+import { AIGenerateModal } from '@/components/ai/AIGenerateModal'
+import { useTranslation } from 'react-i18next'
 
 interface ConsistencyJudge {
   judgeId: string
@@ -32,10 +34,12 @@ interface ModerationFlag {
 }
 
 export function AIFeatures() {
+  const { t } = useTranslation()
   const { activeHackathon } = useActiveHackathon()
   const queryClient = useQueryClient()
   const [testContent, setTestContent] = useState('')
   const [generatedContent, setGeneratedContent] = useState('')
+  const [aiMode, setAiMode] = useState<'description' | 'news' | 'criteria' | null>(null)
 
   // 批量分析项目
   const batchAnalyzeMutation = useMutation({
@@ -382,6 +386,64 @@ AI_MODEL=claude-sonnet-4-20250514`}
           </p>
         </CardContent>
       </Card>
+
+      {/* AI doc gen entry points — also reachable from this console for users who
+          don't have a current hackathon open. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-purple-500" />
+            AI 文档生成
+          </CardTitle>
+          <CardDescription>使用 AI 起草赛事说明、获奖新闻稿、评分维度建议</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setAiMode('description')}
+            disabled={!activeHackathon?.id}
+            className="gap-1"
+            data-testid="ai-features-description"
+          >
+            <FileText className="h-4 w-4" />
+            {t('ai.generate.open_button_description')}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setAiMode('news')}
+            disabled={!activeHackathon?.id}
+            className="gap-1"
+            data-testid="ai-features-news"
+          >
+            <Newspaper className="h-4 w-4" />
+            {t('ai.generate.open_button_news')}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setAiMode('criteria')}
+            disabled={!activeHackathon?.id}
+            className="gap-1"
+            data-testid="ai-features-criteria"
+          >
+            <ListChecks className="h-4 w-4" />
+            {t('ai.generate.open_button_criteria')}
+          </Button>
+          {!activeHackathon?.id && (
+            <p className="text-xs text-muted-foreground w-full">请先选择当前黑客松。</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {aiMode && activeHackathon?.id && (
+        <AIGenerateModal
+          hackathonId={activeHackathon.id}
+          mode={aiMode}
+          open
+          onOpenChange={(o) => {
+            if (!o) setAiMode(null)
+          }}
+        />
+      )}
     </div>
   )
 }

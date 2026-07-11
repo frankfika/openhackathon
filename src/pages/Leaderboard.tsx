@@ -13,7 +13,8 @@ import {
 } from '@/components/ui/select'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 import { useAuth } from '@/lib/auth'
-import { Trophy, Medal, Award, Star, Loader2, Pencil, Save, Eye, EyeOff, Plus, X } from 'lucide-react'
+import { AIGenerateModal } from '@/components/ai/AIGenerateModal'
+import { Trophy, Medal, Award, Star, Loader2, Pencil, Save, Eye, EyeOff, Plus, X, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
@@ -45,6 +46,8 @@ export function Leaderboard() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([])
   const [published, setPublished] = useState(false)
   const [submissionFilters, setSubmissionFilters] = useState<Record<string, string>>({})
+  const [isAINewsOpen, setIsAINewsOpen] = useState(false)
+  const [generatedNews, setGeneratedNews] = useState<{ zh?: string; en?: string } | null>(null)
 
   const filterableFields = useMemo(
     () => getFilterableSubmissionFields(activeHackathon?.submissionSchema),
@@ -250,10 +253,21 @@ export function Leaderboard() {
             {isAdmin && (
               <div className="flex gap-2">
                 {!editing ? (
-                  <Button variant="outline" onClick={() => setEditing(true)}>
-                    <Pencil className="h-4 w-4 mr-2" />
-                    {t('leaderboard.edit_rankings')}
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsAINewsOpen(true)}
+                      className="gap-1"
+                      data-testid="open-ai-news"
+                    >
+                      <Sparkles className="h-4 w-4 text-purple-500" />
+                      {t('ai.generate.open_button_news')}
+                    </Button>
+                    <Button variant="outline" onClick={() => setEditing(true)}>
+                      <Pencil className="h-4 w-4 mr-2" />
+                      {t('leaderboard.edit_rankings')}
+                    </Button>
+                  </>
                 ) : (
                   <>
                     <Button variant="ghost" onClick={() => setEditing(false)}>{t('common.cancel')}</Button>
@@ -421,6 +435,42 @@ export function Leaderboard() {
           )}
         </div>
       </section>
+
+      {isAdmin && activeHackathon?.id && (
+        <AIGenerateModal
+          hackathonId={activeHackathon.id}
+          mode="news"
+          open={isAINewsOpen}
+          onOpenChange={setIsAINewsOpen}
+          onApplyDraft={async (draft) => {
+            // The spec ties news to new `Hackathon.newsZh` / `newsEn`
+            // fields that the backend hasn't shipped yet. For now we
+            // surface the generated draft in a sticky banner on the
+            // page so the user can copy or paste it into the public
+            // announcement. When the backend field lands, switch this
+            // to a `api.updateHackathon(activeHackathon.id, {...})` call.
+            setGeneratedNews(draft)
+          }}
+        />
+      )}
+
+      {generatedNews && (
+        <div className="container pb-8">
+          <Card className="border-dashed">
+            <CardContent className="p-4 space-y-2">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                {t('ai.generate.title')}
+              </p>
+              {generatedNews.zh && (
+                <pre className="whitespace-pre-wrap text-sm">{generatedNews.zh}</pre>
+              )}
+              {generatedNews.en && (
+                <pre className="whitespace-pre-wrap text-sm border-t pt-2">{generatedNews.en}</pre>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
