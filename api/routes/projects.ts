@@ -60,7 +60,8 @@ export function registerProjectRoutes(
           take: pageSizeNum,
           orderBy: { createdAt: 'desc' },
           include: {
-            user: true,
+            // Don't include `user: true` — that returns the password hash.
+            user: { select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true } },
             assignments: {
               select: {
                 id: true,
@@ -81,7 +82,8 @@ export function registerProjectRoutes(
     const projects = await prisma.project.findMany({
       where,
       include: lite ? undefined : {
-        user: true,
+        // Don't include `user: true` — that returns the password hash.
+        user: { select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true } },
         assignments: {
           select: {
             id: true,
@@ -101,9 +103,14 @@ export function registerProjectRoutes(
     const project = await prisma.project.findUnique({
       where: { id: req.params.id },
       include: {
-        user: true,
+        user: {
+          select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true },
+        },
         assignments: {
-          include: { judge: true, scores: true }
+          // Do NOT include `judge: true` here — this endpoint is public (no auth
+          // guard above) and `judge: true` would leak every assigned judge's
+          // password hash to anyone who knows or guesses a project id.
+          include: { judge: { select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true } }, scores: true }
         },
         hackathon: { include: { scoringCriteria: true } },
       }

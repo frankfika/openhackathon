@@ -7,7 +7,7 @@
 
 ### 从赛事创建到排行榜发布，一站式管理黑客松
 
-![Version](https://img.shields.io/badge/Version-2.1-blue?style=flat-square)
+![Version](https://img.shields.io/badge/Version-2.2-blue?style=flat-square)
 ![Stack](https://img.shields.io/badge/Stack-React%20%7C%20Express%20%7C%20PostgreSQL-1f6feb?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 ![Tests](https://img.shields.io/badge/Tests-154%20passed-2ea44f?style=flat-square)
@@ -275,6 +275,14 @@ node scripts/capture-screenshots.mjs
 ---
 
 ## 📝 更新日志
+
+### v2.2 (2026-07)
+- 🔒 **安全加固**：修复 8 处密码哈希泄露漏洞。`/api/projects/:id`（公开端点，无鉴权）和 7 个 admin/judge 端点此前通过 Prisma 的 `include: { judge: true }` / `user: true` 把整张 `User` 行返回给前端，包括 `password` bcrypt 哈希。已全部改为显式 `select` 白名单字段（`id, email, name, role, avatarUrl, createdAt`），保留全字段的 `auth.ts` / `web3-auth.ts` 仍走 `sanitizeUser` 兜底。
+- 🛣️ **管理后台补全路由**：`/admin/activity`（操作日志）和 `/admin/account`（账户设置）此前路由外壳已声明但 `lazy()` import 未接，现在可正常访问 `ActivityLogPage` / `Account` 页面。
+- 🩹 **状态显示同步**：公共 header 状态徽章与 hero badge 现在统一在 `endAt` 过零点时显示 `Completed`（之前会继续显示 `ACTIVE` 直到管理员手动改 status 字段）。
+- 🩹 **JudgingDetail 表单初始化**：评分页现在等 `assignment` 和 `hackathon`（含 `scoringCriteria`）双双加载完才挂载，避免首屏空 ScoreDraft 导致分数输入框看起来是空的。
+- 🩹 **judge logout 按钮**：补 `type="button"`，避免在某些父级表单里被当成 submit 误触发。
+- 🛠️ **代码优化**：`JudgingDetail` 把"初始回填分数"从 `useEffect` 挪到 `useState` 的 lazy initializer，只在 `assignment?.id` 变化时同步 comment，避免初次挂载时的"空 → 回填"闪烁。
 
 ### v2.1 (2026-06)
 - ✨ AI 增强系统：项目质量评估、评委助手、评分一致性分析、内容审核、智能生成、抄袭检测

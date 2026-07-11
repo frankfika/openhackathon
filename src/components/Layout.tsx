@@ -15,6 +15,13 @@ export function Layout() {
   const { settings } = useSiteBranding()
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  // Mirror Landing.tsx:55-63 — if the configured endAt is already in the past
+  // the public header chip should agree with the hero badge ("Completed"
+  // instead of "ACTIVE"). Pure-frontend patch, no schema change.
+  const hasEndedByClock = Boolean(activeHackathon.endAt) && new Date(activeHackathon.endAt).getTime() < Date.now()
+  const headerStatus: string =
+    activeHackathon.status === 'active' && hasEndedByClock ? 'completed' : activeHackathon.status
+
   const navItems = useMemo(
     () => [
       { to: '/', label: t('nav.home'), exact: true },
@@ -76,7 +83,7 @@ export function Layout() {
             <CalendarDays className="h-3.5 w-3.5" />
             <span className="max-w-[220px] truncate">{activeHackathon.title}</span>
             <span className="rounded-full bg-foreground px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-background dark:bg-white dark:text-slate-900">
-              {t(`landing.status.${activeHackathon.status}`)}
+              {t(`landing.status.${headerStatus}`)}
             </span>
           </div>
 
@@ -100,7 +107,7 @@ export function Layout() {
             <div className="mb-3 flex items-center justify-between rounded-xl border border-border/50 bg-background/70 px-3 py-2 text-xs text-muted-foreground backdrop-blur dark:bg-slate-900/70">
               <span className="truncate">{activeHackathon.title}</span>
               <span className="rounded-full bg-foreground px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-background dark:bg-white dark:text-slate-900">
-                {t(`landing.status.${activeHackathon.status}`)}
+                {t(`landing.status.${headerStatus}`)}
               </span>
             </div>
 

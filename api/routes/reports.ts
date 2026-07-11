@@ -87,7 +87,9 @@ export function registerReportRoutes(
       },
       include: {
         project: true,
-        judge: true,
+        // Don't include `judge: true` — that returns the full user row
+        // including the password hash. Reports only need the public fields.
+        judge: { select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true } },
         scores: true,
       }
     });

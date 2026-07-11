@@ -94,7 +94,13 @@ export function registerScoreRoutes(
       return tx.assignment.update({
         where: { id: assignmentId },
         data: { status: status || 'completed', comment, totalScore },
-        include: { project: true, judge: true, scores: true },
+        include: {
+          project: true,
+          judge: {
+            select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true }
+          },
+          scores: true,
+        },
       });
     });
 

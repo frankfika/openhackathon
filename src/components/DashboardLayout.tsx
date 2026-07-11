@@ -278,7 +278,7 @@ export function DashboardLayout() {
             </div>
             <ThemeLanguageSwitcher />
           </div>
-          <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={handleSignOut}>
+          <Button type="button" variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={handleSignOut}>
             <LogOut className="mr-2 h-3.5 w-3.5" />
             {t('nav.logout')}
           </Button>

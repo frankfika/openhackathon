@@ -52,9 +52,15 @@ function HeroSection() {
   const { activeHackathon: h } = useActiveHackathon()
 
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0 })
-  const targetDate = h.status === 'active' ? h.endAt : h.startAt
+  // Treat a hackathon whose endAt has already passed as effectively completed,
+  // even if the admin hasn't flipped the status field. This keeps the public
+  // hero consistent (status badge + countdown + "ended" copy all agree).
+  const hasEndedByClock = Boolean(h.endAt) && new Date(h.endAt).getTime() < Date.now()
+  const effectiveStatus: 'draft' | 'upcoming' | 'active' | 'judging' | 'completed' =
+    h.status === 'active' && hasEndedByClock ? 'completed' : h.status
+  const targetDate = effectiveStatus === 'active' ? h.endAt : h.startAt
   const [countdownExpired, setCountdownExpired] = useState(false)
-  const isEnded = h.status === 'completed' || (h.status === 'active' && countdownExpired)
+  const isEnded = effectiveStatus === 'completed' || (effectiveStatus === 'active' && countdownExpired)
   const displayTitle = h.title && h.title !== 'Loading…' ? h.title : 'OpenHackathon'
   const displayTagline = h.tagline || 'A focused hackathon workspace for builders, judges, and organizers.'
   const hasSchedule = Boolean(h.startAt && h.endAt)
@@ -82,7 +88,7 @@ function HeroSection() {
 
   const stats = [
     { value: h.prizePool || 'Live', label: t('landing.stats.prizes'), icon: Gift },
-    { value: h.status === 'active' ? 'Open' : t('landing.status.' + h.status, h.status), label: t('landing.hero.submit_project'), icon: CheckCircle2 },
+    { value: effectiveStatus === 'active' ? 'Open' : t('landing.status.' + effectiveStatus, effectiveStatus), label: t('landing.hero.submit_project'), icon: CheckCircle2 },
     { value: h.city || 'Online', label: h.city ? t('common.location', 'Location') : 'Global access', icon: MapPin },
   ]
 
@@ -139,11 +145,11 @@ function HeroSection() {
           <span
             className={cn(
               'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] backdrop-blur-md',
-              statusColor[h.status] || statusColor.draft
+              statusColor[effectiveStatus] || statusColor.draft
             )}
           >
             <Sparkles className="h-3.5 w-3.5" />
-            {t('landing.status.' + h.status, h.status)}
+            {t('landing.status.' + effectiveStatus, effectiveStatus)}
           </span>
         </motion.div>
 
@@ -215,7 +221,7 @@ function HeroSection() {
               <CountdownBlock value={countdown.minutes} label={t('landing.hero.countdown_minutes')} />
             </div>
             <p className="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              {h.status === 'active' ? t('landing.hero.countdown_to_submission') : t('landing.hero.countdown_to_start')}
+              {effectiveStatus === 'active' ? t('landing.hero.countdown_to_submission') : t('landing.hero.countdown_to_start')}
             </p>
           </motion.div>
         ) : hasSchedule ? (

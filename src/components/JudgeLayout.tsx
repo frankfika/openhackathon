@@ -71,7 +71,7 @@ export function JudgeLayout() {
               <div className="text-sm font-medium">{user?.name}</div>
               <div className="text-xs text-muted-foreground">{t('auth.judge')}</div>
             </div>
-            <Button variant="outline" className="hidden rounded-full md:inline-flex" onClick={handleLogout}>
+            <Button type="button" variant="outline" className="hidden rounded-full md:inline-flex" onClick={handleLogout}>
               <LogOut className="mr-2 h-4 w-4" />
               {t('nav.logout')}
             </Button>
@@ -97,7 +97,7 @@ export function JudgeLayout() {
                   {item.label}
                 </Link>
               ))}
-              <Button variant="outline" className="justify-center" onClick={handleLogout}>
+              <Button type="button" variant="outline" className="justify-center" onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
                 {t('nav.logout')}
               </Button>

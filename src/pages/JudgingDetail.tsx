@@ -18,7 +18,6 @@ import { cn } from '@/lib/utils'
 import {
   clampScore,
   countUnscoredCriteria,
-  createEmptyScoreDraft,
   isScoreDraftComplete,
   scoreDraftToPayload,
   scoresToDraft,
@@ -68,13 +67,10 @@ export function JudgingDetail() {
     return getVisibleSubmissionDataEntries(project?.submissionData, hackathon?.submissionSchema, t)
   }, [project?.submissionData, hackathon?.submissionSchema, t])
 
-  // Initialize scores from existing scores
-  const [scores, setScores] = useState<ScoreDraft>(() => {
-    if (assignment?.scores) {
-      return scoresToDraft(assignment.scores)
-    }
-    return createEmptyScoreDraft(scoringCriteria)
-  })
+  // Initialize scores from the API response. The loading guard below ensures
+  // this lazy initializer only runs once `assignment` is non-null, so the
+  // returned ScoreDraft is fully populated when the form first mounts.
+  const [scores, setScores] = useState<ScoreDraft>(() => scoresToDraft(assignment?.scores))
 
   const [comment, setComment] = useState(assignment?.comment || '')
 
@@ -106,19 +102,14 @@ export function JudgingDetail() {
     },
   })
 
-  // Update scores when assignment data loads
+  // When the user navigates between review pages (different `assignment.id`),
+  // re-seed the form with the new assignment's scores/comment. This effect no
+  // longer carries the "initial fill" responsibility — the loading guard + the
+  // lazy useState initializer above handle that.
   React.useEffect(() => {
-    if (assignment?.scores) {
-      setScores(scoresToDraft(assignment.scores))
-    } else if (scoringCriteria.length > 0) {
-      setScores(createEmptyScoreDraft(scoringCriteria))
-    }
-    if (assignment?.comment) {
-      setComment(assignment.comment)
-    } else {
-      setComment('')
-    }
-  }, [assignment, scoringCriteria])
+    setScores(scoresToDraft(assignment?.scores))
+    setComment(assignment?.comment || '')
+  }, [assignment?.id])
 
   React.useEffect(() => {
     if (!assignment || assignment.status !== 'pending') return
@@ -138,7 +129,11 @@ export function JudgingDetail() {
 
   const isLoadingProject = assignment ? false : isLoadingProjectFromDirectId
 
-  if (isLoadingAssignment || isLoadingProject) {
+  // Wait for BOTH assignment and hackathon (scoring criteria) before mounting
+  // the form. This guarantees `useState(() => scoresToDraft(assignment.scores))`
+  // above runs against a real, populated `assignment` and the form is never
+  // shown with an empty ScoreDraft.
+  if (isLoadingAssignment || isLoadingProject || !assignment || !hackathon || scoringCriteria.length === 0) {
     return <div>{t('common.loading')}</div>
   }
 

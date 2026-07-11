@@ -7,7 +7,7 @@
 
 ### From hackathon creation to leaderboard publishing — all in one place
 
-![Version](https://img.shields.io/badge/Version-2.1-blue?style=flat-square)
+![Version](https://img.shields.io/badge/Version-2.2-blue?style=flat-square)
 ![Stack](https://img.shields.io/badge/Stack-React%20%7C%20Express%20%7C%20PostgreSQL-1f6feb?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 ![Tests](https://img.shields.io/badge/Tests-154%20passed-2ea44f?style=flat-square)
@@ -275,6 +275,14 @@ node scripts/capture-screenshots.mjs
 ---
 
 ## 📝 Changelog
+
+### v2.2 (2026-07)
+- 🔒 **Security hardening**: closed 8 password-hash leaks. The public `GET /api/projects/:id` endpoint and 7 admin/judge endpoints previously used Prisma's `include: { judge: true }` / `user: true` which returned the full `User` row, including the bcrypt `password` hash. All of them now use an explicit `select` whitelist (`id, email, name, role, avatarUrl, createdAt`). `auth.ts` and `web3-auth.ts` still use `sanitizeUser` as a second-line defense.
+- 🛣️ **Admin route completion**: `/admin/activity` (ActivityLog) and `/admin/account` (Account) had their route shells declared but the `lazy()` imports were never wired in — both now render correctly.
+- 🩹 **Status display sync**: the public header status chip and hero badge now both flip to `Completed` once `endAt` is in the past (previously kept showing `ACTIVE` until the admin manually flipped the status field).
+- 🩹 **JudgingDetail form init**: the scoring page now waits for both `assignment` and `hackathon` (with `scoringCriteria`) before mounting, so the form never paints with an empty `ScoreDraft` and the score inputs look populated after navigation.
+- 🩹 **Judge logout button**: added `type="button"` so it isn't accidentally interpreted as a form submit by any wrapping form.
+- 🛠️ **Refactor**: `JudgingDetail` moved initial score backfill from `useEffect` to `useState` lazy initializer, and the effect now only syncs on `assignment?.id` change — eliminates the empty-then-fill flash on first mount.
 
 ### v2.1 (2026-06)
 - ✨ AI enhancement system: project quality assessment, judge assistant, scoring consistency analysis, content moderation, smart generation, plagiarism detection

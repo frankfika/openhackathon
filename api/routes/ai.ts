@@ -164,7 +164,10 @@ export function registerAIRoutes(
           totalScore: { not: null },
         },
         include: {
-          judge: true,
+          // Don't include `judge: true` — that returns the full user row
+          // including the password hash. This endpoint is admin-only but the
+          // password still shouldn't be on the wire.
+          judge: { select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true } },
         },
       })
 
@@ -378,7 +381,10 @@ export function registerAIRoutes(
         where: { id: assignmentId },
         include: {
           project: true,
-          judge: true,
+          // `judge: true` would leak the judge's password hash to whoever
+          // queries this endpoint (admin sees any judge, assigned judge
+          // sees themselves). Strip the password column explicitly.
+          judge: { select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true } },
         },
       })
 

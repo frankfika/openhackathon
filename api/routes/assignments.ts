@@ -28,7 +28,9 @@ export function registerAssignmentRoutes(
       },
       include: lite ? undefined : {
         project: true,
-        judge: true,
+        judge: {
+          select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true },
+        },
         scores: true,
       }
     });
@@ -41,7 +43,9 @@ export function registerAssignmentRoutes(
       where: { id: req.params.id },
       include: {
         project: true,
-        judge: true,
+        judge: {
+          select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true },
+        },
         scores: true,
       },
     });
@@ -77,7 +81,9 @@ export function registerAssignmentRoutes(
       data: { status: String(status) },
       include: {
         project: true,
-        judge: true,
+        judge: {
+          select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true },
+        },
         scores: true,
       }
     });
@@ -165,7 +171,7 @@ export function registerAssignmentRoutes(
               where: { projectId_judgeId: { projectId, judgeId } },
               update: {},
               create: { projectId, judgeId, status: 'pending' },
-              include: { project: true, judge: true, scores: true },
+              include: { project: true, judge: { select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true } }, scores: true },
             });
             rows.push(assignment);
           }
@@ -248,7 +254,7 @@ export function registerAssignmentRoutes(
 
         const createdAssignments = await tx.assignment.findMany({
           where: { id: { in: assignmentIds } },
-          include: { project: true, judge: true, scores: true },
+          include: { project: true, judge: { select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true } }, scores: true },
         });
         const assignmentMap = new Map(createdAssignments.map((assignment) => [assignment.id, assignment]));
 
@@ -323,7 +329,7 @@ export function registerAssignmentRoutes(
     try {
       const assignment = await prisma.assignment.findUnique({
         where: { id: req.params.id },
-        include: { scores: { select: { id: true }, take: 1 }, project: true, judge: true },
+        include: { scores: { select: { id: true }, take: 1 }, project: true, judge: { select: { id: true, email: true, name: true, role: true, avatarUrl: true, createdAt: true } } },
       });
       if (!assignment) {
         return res.status(404).json({ error: 'Assignment not found' });

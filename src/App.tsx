@@ -40,6 +40,7 @@ const SetupPage = lazy(() => import('./pages/SetupPage').then((mod) => ({ defaul
 const GlobalLeaderboard = lazy(() => import('./pages/GlobalLeaderboard').then((mod) => ({ default: mod.GlobalLeaderboard })))
 const UserProfile = lazy(() => import('./pages/UserProfile').then((mod) => ({ default: mod.UserProfile })))
 const AIFeatures = lazy(() => import('./pages/AIFeatures').then((mod) => ({ default: mod.AIFeatures })))
+const Account = lazy(() => import('./pages/Account').then((mod) => ({ default: mod.Account })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -252,6 +253,22 @@ function AppRoutes() {
               element={
                 <ErrorBoundary>
                   <Settings />
+                </ErrorBoundary>
+              }
+            />
+            <Route
+              path="activity"
+              element={
+                <ErrorBoundary>
+                  <ActivityLog />
+                </ErrorBoundary>
+              }
+            />
+            <Route
+              path="account"
+              element={
+                <ErrorBoundary>
+                  <Account />
                 </ErrorBoundary>
               }
             />
