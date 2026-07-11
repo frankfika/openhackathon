@@ -8,9 +8,27 @@
  * 500. This guards the auth + error-mapping contract.
  */
 import bcrypt from 'bcryptjs';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import jwt from 'jsonwebtoken';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
-import { app, prisma } from '../server';
+import { JWT_AUDIENCE, JWT_ISSUER, JWT_SECRET } from '../config';
+
+let app: typeof import('../server').app;
+let prisma: typeof import('../server').prisma;
+
+// Force the real auth path. The vitest config sets AUTH_DISABLED=true
+// so other suites can call protected routes with x-test-* headers, but
+// this suite needs to exercise the actual JWT 401 branch and use a
+// real signed token for the authenticated tests. We override the env
+// var and re-import the server so the config module re-evaluates
+// AUTH_DISABLED at import time.
+beforeAll(async () => {
+  process.env.AUTH_DISABLED = 'false';
+  vi.resetModules();
+  const serverModule = await import('../server');
+  app = serverModule.app;
+  prisma = serverModule.prisma;
+});
 
 afterAll(async () => {
   await prisma.$disconnect();
@@ -25,6 +43,15 @@ beforeEach(async () => {
   await prisma.hackathon.deleteMany();
   await prisma.user.deleteMany();
 });
+
+function makeAdminToken(userId: string) {
+  return jwt.sign({ sub: userId, role: 'admin', name: 'AI Test Admin' }, JWT_SECRET, {
+    algorithm: 'HS256',
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+    expiresIn: '5m',
+  });
+}
 
 async function seedAdminAndHackathon() {
   const admin = await prisma.user.create({
@@ -46,7 +73,7 @@ async function seedAdminAndHackathon() {
       submissionSchema: {},
     },
   });
-  return { admin, hackathon };
+  return { admin, hackathon, token: makeAdminToken(admin.id) };
 }
 
 describe('AI doc generation endpoints', () => {
@@ -80,11 +107,10 @@ describe('AI doc generation endpoints', () => {
 
   describe('LLM failure paths (no API key in test env)', () => {
     it('returns LLM_INVALID_KEY on generate-description when no AI_API_KEY is set', async () => {
-      const { hackathon } = await seedAdminAndHackathon();
+      const { hackathon, token } = await seedAdminAndHackathon();
       const res = await request(app)
         .post(`/api/ai/hackathons/${hackathon.id}/generate-description`)
-        .set('x-test-role', 'admin')
-        .set('x-test-user-id', 'admin-test-user')
+        .set('Authorization', `Bearer ${token}`)
         .send({ language: 'zh', theme: 'AI agents' });
       expect([500, 502]).toContain(res.status);
       expect(['LLM_INVALID_KEY', 'LLM_FAILED']).toContain(res.body.code);
@@ -100,11 +126,10 @@ describe('AI doc generation endpoints', () => {
     });
 
     it('returns LLM_INVALID_KEY on suggest-criteria when no AI_API_KEY is set', async () => {
-      const { hackathon } = await seedAdminAndHackathon();
+      const { hackathon, token } = await seedAdminAndHackathon();
       const res = await request(app)
         .post(`/api/ai/hackathons/${hackathon.id}/suggest-criteria`)
-        .set('x-test-role', 'admin')
-        .set('x-test-user-id', 'admin-test-user')
+        .set('Authorization', `Bearer ${token}`)
         .send({ criterionCount: 6, theme: 'AI', focus: 'innovation' });
       expect([500, 502]).toContain(res.status);
       expect(['LLM_INVALID_KEY', 'LLM_FAILED']).toContain(res.body.code);
@@ -113,11 +138,10 @@ describe('AI doc generation endpoints', () => {
 
   describe('ai-cost endpoint', () => {
     it('returns empty aggregates when no logs exist', async () => {
-      await seedAdminAndHackathon();
+      const { token } = await seedAdminAndHackathon();
       const res = await request(app)
         .get('/api/admin/ai-cost')
-        .set('x-test-role', 'admin')
-        .set('x-test-user-id', 'admin-test-user');
+        .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(200);
       expect(res.body.totalCalls).toBe(0);
       expect(res.body.totalTokensIn).toBe(0);

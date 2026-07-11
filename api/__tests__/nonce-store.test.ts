@@ -23,7 +23,7 @@ beforeEach(async () => {
 
 describe('DB-backed nonce store', () => {
   it('mints and consumes a nonce in a single round-trip', async () => {
-    const { nonce } = await generateNonce(prisma, '0xabc', 'ethereum', 'siwe');
+    const nonce = await generateNonce(prisma, '0xabc', 'ethereum', 'siwe');
     expect(nonce).toMatch(/^[0-9a-f]{32}$/);
 
     const ok = await consumeNonce(prisma, '0xabc', 'ethereum', 'siwe', nonce);
@@ -31,7 +31,7 @@ describe('DB-backed nonce store', () => {
   });
 
   it('refuses to consume a nonce twice (single-use)', async () => {
-    const { nonce } = await generateNonce(prisma, '0xdef', 'ethereum', 'siwe');
+    const nonce = await generateNonce(prisma, '0xdef', 'ethereum', 'siwe');
     await consumeNonce(prisma, '0xdef', 'ethereum', 'siwe', nonce);
     const second = await consumeNonce(prisma, '0xdef', 'ethereum', 'siwe', nonce);
     expect(second).toBe(false);
@@ -43,7 +43,7 @@ describe('DB-backed nonce store', () => {
   });
 
   it('scopes nonces by purpose (siwe vs link-wallet)', async () => {
-    const { nonce } = await generateNonce(prisma, '0xabc', 'ethereum', 'siwe');
+    const nonce = await generateNonce(prisma, '0xabc', 'ethereum', 'siwe');
     const wrongPurpose = await consumeNonce(prisma, '0xabc', 'ethereum', 'link-wallet', nonce);
     expect(wrongPurpose).toBe(false);
     const rightPurpose = await consumeNonce(prisma, '0xabc', 'ethereum', 'siwe', nonce);
@@ -51,7 +51,7 @@ describe('DB-backed nonce store', () => {
   });
 
   it('scopes nonces by chain', async () => {
-    const { nonce } = await generateNonce(prisma, '0xabc', 'ethereum', 'siwe');
+    const nonce = await generateNonce(prisma, '0xabc', 'ethereum', 'siwe');
     const wrongChain = await consumeNonce(prisma, '0xabc', 'polygon', 'siwe', nonce);
     expect(wrongChain).toBe(false);
     const rightChain = await consumeNonce(prisma, '0xabc', 'ethereum', 'siwe', nonce);
