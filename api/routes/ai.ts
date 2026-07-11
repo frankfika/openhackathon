@@ -2,13 +2,68 @@ import type { Express, Request, Response } from 'express'
 import type { PrismaClient } from '@prisma/client'
 import { Prisma } from '@prisma/client'
 import type { RequestHandler } from 'express'
+import { z } from 'zod'
 import { getAIService } from '../services/ai'
 import { logActivity } from '../utils/activity'
+import { asString } from '../config'
+import {
+  buildPrompt,
+  type Language,
+  type PromptName,
+  type Tone,
+} from '../services/ai/prompts'
+
+interface AIError extends Error {
+  code?: string;
+}
+
+function readLanguage(input: unknown): Language {
+  const value = asString(input);
+  if (value === 'zh' || value === 'en' || value === 'both') return value;
+  return 'both';
+}
+
+function readTone(input: unknown): Tone {
+  const value = asString(input);
+  if (value === 'professional' || value === 'casual' || value === 'academic' || value === 'tech-evangelist') {
+    return value;
+  }
+  return 'professional';
+}
+
+const descriptionRequestSchema = z.object({
+  theme: z.string().min(1).max(500).optional(),
+  tracks: z.array(z.string().min(1).max(60)).max(5).optional(),
+  prizePool: z.string().max(200).optional(),
+  submissionDeadline: z.string().max(40).optional(),
+  tone: z.string().max(40).optional(),
+  language: z.string().max(10).optional(),
+});
+
+const newsRequestSchema = z.object({
+  tone: z.string().max(40).optional(),
+  language: z.string().max(10).optional(),
+  includeRunnerUps: z.boolean().optional(),
+});
+
+const criteriaRequestSchema = z.object({
+  theme: z.string().min(1).max(500).optional(),
+  focus: z.string().max(500).optional(),
+  criterionCount: z.number().int().min(5).max(7).optional(),
+});
 
 export function registerAIRoutes(
   app: Express,
   prisma: PrismaClient,
-  { requireAuth, requireAdmin }: { requireAuth: RequestHandler; requireAdmin: RequestHandler },
+  {
+    requireAuth,
+    requireAdmin,
+    aiGenRateLimiter,
+  }: {
+    requireAuth: RequestHandler;
+    requireAdmin: RequestHandler;
+    aiGenRateLimiter: RequestHandler;
+  },
 ) {
   // ==================== 项目质量评估 ====================
 
@@ -83,6 +138,9 @@ export function registerAIRoutes(
   /**
    * POST /api/ai/batch-analyze
    * 批量分析项目（异步任务）
+   *
+   * Block 3 §3.5.3: writes a real AIBatchTask row and returns its id;
+   * a separate GET endpoint lets callers poll status.
    */
   app.post('/api/ai/batch-analyze', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
@@ -103,29 +161,46 @@ export function registerAIRoutes(
         return res.status(400).json({ error: 'No projects to analyze' })
       }
 
-      // 创建后台任务（实际生产环境应使用消息队列如 Bull）
+      const actorId = req.authUser?.id || '';
+      const task = await prisma.aIBatchTask.create({
+        data: {
+          actorId,
+          hackathonId: hackathonId || null,
+          kind: 'analyze-projects',
+          status: 'pending',
+          total: ids.length,
+          metadata: { projectIds: ids } as Prisma.InputJsonValue,
+        },
+      });
+
       res.json({
-        message: `Started analyzing ${ids.length} projects`,
-        taskId: `task-${Date.now()}`,
-        status: 'processing',
-      })
+        taskId: task.id,
+        status: task.status,
+        total: task.total,
+      });
 
       // 异步处理
       setImmediate(async () => {
-        const aiService = getAIService()
+        const aiService = getAIService();
+        await prisma.aIBatchTask.update({
+          where: { id: task.id },
+          data: { status: 'running' },
+        });
+        let completed = 0;
+        let failed = 0;
         for (const pid of ids) {
           try {
             const project = await prisma.project.findUnique({
               where: { id: pid },
-            })
-            if (!project) continue
+            });
+            if (!project) continue;
 
             const assessment = await aiService.analyzeProject({
               title: project.title,
               description: project.description || '',
               repoURL: project.repoUrl || undefined,
               demoURL: project.demoUrl || undefined,
-            })
+            });
 
             await prisma.aIAssessment.create({
               data: {
@@ -133,19 +208,35 @@ export function registerAIRoutes(
                 type: 'quality_assessment',
                 result: assessment as unknown as Prisma.InputJsonValue,
               },
-            })
+            });
+            completed += 1;
           } catch (err) {
-            console.error(`Failed to analyze project ${pid}:`, err)
+            failed += 1;
+            console.error(`Failed to analyze project ${pid}:`, err);
           }
         }
-
-        console.log(`Completed batch analysis of ${ids.length} projects`)
-      })
+        await prisma.aIBatchTask.update({
+          where: { id: task.id },
+          data: {
+            status: failed === ids.length ? 'failed' : 'completed',
+            completed,
+            failed,
+            completedAt: new Date(),
+          },
+        });
+        console.log(`Completed batch analysis of ${ids.length} projects (task ${task.id})`);
+      });
     } catch (error) {
-      console.error('Batch analysis error:', error)
-      res.status(500).json({ error: 'Batch analysis failed' })
+      console.error('Batch analysis error:', error);
+      res.status(500).json({ error: 'Batch analysis failed' });
     }
-  })
+  });
+
+  app.get('/api/ai/batch-tasks/:id', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+    const task = await prisma.aIBatchTask.findUnique({ where: { id: req.params.id } });
+    if (!task) return res.status(404).json({ error: 'Batch task not found' });
+    res.json(task);
+  });
 
   // ==================== 评分一致性分析 ====================
 
@@ -231,8 +322,11 @@ export function registerAIRoutes(
   /**
    * POST /api/ai/optimize-description
    * 优化项目描述
+   *
+   * Block 3 §3.6 V3.10: now requires auth. Previously this endpoint
+   * was unauthenticated.
    */
-  app.post('/api/ai/optimize-description', async (req: Request, res: Response) => {
+  app.post('/api/ai/optimize-description', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const { description, language = 'zh', style = 'business' } = req.body
 
@@ -260,8 +354,10 @@ export function registerAIRoutes(
   /**
    * POST /api/ai/moderate-content
    * 审核内容是否合规
+   *
+   * Block 3 §3.6 V3.10: now requires admin auth.
    */
-  app.post('/api/ai/moderate-content', async (req: Request, res: Response) => {
+  app.post('/api/ai/moderate-content', requireAuth, requireAdmin, async (req: Request, res: Response) => {
     try {
       const { content, type = 'project' } = req.body
 
@@ -433,4 +529,274 @@ export function registerAIRoutes(
       res.status(500).json({ error: 'Failed to get suggestions' })
     }
   })
+
+  // ==================== AI 文档生成 (Block 3) ====================
+
+  async function runHackathonGeneration(
+    req: Request,
+    res: Response,
+    args: {
+      promptName: PromptName;
+      type: 'description' | 'news' | 'criteria';
+      buildContext: (hackathon: {
+        id: string;
+        title: string;
+        tagline: string;
+        city: string | null;
+        startAt: Date;
+        endAt: Date;
+        prizePool: string | null;
+        theme: string | null;
+        tracks: string[];
+      }) => Record<string, unknown>;
+    },
+  ) {
+    try {
+      const hackathonId = asString(req.params.id);
+      if (!hackathonId) return res.status(400).json({ error: 'hackathonId is required' });
+
+      const hackathon = await prisma.hackathon.findUnique({
+        where: { id: hackathonId },
+        select: {
+          id: true,
+          title: true,
+          tagline: true,
+          city: true,
+          startAt: true,
+          endAt: true,
+          prizePool: true,
+          theme: true,
+          tracks: true,
+        },
+      });
+      if (!hackathon) return res.status(404).json({ error: 'Hackathon not found' });
+
+      const actorId = req.authUser?.id;
+      if (!actorId) return res.status(401).json({ error: 'Unauthorized' });
+
+      const aiService = getAIService();
+      const ctxArgs = args.buildContext(hackathon);
+      const started = Date.now();
+
+      let result;
+      try {
+        result = await aiService.callStructured(args.promptName, ctxArgs as never);
+      } catch (err) {
+        const e = err as AIError;
+        const code = e.code || 'LLM_FAILED';
+        const status = code === 'LLM_INVALID_KEY' ? 500 : 502;
+        await prisma.aIGenerationLog.create({
+          data: {
+            actorId,
+            hackathonId,
+            type: args.type,
+            language: typeof ctxArgs.language === 'string' ? ctxArgs.language : 'both',
+            promptHash: 'error',
+            model: 'unknown',
+            tokensIn: 0,
+            tokensOut: 0,
+            latencyMs: Date.now() - started,
+            status: 'failed',
+            errorCode: code,
+          },
+        });
+        return res.status(status).json({ error: e.message || 'LLM call failed', code });
+      }
+
+      await prisma.aIGenerationLog.create({
+        data: {
+          actorId,
+          hackathonId,
+          type: args.type,
+          language: typeof ctxArgs.language === 'string' ? ctxArgs.language : 'both',
+          promptHash: result.promptHash,
+          model: result.model,
+          tokensIn: result.tokensIn,
+          tokensOut: result.tokensOut,
+          latencyMs: result.latencyMs,
+          status: 'success',
+        },
+      });
+
+      res.json({
+        data: result.data,
+        model: result.model,
+        tokensUsed: result.tokensIn + result.tokensOut,
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
+        latencyMs: result.latencyMs,
+        promptVersion: buildPrompt(args.promptName, ctxArgs as never).version,
+      });
+    } catch (error) {
+      console.error(`AI ${args.type} generation error:`, error);
+      res.status(500).json({ error: 'AI generation failed' });
+    }
+  }
+
+  // Endpoint 1: generate hackathon description
+  app.post(
+    '/api/ai/hackathons/:id/generate-description',
+    requireAuth,
+    requireAdmin,
+    aiGenRateLimiter,
+    async (req, res) => {
+      const parsed = descriptionRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid request body', issues: parsed.error.issues });
+      }
+      await runHackathonGeneration(req, res, {
+        promptName: 'hackathon-description',
+        type: 'description',
+        buildContext: (h) => ({
+          hackathon: h,
+          language: readLanguage(parsed.data.language),
+          tone: readTone(parsed.data.tone),
+          theme: parsed.data.theme,
+          tracks: parsed.data.tracks,
+          submissionDeadline: parsed.data.submissionDeadline,
+          prizePool: parsed.data.prizePool,
+        }),
+      });
+    },
+  );
+
+  // Endpoint 2: generate award news
+  app.post(
+    '/api/ai/hackathons/:id/generate-news',
+    requireAuth,
+    requireAdmin,
+    aiGenRateLimiter,
+    async (req, res) => {
+      const parsed = newsRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid request body', issues: parsed.error.issues });
+      }
+      const includeRunnerUps = parsed.data.includeRunnerUps === true;
+      // Pull curated leaderboard data + project metadata
+      const hackathon = await prisma.hackathon.findUnique({
+        where: { id: asString(req.params.id) || '' },
+        select: {
+          id: true,
+          title: true,
+          tagline: true,
+          city: true,
+          startAt: true,
+          endAt: true,
+          prizePool: true,
+          theme: true,
+          tracks: true,
+          leaderboardData: true,
+        },
+      });
+      if (!hackathon) return res.status(404).json({ error: 'Hackathon not found' });
+
+      const entries = Array.isArray(hackathon.leaderboardData)
+        ? (hackathon.leaderboardData as Array<{ projectId: string; rank: number; award: string }>)
+        : [];
+      const filtered = entries
+        .filter((e) => typeof e?.rank === 'number' && e.rank >= 1)
+        .filter((e) => (includeRunnerUps ? e.rank <= 10 : e.rank <= 3))
+        .sort((a, b) => a.rank - b.rank);
+      const projectIds = filtered.map((e) => e.projectId).filter(Boolean);
+      const projects = projectIds.length
+        ? await prisma.project.findMany({
+            where: { id: { in: projectIds } },
+            select: { id: true, title: true, description: true, tags: true, submitterName: true },
+          })
+        : [];
+      const byId = new Map(projects.map((p) => [p.id, p]));
+      const projectInputs = filtered
+        .map((e) => {
+          const p = byId.get(e.projectId);
+          if (!p) return null;
+          return {
+            rank: e.rank,
+            award: e.award,
+            title: p.title,
+            submitterName: p.submitterName || 'Team',
+            description: p.description,
+            tags: p.tags,
+          };
+        })
+        .filter((v): v is NonNullable<typeof v> => v !== null);
+
+      await runHackathonGeneration(req, res, {
+        promptName: 'hackathon-news',
+        type: 'news',
+        buildContext: (h) => ({
+          hackathon: h,
+          language: readLanguage(parsed.data.language),
+          tone: readTone(parsed.data.tone),
+          projects: projectInputs,
+        }),
+      });
+    },
+  );
+
+  // Endpoint 3: suggest scoring criteria
+  app.post(
+    '/api/ai/hackathons/:id/suggest-criteria',
+    requireAuth,
+    requireAdmin,
+    aiGenRateLimiter,
+    async (req, res) => {
+      const parsed = criteriaRequestSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid request body', issues: parsed.error.issues });
+      }
+      await runHackathonGeneration(req, res, {
+        promptName: 'hackathon-criteria',
+        type: 'criteria',
+        buildContext: (h) => ({
+          hackathon: h,
+          language: 'en',
+          tone: 'professional',
+          theme: parsed.data.theme,
+          focus: parsed.data.focus,
+          criterionCount: parsed.data.criterionCount ?? 6,
+        }),
+      });
+    },
+  );
+
+  // Endpoint 4 (Block 3 §3.6 V3.12): aggregated AI cost
+  app.get('/api/admin/ai-cost', requireAuth, requireAdmin, async (req, res) => {
+    const month = asString(req.query.month); // e.g. "2026-07"
+    let start: Date;
+    let end: Date;
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      const [yearStr, monthStr] = month.split('-');
+      const year = Number(yearStr);
+      const m = Number(monthStr);
+      start = new Date(Date.UTC(year, m - 1, 1));
+      end = new Date(Date.UTC(year, m, 1));
+    } else {
+      const now = new Date();
+      start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    }
+    const logs = await prisma.aIGenerationLog.findMany({
+      where: { createdAt: { gte: start, lt: end } },
+      select: { type: true, tokensIn: true, tokensOut: true, costUsd: true, status: true },
+    });
+    const byType: Record<string, { count: number; tokensIn: number; tokensOut: number; costUsd: number }> = {};
+    for (const log of logs) {
+      const bucket = (byType[log.type] ||= { count: 0, tokensIn: 0, tokensOut: 0, costUsd: 0 });
+      bucket.count += 1;
+      bucket.tokensIn += log.tokensIn;
+      bucket.tokensOut += log.tokensOut;
+      bucket.costUsd += log.costUsd ?? 0;
+    }
+    const totalTokensIn = logs.reduce((s, l) => s + l.tokensIn, 0);
+    const totalTokensOut = logs.reduce((s, l) => s + l.tokensOut, 0);
+    const totalCost = logs.reduce((s, l) => s + (l.costUsd ?? 0), 0);
+    res.json({
+      month: `${start.toISOString().slice(0, 7)}`,
+      totalCalls: logs.length,
+      totalTokensIn,
+      totalTokensOut,
+      costUsd: totalCost,
+      byType,
+    });
+  });
 }

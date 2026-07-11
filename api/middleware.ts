@@ -218,3 +218,23 @@ export const submissionRateLimiter = rateLimit({
   },
   message: { error: 'Too many submissions. Please try again later.' },
 });
+
+/**
+ * AI generation rate limiter. Defaults to 5 calls per minute per user
+ * (5/min — see synth-design-spec §3.2 Endpoint N for the rationale).
+ * `keyGenerator` uses the authenticated user id when available so a
+ * single admin cannot starve out other admins.
+ */
+export const aiGenRateLimiter = rateLimit({
+  windowMs: Number(process.env.AI_GEN_RATE_LIMIT_WINDOW_MS) || 60 * 1000,
+  max: Number(process.env.AI_GEN_RATE_LIMIT_MAX) || 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => AUTH_DISABLED,
+  keyGenerator: (req) => {
+    const user = (req as { authUser?: { id?: string } }).authUser;
+    if (user?.id) return `user:${user.id}`;
+    return ipKeyGenerator(req.ip);
+  },
+  message: { error: 'Too many AI generation requests. Please try again later.', code: 'RATE_LIMITED' },
+});

@@ -23,7 +23,7 @@ import {
 } from './config';
 import { normalizeAdminBasePath } from './utils/validation';
 import { resolveSubmissionEmailPort, resolveSubmissionEmailTimeout } from './utils/email';
-import { createAuthMiddleware, apiRateLimiter, authRateLimiter, submissionRateLimiter } from './middleware';
+import { createAuthMiddleware, apiRateLimiter, authRateLimiter, submissionRateLimiter, aiGenRateLimiter } from './middleware';
 
 // Import route registration functions
 import { registerHealthRoutes } from './routes/health';
@@ -150,7 +150,7 @@ registerActivityLogRoutes(app, prisma, { requireAdmin });
 registerSystemResetRoutes(app, prisma, { requireAdmin });
 
 // AI Routes (supports both admin and judge access)
-registerAIRoutes(app, prisma, { requireAuth, requireAdmin });
+registerAIRoutes(app, prisma, { requireAuth, requireAdmin, aiGenRateLimiter });
 
 // ===== Catch-all =====
 

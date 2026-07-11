@@ -5,7 +5,10 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { z } from 'zod'
+import { z } from 'zod';
+import { fetchWithRetry } from '../utils/fetch-with-retry';
+import { buildPrompt, type HackathonPromptContext, type PromptName } from './ai/prompts';
+import { createHash } from 'crypto';
 
 // ==================== 类型定义 ====================
 
@@ -181,11 +184,15 @@ class AIService {
       body.tool_choice = { type: 'tool', name: 'structured_output' }
     }
 
-    const response = await fetch(`${baseURL}/messages`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
+    const response = await fetchWithRetry(
+      `${baseURL}/messages`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      },
+      { timeoutMs: 30_000, retries: 2 },
+    )
 
     if (!response.ok) {
       const error = await response.text()
@@ -232,11 +239,15 @@ class AIService {
       }
     }
 
-    const response = await fetch(`${baseURL}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })
+    const response = await fetchWithRetry(
+      `${baseURL}/chat/completions`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      },
+      { timeoutMs: 30_000, retries: 2 },
+    )
 
     if (!response.ok) {
       const error = await response.text()
@@ -268,11 +279,15 @@ class AIService {
       },
     }
 
-    const response = await fetch(`${baseURL}/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
+    const response = await fetchWithRetry(
+      `${baseURL}/generate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      { timeoutMs: 30_000, retries: 2 },
+    )
 
     if (!response.ok) {
       throw new Error(`Local model error: ${response.status}`)
@@ -550,8 +565,190 @@ README应包含：简介、功能特性、技术架构、安装说明、使用�
     return await this.callAI(prompt)
   }
 
+  // ==================== Structured generation (Block 3) ====================
+
   /**
-   * 检测文本相似度（用于抄袭检测）
+   * Run a structured generation using one of the registered prompt
+   * templates. Returns the parsed JSON plus timing / token info.
+   *
+   * `outputJsonShape` is a JSON Schema fragment. The route layer
+   * also runs zod validation on the returned object to catch
+   * provider quirks; the inner Zod schema below is a permissive
+   * passthrough so a provider that returns extra fields does not
+   * blow up.
+   */
+  async callStructured(
+    name: PromptName,
+    ctx: HackathonPromptContext,
+    options: { timeoutMs?: number; maxRetries?: number } = {},
+  ): Promise<{
+    data: Record<string, unknown>;
+    raw: string;
+    promptHash: string;
+    model: string;
+    tokensIn: number;
+    tokensOut: number;
+    latencyMs: number;
+  }> {
+    const built = buildPrompt(name, ctx);
+    const promptHash = createHash('sha256')
+      .update(built.system + '\n' + built.user)
+      .digest('hex');
+
+    const started = Date.now();
+    const result = await this.callAIWithStructuredSchema(built, {
+      timeoutMs: options.timeoutMs ?? 30_000,
+      maxRetries: options.maxRetries ?? 2,
+    });
+    const latencyMs = Date.now() - started;
+
+    return {
+      data: result.data,
+      raw: result.raw,
+      promptHash,
+      model: this.config.model || this.getDefaultModel(this.config.provider),
+      tokensIn: result.tokensIn,
+      tokensOut: result.tokensOut,
+      latencyMs,
+    };
+  }
+
+  /**
+   * Internal: call the provider with a structured-output JSON schema
+   * and return both the parsed payload and the raw text + token usage.
+   */
+  private async callAIWithStructuredSchema(
+    built: { system: string; user: string; outputJson: Record<string, unknown> },
+    options: { timeoutMs: number; maxRetries: number },
+  ): Promise<{ data: Record<string, unknown>; raw: string; tokensIn: number; tokensOut: number }> {
+    const { provider, apiKey, baseURL, model, maxTokens, temperature } = this.config;
+    if (!apiKey && provider !== 'local') {
+      const err = new Error('AI_PROVIDER_API_KEY is not set') as Error & { code?: string };
+      err.code = 'LLM_INVALID_KEY';
+      throw err;
+    }
+    const messages = [
+      { role: 'system', content: built.system },
+      { role: 'user', content: built.user },
+    ];
+
+    if (provider === 'claude') {
+      const body: Record<string, unknown> = {
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        tools: [
+          {
+            name: 'structured_output',
+            description: 'Return the answer as JSON conforming to the schema',
+            input_schema: built.outputJson,
+          },
+        ],
+        tool_choice: { type: 'tool', name: 'structured_output' },
+        messages,
+      };
+      const response = await fetchWithRetry(
+        `${baseURL}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey!,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify(body),
+        },
+        { timeoutMs: options.timeoutMs, retries: options.maxRetries },
+      );
+      const data = (await response.json()) as {
+        content?: Array<{ type: string; input?: unknown; text?: string }>;
+        usage?: { input_tokens?: number; output_tokens?: number };
+      };
+      const toolBlock = data.content?.find((b) => b.type === 'tool_use');
+      if (toolBlock && toolBlock.input) {
+        return {
+          data: toolBlock.input as Record<string, unknown>,
+          raw: JSON.stringify(toolBlock.input),
+          tokensIn: data.usage?.input_tokens ?? 0,
+          tokensOut: data.usage?.output_tokens ?? 0,
+        };
+      }
+      const textBlock = data.content?.find((b) => b.type === 'text');
+      return {
+        data: parseJsonOrThrow(textBlock?.text || ''),
+        raw: textBlock?.text || '',
+        tokensIn: data.usage?.input_tokens ?? 0,
+        tokensOut: data.usage?.output_tokens ?? 0,
+      };
+    }
+
+    if (provider === 'openai') {
+      const body: Record<string, unknown> = {
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'structured_output',
+            schema: built.outputJson,
+            strict: true,
+          },
+        },
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      };
+      const response = await fetchWithRetry(
+        `${baseURL}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(body),
+        },
+        { timeoutMs: options.timeoutMs, retries: options.maxRetries },
+      );
+      const data = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
+      const content = data.choices?.[0]?.message?.content || '';
+      return {
+        data: parseJsonOrThrow(content),
+        raw: content,
+        tokensIn: data.usage?.prompt_tokens ?? 0,
+        tokensOut: data.usage?.completion_tokens ?? 0,
+      };
+    }
+
+    // Local (Ollama) — best-effort JSON extraction.
+    const body = {
+      model,
+      prompt: `${built.system}\n\n${built.user}`,
+      stream: false,
+      options: { temperature, num_predict: maxTokens },
+    };
+    const response = await fetchWithRetry(
+      `${baseURL}/generate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      { timeoutMs: options.timeoutMs, retries: options.maxRetries },
+    );
+    const data = (await response.json()) as { response?: string };
+    return {
+      data: parseJsonOrThrow(data.response || ''),
+      raw: data.response || '',
+      tokensIn: 0,
+      tokensOut: 0,
+    };
+  }
+
+  /**
+   * Detect text similarity (used for plagiarism checks).
    */
   async detectSimilarity(text1: string, text2: string): Promise<number> {
     const prompt = `请比较以下两段文本的相似度（0-100%）：
@@ -578,6 +775,26 @@ ${text2.substring(0, 1000)}
 // ==================== 导出 ====================
 
 export { AIService }
+
+function parseJsonOrThrow(text: string): Record<string, unknown> {
+  // Strip code-fence wrappers and leading/trailing noise so providers
+  // that ignore the json_schema instruction can still be salvaged.
+  const cleaned = text
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+  try {
+    return JSON.parse(cleaned) as Record<string, unknown>;
+  } catch (err) {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      return JSON.parse(match[0]) as Record<string, unknown>;
+    }
+    const e = new Error(`LLM returned non-JSON: ${cleaned.slice(0, 200)}`) as Error & { code?: string };
+    e.code = 'LLM_SCHEMA_INVALID';
+    throw e;
+  }
+}
 
 // 单例模式
 let aiServiceInstance: AIService | null = null
