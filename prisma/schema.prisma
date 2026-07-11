@@ -10,31 +10,43 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Valid roles. The DB-level enum is the source of truth — the API
+/// rejects any value not in this set (see api/middleware.ts and
+/// api/utils/validation.ts asUserRole).
+enum UserRole {
+  admin
+  judge
+  user
+}
+
 model User {
   id        String   @id @default(uuid())
-  email     String?  @unique  // Optional for Web3-only users
+  email     String?  @unique // Optional for Web3-only users
   name      String
-  role      String   // admin, judge
-  password  String?  // Optional for Web3-only users (hashed)
+  /// ⚠️  Any findUnique / findFirst / findMany that returns this row
+  /// MUST use a `select` whitelist — never `include: { user: true }`.
+  /// The shared whitelist lives in api/utils/sanitize.ts.
+  password  String? // Optional for Web3-only users (hashed). NEVER return this.
+  role      UserRole @default(user)
   avatarUrl String?
 
   // Web3 fields
-  wallets            WalletAddress[]
-  primaryWalletId    String?         @unique
-  isWeb3User         Boolean         @default(false)  // Has wallet or registered via wallet
+  wallets         WalletAddress[]
+  primaryWalletId String?         @unique
+  isWeb3User      Boolean         @default(false) // Has wallet or registered via wallet
 
   // Global cross-hackathon stats (only for Web3 users)
-  globalPoints       Int             @default(0)
-  participationCount Int             @default(0)  // Number of hackathons participated
-  judgeCount         Int             @default(0)  // Number of times served as judge
-  awardCount         Int             @default(0)  // Number of awards won
+  globalPoints       Int @default(0)
+  participationCount Int @default(0) // Number of hackathons participated
+  judgeCount         Int @default(0) // Number of times served as judge
+  awardCount         Int @default(0) // Number of awards won
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  assignments Assignment[]
-  projects    Project[]
-  hackathonMemberships HackathonJudge[]
+  assignments              Assignment[]
+  projects                 Project[]
+  hackathonMemberships     HackathonJudge[]
   crossHackathonActivities CrossHackathonActivity[]
 
   @@index([globalPoints])
@@ -42,40 +54,52 @@ model User {
 }
 
 model Hackathon {
-  id            String   @id @default(uuid())
-  title         String
-  tagline       String
-  city          String?
-  startAt       DateTime
-  endAt         DateTime
-  status        String   // draft, upcoming, active, judging, completed
-  coverGradient String
-  submissionSchema Json?  // Stores the form configuration
-  leaderboardData Json?   // Admin-curated ranking: [{ projectId, rank, award }]
-  leaderboardPublished Boolean @default(false)
-  docsUrl       String?
-  prizePool     String?
-  submissionSuccessHintText String?
+  id                            String   @id @default(uuid())
+  title                         String
+  tagline                       String
+  city                          String?
+  startAt                       DateTime
+  endAt                         DateTime
+  status                        String // draft, upcoming, active, judging, completed
+  coverGradient                 String
+  submissionSchema              Json? // Stores the form configuration
+  leaderboardData               Json? // Admin-curated ranking: [{ projectId, rank, award }]
+  leaderboardPublished          Boolean  @default(false)
+  docsUrl                       String?
+  prizePool                     String?
+  submissionSuccessHintText     String?
   submissionSuccessHintImageUrl String?
-  judgesPerProject Int @default(2)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  judgesPerProject              Int      @default(2)
+  // AI-generated content (see api/services/ai/prompts.ts):
+  // - description / descriptionZh / descriptionEn — participant brief
+  // - newsZh / newsEn — award news draft
+  // - theme / tracks — persisted inputs to the AI generator
+  description                   String? // markdown
+  descriptionZh                 String?
+  descriptionEn                 String?
+  newsZh                        String?
+  newsEn                        String?
+  theme                         String? // free-form brief / topic
+  tracks                        String[] @default([]) // up to 5 named tracks
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
 
-  projects         Project[]
-  scoringCriteria  ScoringCriterion[]
-  judges           HackathonJudge[]
-  activityLogs     ActivityLog[]
+  projects                 Project[]
+  scoringCriteria          ScoringCriterion[]
+  judges                   HackathonJudge[]
+  activityLogs             ActivityLog[]
   crossHackathonActivities CrossHackathonActivity[]
+  aiGenerationLogs         AIGenerationLog[]
 }
 
 model HackathonJudge {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   hackathonId String
   hackathon   Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@unique([hackathonId, userId])
   @@index([hackathonId])
@@ -83,20 +107,20 @@ model HackathonJudge {
 }
 
 model ScoringCriterion {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   hackathonId String
   hackathon   Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
   name        String
   maxScore    Int
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([hackathonId])
 }
 
 model Project {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   hackathonId String
   hackathon   Hackathon @relation(fields: [hackathonId], references: [id])
   userId      String?
@@ -105,31 +129,31 @@ model Project {
   submitterEmail String
   submitterName  String?
 
-  title       String
-  oneLiner    String
-  description String?   // Detailed description (markdown)
-  tags        String[]
-  demoUrl     String?
-  repoUrl     String?
-  submissionData Json?  // Stores the actual form submission data
-  status      String?  // draft, submitted
+  title          String
+  oneLiner       String
+  description    String? // Detailed description (markdown)
+  tags           String[]
+  demoUrl        String?
+  repoUrl        String?
+  submissionData Json? // Stores the actual form submission data
+  status         String? // draft, submitted
 
-  votes       Int      @default(0)
+  votes Int @default(0)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   assignments Assignment[]
 }
 
 model Assignment {
-  id        String   @id @default(uuid())
+  id        String  @id @default(uuid())
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id])
+  project   Project @relation(fields: [projectId], references: [id])
   judgeId   String
-  judge     User     @relation(fields: [judgeId], references: [id])
+  judge     User    @relation(fields: [judgeId], references: [id])
 
-  status     String   // pending, in_progress, completed
+  status     String // pending, in_progress, completed
   comment    String?
   totalScore Float?
 
@@ -142,65 +166,65 @@ model Assignment {
 }
 
 model Score {
-  id          String   @id @default(uuid())
+  id           String     @id @default(uuid())
   assignmentId String
-  assignment  Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  criterionId String
-  score       Int
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  criterionId  String
+  score        Int
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   @@index([assignmentId])
   @@index([criterionId])
 }
 
 model SiteSetting {
-  id             String   @id @default(uuid())
-  key            String   @unique @default("default")
-  siteName       String   @default("OpenHackathon")
-  adminBasePath  String   @default("/admin")
-  logoUrl        String?
-  tabTitle       String   @default("OpenHackathon")
-  seoTitle       String   @default("OpenHackathon")
-  seoDescription String   @default("OpenHackathon - Open source hackathon management platform")
-  faviconUrl     String   @default("/favicon.svg")
-  showPoweredBy  Boolean  @default(true)
-  poweredByText  String   @default("Powered by OpenHackathon")
-  poweredByUrl   String   @default("https://openhackathon.dev")
-  submissionEmailEnabled Boolean @default(false)
-  smtpHost       String?
-  smtpPort       Int      @default(587)
-  smtpSecure     Boolean  @default(false)
-  smtpUser       String?
-  smtpPassEncrypted String?
-  submissionEmailFrom String @default("OpenHackathon <no-reply@localhost>")
-  submissionEmailReplyTo String?
-  submissionEmailSubject String @default("[{{hackathonTitle}}] Submission Receipt {{receiptId}}")
-  submissionEmailTimeoutMs Int @default(10000)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                       String   @id @default(uuid())
+  key                      String   @unique @default("default")
+  siteName                 String   @default("OpenHackathon")
+  adminBasePath            String   @default("/admin")
+  logoUrl                  String?
+  tabTitle                 String   @default("OpenHackathon")
+  seoTitle                 String   @default("OpenHackathon")
+  seoDescription           String   @default("OpenHackathon - Open source hackathon management platform")
+  faviconUrl               String   @default("/favicon.svg")
+  showPoweredBy            Boolean  @default(true)
+  poweredByText            String   @default("Powered by OpenHackathon")
+  poweredByUrl             String   @default("https://openhackathon.dev")
+  submissionEmailEnabled   Boolean  @default(false)
+  smtpHost                 String?
+  smtpPort                 Int      @default(587)
+  smtpSecure               Boolean  @default(false)
+  smtpUser                 String?
+  smtpPassEncrypted        String?
+  submissionEmailFrom      String   @default("OpenHackathon <no-reply@localhost>")
+  submissionEmailReplyTo   String?
+  submissionEmailSubject   String   @default("[{{hackathonTitle}}] Submission Receipt {{receiptId}}")
+  submissionEmailTimeoutMs Int      @default(10000)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 }
 
 model ActivityLog {
-  id           String   @id @default(uuid())
-  hackathonId  String?
-  hackathon    Hackathon? @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  id          String     @id @default(uuid())
+  hackathonId String?
+  hackathon   Hackathon? @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
 
   // Actor info
-  actorId      String?  // User ID (null for system actions)
-  actorRole    String   // admin, judge, user, system
-  actorName    String   // Snapshot of name at time of action
+  actorId   String? // User ID (null for system actions)
+  actorRole String // admin, judge, user, system
+  actorName String // Snapshot of name at time of action
 
   // Action details
-  action       String   // create, update, delete, submit, assign, unassign, score, etc.
-  entityType   String   // project, assignment, score, hackathon, judge, etc.
-  entityId     String?  // ID of the affected entity
+  action     String // create, update, delete, submit, assign, unassign, score, etc.
+  entityType String // project, assignment, score, hackathon, judge, etc.
+  entityId   String? // ID of the affected entity
 
   // Context
-  metadata     Json?    // Additional context (e.g., { projectTitle, judgeName, score })
-  ipAddress    String?  // For audit trail
+  metadata  Json? // Additional context (e.g., { projectTitle, judgeName, score })
+  ipAddress String? // For audit trail
 
-  createdAt    DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([hackathonId, createdAt])
   @@index([hackathonId, action])
@@ -212,8 +236,8 @@ model ActivityLog {
 model AIAssessment {
   id        String   @id @default(uuid())
   projectId String
-  type      String   // quality_assessment, plagiarism_check, etc.
-  result    Json     // Stores the AI analysis result
+  type      String // quality_assessment, plagiarism_check, etc.
+  result    Json // Stores the AI analysis result
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -222,43 +246,108 @@ model AIAssessment {
 }
 
 model WalletAddress {
-  id            String   @id @default(uuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  address       String   // Wallet address (checksummed for EVM, base58 for Solana)
-  chain         String   // Chain identifier: ethereum, polygon, base, solana, etc.
-  chainId       Int?     // EVM chain ID (1, 137, 8453, etc.), null for Solana
+  address String // Wallet address (checksummed for EVM, base58 for Solana)
+  chain   String // Chain identifier: ethereum, polygon, base, solana, etc.
+  chainId Int? // EVM chain ID (1, 137, 8453, etc.), null for Solana
 
-  isPrimary     Boolean  @default(false)  // Primary wallet marker
-  verifiedAt    DateTime @default(now())
-  lastUsedAt    DateTime @default(now())
+  isPrimary  Boolean  @default(false) // Primary wallet marker
+  verifiedAt DateTime @default(now())
+  lastUsedAt DateTime @default(now())
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@unique([address, chain])
+  // Unique on (address, chainId) — same address on different EVM chains
+  // counts as different wallets. Solana (chainId IS NULL) is allowed
+  // to repeat the same (address, chain) pair via the
+  // address_chain_chainId_key index below.
+  @@unique([address, chainId], name: "address_chainId_key")
   @@index([userId])
   @@index([address])
 }
 
 model CrossHackathonActivity {
-  id            String   @id @default(uuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  hackathonId   String
-  hackathon     Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+  hackathonId String
+  hackathon   Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
 
-  activityType  String   // participated, judged, awarded, won_first, won_second, won_third
-  points        Int      // Points earned for this activity
-  metadata      Json?    // Additional info: projectId, rank, award, etc.
+  activityType String // participated, judged, awarded, won_first, won_second, won_third
+  points       Int // Points earned for this activity
+  metadata     Json? // Additional info: projectId, rank, award, etc.
 
-  onChainTxHash String?  // Optional: on-chain proof transaction hash
-  onChainStatus String?  // pending, confirmed, failed
+  onChainTxHash String? // Optional: on-chain proof transaction hash
+  onChainStatus String? // pending, confirmed, failed
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
   @@index([hackathonId, activityType])
+}
+
+/// DB-backed nonce store for SIWE / link-wallet flows. Replaces the
+/// previous in-process Map so that nonce validity is consistent across
+/// multiple API instances (see Block 2 P0-1 in synth-design-spec).
+model Web3Nonce {
+  id        String   @id @default(uuid())
+  address   String // checksummed EVM / base58 solana
+  chain     String // ethereum, polygon, etc. (denormalized for easy lookup)
+  chainId   Int? // EVM chain id; null for solana
+  purpose   String // 'siwe' | 'link-wallet'
+  nonce     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([address, chain, chainId, purpose])
+  @@index([expiresAt])
+}
+
+/// Per-call audit log for AI document generation. See Block 3 in
+/// synth-design-spec §3.5.3.
+model AIGenerationLog {
+  id          String     @id @default(uuid())
+  actorId     String
+  hackathonId String?
+  hackathon   Hackathon? @relation(fields: [hackathonId], references: [id], onDelete: SetNull)
+  type        String // description, news, criteria
+  language    String // zh, en, both
+  promptHash  String
+  model       String
+  tokensIn    Int
+  tokensOut   Int
+  latencyMs   Int
+  status      String // success, failed, timeout, schema_invalid
+  errorCode   String?
+  costUsd     Float? // optional, recorded when AI_PRICING env is set
+  createdAt   DateTime   @default(now())
+
+  @@index([hackathonId, type])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+}
+
+/// Tracks long-running AI batch tasks (see Block 3 §3.5.3).
+model AIBatchTask {
+  id          String    @id @default(uuid())
+  actorId     String
+  hackathonId String?
+  kind        String // 'analyze-projects' (extensible)
+  status      String // pending, running, completed, failed
+  total       Int
+  completed   Int       @default(0)
+  failed      Int       @default(0)
+  metadata    Json?
+  errorCode   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  @@index([actorId, createdAt])
+  @@index([status])
 }

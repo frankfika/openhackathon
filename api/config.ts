@@ -80,7 +80,19 @@ export const SUPPORTED_CHAINS = (process.env.SUPPORTED_CHAINS || 'ethereum,polyg
   .split(',')
   .map((chain) => chain.trim().toLowerCase())
   .filter(Boolean);
-export const WEB3_DEFAULT_ROLE = asString(process.env.WEB3_DEFAULT_ROLE) || 'judge';
+/**
+ * Default role assigned to a brand-new Web3 user the first time their
+ * wallet is seen. Per spec P0-4 this is now 'user' (was historically
+ * 'judge' which gave every new wallet judge powers). Overridable via
+ * env for environments that still need the old behaviour.
+ */
+export const WEB3_DEFAULT_ROLE = asString(process.env.WEB3_DEFAULT_ROLE) || 'user';
+/**
+ * Nonce store backend. 'database' (default) uses the Web3Nonce table and
+ * is safe across multiple API instances. 'memory' is in-process and only
+ * useful for local development.
+ */
+export const NONCE_STORE_BACKEND = asString(process.env.NONCE_STORE) || 'database';
 
 // On-chain attestation
 export const ENABLE_ONCHAIN_STORAGE = process.env.ENABLE_ONCHAIN_STORAGE === 'true';
