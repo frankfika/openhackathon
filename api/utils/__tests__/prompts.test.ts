@@ -108,8 +108,13 @@ describe('renderPrompt — variable substitution', () => {
   });
 
   it('passes the each item as `this` AND `item`', () => {
-    const out = renderPrompt('{{#each xs}}{{this}}|{{item}}{{/each}}', { xs: ['a', 'b'] });
-    expect(out).toBe('a|a|b|b');
+    // Template has a trailing `|` after `{{item}}` so each iteration
+    // produces `<item>|<item>|`. Two iterations of xs=['a','b'] give
+    // `a|a|b|b|`. The trailing `|` proves the loop ran twice and
+    // that BOTH `{{this}}` and `{{item}}` resolved to the same
+    // value within a single iteration.
+    const out = renderPrompt('{{#each xs}}{{this}}|{{item}}|{{/each}}', { xs: ['a', 'b'] });
+    expect(out).toBe('a|a|b|b|');
   });
 
   it('substitutes the special {{outputJsonShape}} token', () => {

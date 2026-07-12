@@ -31,6 +31,7 @@
     "test:storybook": "VITEST_STORYBOOK=1 vitest run --config vitest.config.ts --project storybook",
     "test:api": "vitest run --config vitest.config.api.ts",
     "test:integration": "npm run test:api",
+    "test:util": "vitest run --config vitest.config.util.ts",
     "test:coverage": "vitest run --coverage",
     "test:all": "npm run test:unit && npm run test:api && npm run test:e2e",
     "storybook": "storybook dev -p 6006",

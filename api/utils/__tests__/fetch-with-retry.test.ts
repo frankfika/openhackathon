@@ -101,30 +101,39 @@ describe('fetchWithRetry — network errors', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('retries on AbortController timeout (simulated via fast timer)', async () => {
-    vi.useFakeTimers();
-    const fetchMock = vi.fn().mockImplementation(async (_url, init) => {
-      // Simulate a fetch that never resolves before the timeout fires.
-      return new Promise((resolve, reject) => {
-        const signal = (init as RequestInit | undefined)?.signal;
-        signal?.addEventListener('abort', () => {
-          const err = new Error('Aborted');
-          err.name = 'AbortError';
-          reject(err);
+  it('retries on AbortController timeout (real-timer variant)', async () => {
+    // First call: hang until the AbortController fires, then reject
+    // with an AbortError. Second call: resolve with 200.
+    //
+    // Implementation note: a prior version of this test combined
+    // mockImplementation with mockResolvedValueOnce, which caused
+    // vitest to use the implementation for every call (the queued
+    // resolved value was shadowed), so the first attempt hung
+    // forever. Using mockImplementationOnce + mockResolvedValueOnce
+    // keeps each call to its own handler.
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(async (_url, init) => {
+        return new Promise((resolve, reject) => {
+          const signal = (init as RequestInit | undefined)?.signal;
+          signal?.addEventListener('abort', () => {
+            const err = new Error('Aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
         });
-        // Otherwise hang.
-        setTimeout(() => resolve(makeResponse(200)), 10_000);
-      });
-    });
+      })
+      .mockResolvedValueOnce(makeResponse(200));
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    // First call hangs and is aborted after 50ms; second call resolves.
-    fetchMock.mockResolvedValueOnce(new Promise(() => {})); // immediate hang
-    const promise = fetchWithRetry('https://example.com', {}, { timeoutMs: 50, retries: 1, initialBackoffMs: 1, maxBackoffMs: 1 });
-    // Advance timers past the abort deadline.
-    await vi.advanceTimersByTimeAsync(60);
-    await expect(promise).rejects.toBeDefined();
-    vi.useRealTimers();
+    const res = await fetchWithRetry('https://example.com', {}, {
+      timeoutMs: 10,
+      retries: 1,
+      initialBackoffMs: 1,
+      maxBackoffMs: 1,
+    });
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 
