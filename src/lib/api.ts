@@ -467,4 +467,45 @@ export const api = {
     return res.data
   },
 
+  // AI Auto-fill
+  autoFillHackathon: async (params: { input: string; inputType: 'url' | 'text' }) => {
+    const res = await axios.post<{
+      success: boolean
+      data: {
+        title: string
+        tagline: string
+        city?: string
+        startAt: string
+        endAt: string
+        prizePool?: string
+        description?: string
+        externalUrl?: string
+        organizer?: string
+        source?: string
+        tracks?: string[]
+        confidence: Record<string, number>
+      }
+      rawExtractedText?: string
+      model: string
+      tokensUsed: number
+    }>(`${API_URL}/ai/auto-fill-hackathon`, params)
+    return res.data
+  },
+
+  // External Hackathon Config
+  getExternalHackathonConfig: async (hackathonId: string) => {
+    const res = await axios.get(`${API_URL}/hackathons/${hackathonId}/external-config`)
+    return res.data
+  },
+  updateExternalHackathonConfig: async (hackathonId: string, data: {
+    allowSubmit?: boolean
+    enableJudging?: boolean
+    submitRedirectUrl?: string
+    tags?: string[]
+    adminNotes?: string
+  }) => {
+    const res = await axios.put(`${API_URL}/hackathons/${hackathonId}/external-config`, data)
+    return res.data
+  },
+
 }

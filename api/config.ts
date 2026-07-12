@@ -34,6 +34,8 @@ export function asString(value: unknown): string | undefined {
 
 export const VALID_ASSIGNMENT_STATUSES = new Set(['pending', 'in_progress', 'completed']);
 export const VALID_HACKATHON_STATUSES = new Set(['draft', 'upcoming', 'active', 'judging', 'completed']);
+export const VALID_HACKATHON_SOURCES = new Set(['openhackathon', 'devpost', 'dorahacks', 'custom']);
+export const VALID_SYNC_STATUSES = new Set(['manual', 'synced', 'pending', 'failed']);
 export const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true';
 export const DEFAULT_JWT_SECRET = 'openhackathon-change-this-secret';
 export const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;

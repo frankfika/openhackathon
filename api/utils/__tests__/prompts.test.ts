@@ -29,18 +29,26 @@ const baseHackathon = {
   endAt: '2026-09-03T18:00:00Z',
   prizePool: '50,000 USDC',
   theme: 'Web3 identity',
-  tracks: ['DePIN', 'ZK'],
-} as const;
+  tracks: ['DePIN', 'ZK'] as string[],
+};
 
 describe('Prompt template registry', () => {
-  it('exports the three named templates referenced by the routes', () => {
+  it('exports the named templates referenced by the routes', () => {
     expect(Object.keys(PROMPT_TEMPLATES).sort()).toEqual([
+      'hackathon-auto-fill',
       'hackathon-criteria',
       'hackathon-description',
       'hackathon-news',
     ]);
   });
-
+  it('exports the named templates referenced by the routes', () => {
+    expect(Object.keys(PROMPT_TEMPLATES).sort()).toEqual([
+      'hackathon-auto-fill',
+      'hackathon-criteria',
+      'hackathon-description',
+      'hackathon-news',
+    ]);
+  });
   it('each template carries a semver version string', () => {
     for (const t of Object.values(PROMPT_TEMPLATES)) {
       expect(t.version).toMatch(/^\d+\.\d+\.\d+$/);

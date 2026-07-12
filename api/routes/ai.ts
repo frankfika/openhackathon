@@ -759,7 +759,124 @@ export function registerAIRoutes(
     },
   );
 
-  // Endpoint 4 (Block 3 §3.6 V3.12): aggregated AI cost
+  // Endpoint 4: Auto-fill hackathon from URL / text
+  app.post(
+    '/api/ai/auto-fill-hackathon',
+    requireAuth,
+    requireAdmin,
+    aiGenRateLimiter,
+    async (req, res) => {
+      try {
+        const { input, inputType = 'text' } = req.body;
+        if (!input || typeof input !== 'string') {
+          return res.status(400).json({ error: 'input is required and must be a string' });
+        }
+
+        let content = input;
+        if (inputType === 'url') {
+          try {
+            const url = new URL(input);
+            if (!['http:', 'https:'].includes(url.protocol)) {
+              return res.status(400).json({ error: 'Invalid URL protocol' });
+            }
+            const response = await fetch(input, { redirect: 'follow' });
+            if (!response.ok) {
+              return res.status(400).json({ error: `Failed to fetch URL: ${response.status} ${response.statusText}` });
+            }
+            const html = await response.text();
+            // Simple HTML-to-text extraction: strip script/style tags and all HTML tags
+            content = html
+              .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+              .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+            if (content.length > 15000) {
+              content = content.slice(0, 15000);
+            }
+          } catch (fetchErr: any) {
+            return res.status(400).json({ error: 'Failed to fetch URL', message: fetchErr.message });
+          }
+        }
+
+        const aiService = getAIService();
+        const started = Date.now();
+        let result;
+        try {
+          result = await aiService.callStructured('hackathon-auto-fill', {
+            content: content.substring(0, 15000),
+            language: 'both',
+            tone: 'professional',
+          } as never);
+        } catch (err) {
+          const e = err as AIError;
+          const code = e.code || 'LLM_FAILED';
+          const status = code === 'LLM_INVALID_KEY' ? 500 : 502;
+          return res.status(status).json({ error: e.message || 'LLM call failed', code });
+        }
+
+        // Normalize dates
+        const data = result.data as Record<string, unknown>;
+        if (data.startAt && typeof data.startAt === 'string') {
+          const parsed = new Date(data.startAt);
+          if (!Number.isNaN(parsed.getTime())) {
+            data.startAt = parsed.toISOString().split('T')[0];
+          }
+        }
+        if (data.endAt && typeof data.endAt === 'string') {
+          const parsed = new Date(data.endAt);
+          if (!Number.isNaN(parsed.getTime())) {
+            data.endAt = parsed.toISOString().split('T')[0];
+          }
+        }
+
+        // Default source to 'external' if not specified
+        if (!data.source || typeof data.source !== 'string') {
+          data.source = 'external';
+        }
+        // Default organizer from source or generic
+        if (!data.organizer || typeof data.organizer !== 'string') {
+          const src = String(data.source);
+          data.organizer = src === 'custom' || src === 'external' ? 'Unknown' : src;
+        }
+
+        // Log AI generation
+        const actorId = req.authUser?.id;
+        if (actorId) {
+          await prisma.aIGenerationLog.create({
+            data: {
+              actorId,
+              type: 'auto-fill',
+              language: 'both',
+              promptHash: result.promptHash,
+              model: result.model,
+              tokensIn: result.tokensIn,
+              tokensOut: result.tokensOut,
+              latencyMs: Date.now() - started,
+              status: 'success',
+            },
+          });
+        }
+
+        res.json({
+          success: true,
+          data,
+          rawExtractedText: content.slice(0, 3000),
+          model: result.model,
+          tokensUsed: result.tokensIn + result.tokensOut,
+          tokensIn: result.tokensIn,
+          tokensOut: result.tokensOut,
+          latencyMs: result.latencyMs,
+          promptVersion: buildPrompt('hackathon-auto-fill', { content: '', language: 'both', tone: 'professional' } as never).version,
+        });
+      } catch (error) {
+        console.error('Auto-fill error:', error);
+        res.status(500).json({ error: 'Auto-fill failed', message: error instanceof Error ? error.message : 'Unknown error' });
+      }
+    },
+  );
+
+  // Endpoint 5 (Block 3 §3.6 V3.12): aggregated AI cost
   app.get('/api/admin/ai-cost', requireAuth, requireAdmin, async (req, res) => {
     const month = asString(req.query.month); // e.g. "2026-07"
     let start: Date;

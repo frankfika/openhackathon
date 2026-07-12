@@ -87,6 +87,25 @@ export type Hackathon = {
   submissionSuccessHintImageUrl?: string
   judgesPerProject?: number
   leaderboardPublished?: boolean
+  // External hackathon fields (v2.3+)
+  source?: string
+  organizer?: string
+  externalUrl?: string
+  syncStatus?: string
+  syncedAt?: string
+  externalConfig?: ExternalHackathonConfig
+}
+
+export type ExternalHackathonConfig = {
+  id: string
+  hackathonId: string
+  allowSubmit: boolean
+  enableJudging: boolean
+  submitRedirectUrl?: string | null
+  tags: string[]
+  adminNotes?: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export type HackathonUpsertInput = Partial<Omit<Hackathon, 'submissionSchema' | 'scoringCriteria'>> & {

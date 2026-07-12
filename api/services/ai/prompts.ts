@@ -17,7 +17,7 @@ export type Language = 'zh' | 'en' | 'both';
 export type Tone = 'professional' | 'casual' | 'academic' | 'tech-evangelist';
 
 export interface HackathonPromptContext {
-  hackathon: {
+  hackathon?: {
     id: string;
     title: string;
     tagline: string;
@@ -28,6 +28,7 @@ export interface HackathonPromptContext {
     theme?: string | null;
     tracks?: string[];
   };
+  content?: string; // for auto-fill
   projects?: Array<{
     rank: number;
     award: string;
@@ -71,18 +72,18 @@ export const hackathonDescriptionTemplate: PromptTemplate = {
   ].join(' '),
   userPrompt: (ctx) => {
     const { hackathon, language, tone, theme, tracks, submissionDeadline, prizePool } = ctx;
-    const tracksText = (tracks ?? hackathon.tracks ?? []).slice(0, 5).join(' / ') || '—';
+    const tracksText = (tracks ?? hackathon?.tracks ?? []).slice(0, 5).join(' / ') || '—';
     return [
       'Generate a hackathon participant brief in {{language}} with tone {{tone}}.',
       '',
       '## Hackathon facts',
-      `- Title: ${hackathon.title}`,
-      `- Tagline: ${hackathon.tagline}`,
-      `- City: ${hackathon.city || 'Online'}`,
-      `- Start: ${hackathon.startAt}`,
-      `- End: ${hackathon.endAt}`,
-      `- Prize pool: ${prizePool || hackathon.prizePool || 'TBA'}`,
-      `- Theme: ${theme || hackathon.theme || 'TBA'}`,
+      `- Title: ${hackathon?.title || 'TBA'}`,
+      `- Tagline: ${hackathon?.tagline || 'TBA'}`,
+      `- City: ${hackathon?.city || 'Online'}`,
+      `- Start: ${hackathon?.startAt || 'TBA'}`,
+      `- End: ${hackathon?.endAt || 'TBA'}`,
+      `- Prize pool: ${prizePool || hackathon?.prizePool || 'TBA'}`,
+      `- Theme: ${theme || hackathon?.theme || 'TBA'}`,
       `- Tracks: ${tracksText}`,
       `- Submission deadline: ${submissionDeadline || 'TBA'}`,
       '',
@@ -130,10 +131,10 @@ export const hackathonNewsTemplate: PromptTemplate = {
       'Generate an award-winner news article for a finished hackathon in {{language}} with tone {{tone}}.',
       '',
       '## Hackathon facts',
-      `- Title: ${hackathon.title}`,
-      `- Start: ${hackathon.startAt}`,
-      `- End: ${hackathon.endAt}`,
-      `- Prize pool: ${prizePool || hackathon.prizePool || 'TBA'}`,
+      `- Title: ${hackathon?.title || 'TBA'}`,
+      `- Start: ${hackathon?.startAt || 'TBA'}`,
+      `- End: ${hackathon?.endAt || 'TBA'}`,
+      `- Prize pool: ${prizePool || hackathon?.prizePool || 'TBA'}`,
       '',
       '## Awarded projects',
       projectLines || '— no project data —',
@@ -172,7 +173,7 @@ export const hackathonCriteriaTemplate: PromptTemplate = {
     return [
       `Recommend ${finalCount} scoring criteria for the following hackathon.`,
       '',
-      `Theme: ${theme || hackathon.theme || 'General'}`,
+      `Theme: ${theme || hackathon?.theme || 'General'}`,
       `Focus: ${focus || 'Technical innovation, implementation, impact'}`,
       '',
       'Each criterion should include:',
@@ -207,12 +208,59 @@ export const hackathonCriteriaTemplate: PromptTemplate = {
   },
 };
 
+// ===== Template 4: Auto-fill hackathon from URL / text =====
+
+export const hackathonAutoFillTemplate: PromptTemplate = {
+  version: '1.0.0',
+  description: 'Extract structured hackathon info from a URL page or text description.',
+  systemPrompt: [
+    'You are a precise information extraction assistant.',
+    'Extract hackathon details from the provided content and return structured JSON.',
+    'For dates, always use ISO 8601 format (YYYY-MM-DD).',
+    'For each field, provide a confidence score (0.0-1.0) indicating how certain you are.',
+    'If a field is not found in the content, set it to an empty string and give confidence 0.',
+    'Be conservative: only fill a field if you are reasonably sure of the value.',
+  ].join(' '),
+  userPrompt: (ctx) => [
+    'Extract hackathon information from the following content:',
+    '',
+    '---',
+    ctx.content || '',
+    '---',
+    '',
+    'Return JSON with shape {{outputJsonShape}}.',
+  ].join('\n'),
+  outputJson: {
+    type: 'object',
+    properties: {
+      title: { type: 'string', description: 'Hackathon name / title' },
+      tagline: { type: 'string', description: 'Short slogan or tagline' },
+      city: { type: 'string', description: 'Host city or Online' },
+      startAt: { type: 'string', description: 'Start date in YYYY-MM-DD format' },
+      endAt: { type: 'string', description: 'End date in YYYY-MM-DD format' },
+      prizePool: { type: 'string', description: 'Prize pool amount or empty' },
+      description: { type: 'string', description: 'Full description' },
+      externalUrl: { type: 'string', description: 'Original event URL' },
+      organizer: { type: 'string', description: 'Host organization name' },
+      source: { type: 'string', description: 'Identifier like devpost, dorahacks, custom, or openhackathon' },
+      tracks: { type: 'array', items: { type: 'string' }, description: 'Track names or themes' },
+      confidence: {
+        type: 'object',
+        additionalProperties: { type: 'number' },
+        description: 'Confidence score 0.0-1.0 for each extracted field',
+      },
+    },
+    required: ['title', 'tagline', 'startAt', 'endAt', 'confidence'],
+  },
+};
+
 // ===== Template registry =====
 
 export const PROMPT_TEMPLATES = {
   'hackathon-description': hackathonDescriptionTemplate,
   'hackathon-news': hackathonNewsTemplate,
   'hackathon-criteria': hackathonCriteriaTemplate,
+  'hackathon-auto-fill': hackathonAutoFillTemplate,
 } as const;
 
 export type PromptName = keyof typeof PROMPT_TEMPLATES;

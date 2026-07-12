@@ -70,6 +70,7 @@ model Hackathon {
   submissionSuccessHintText     String?
   submissionSuccessHintImageUrl String?
   judgesPerProject              Int      @default(2)
+
   // AI-generated content (see api/services/ai/prompts.ts):
   // - description / descriptionZh / descriptionEn — participant brief
   // - newsZh / newsEn — award news draft
@@ -81,6 +82,14 @@ model Hackathon {
   newsEn                        String?
   theme                         String? // free-form brief / topic
   tracks                        String[] @default([]) // up to 5 named tracks
+
+  // External hackathon support (v2.3+)
+  source                        String   @default("openhackathon") // openhackathon, devpost, dorahacks, custom
+  organizer                     String   @default("OpenHackathon")
+  externalUrl                   String?
+  syncStatus                    String   @default("manual") // manual, synced, pending, failed
+  syncedAt                      DateTime?
+
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
 
@@ -90,6 +99,22 @@ model Hackathon {
   activityLogs             ActivityLog[]
   crossHackathonActivities CrossHackathonActivity[]
   aiGenerationLogs         AIGenerationLog[]
+  externalConfig           ExternalHackathonConfig?
+}
+
+model ExternalHackathonConfig {
+  id            String    @id @default(uuid())
+  hackathonId   String    @unique
+  hackathon     Hackathon @relation(fields: [hackathonId], references: [id], onDelete: Cascade)
+
+  allowSubmit       Boolean  @default(true)
+  enableJudging     Boolean  @default(true)
+  submitRedirectUrl String?
+  tags              String[] @default([])
+  adminNotes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model HackathonJudge {

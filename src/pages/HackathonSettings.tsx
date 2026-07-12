@@ -9,7 +9,7 @@ import { SetupWizardDialog } from '@/components/SetupWizardDialog'
 import { SubmissionField, ScoringCriterion, SubmissionSchemaConfig } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import { ArrowLeft, Loader2, Play, AlertTriangle, Wand2, Lock } from 'lucide-react'
+import { ArrowLeft, Loader2, Play, AlertTriangle, Wand2, Lock, Sparkles } from 'lucide-react'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/lib/api'
@@ -18,6 +18,7 @@ import { buildAdminPath, useAdminRoutes } from '@/lib/admin-routing'
 import { GeneralTab, HackathonFormValues } from './hackathon-settings/GeneralTab'
 import { SubmissionTab } from './hackathon-settings/SubmissionTab'
 import { ScoringTab } from './hackathon-settings/ScoringTab'
+import { AutoFillDialog } from './hackathon-settings/AutoFillDialog'
 
 function isValidHttpOrRootRelativeUrl(value: string): boolean {
   if (value.startsWith('/') && !value.startsWith('//')) return true
@@ -34,6 +35,10 @@ type HackathonUpdateValues = Partial<HackathonFormValues> & {
   submissionSchema?: SubmissionSchemaConfig
   scoringCriteria?: ScoringCriterion[]
   judgesPerProject?: number
+  source?: string
+  organizer?: string
+  externalUrl?: string
+  syncStatus?: string
 }
 
 export function HackathonSettings() {
@@ -99,6 +104,7 @@ export function HackathonSettings() {
   const [judgesPerProject, setJudgesPerProject] = useState(2)
   const [coverGradient, setCoverGradient] = useState('')
   const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false)
+  const [isAutoFillOpen, setIsAutoFillOpen] = useState(false)
 
   // Update local state when hackathon data loads — no defaults, use backend data as-is
   useEffect(() => {
@@ -298,6 +304,39 @@ export function HackathonSettings() {
     setIsSetupWizardOpen(false)
   }
 
+  const handleAutoFill = (data: {
+    title: string
+    tagline: string
+    city?: string
+    startAt: string
+    endAt: string
+    prizePool?: string
+    docsUrl?: string
+    organizer?: string
+    source?: string
+    tracks?: string[]
+  }) => {
+    setValue('title', data.title)
+    setValue('tagline', data.tagline)
+    if (data.city) setValue('city', data.city)
+    if (data.prizePool) setValue('prizePool', data.prizePool)
+    setValue('startAt', data.startAt)
+    setValue('endAt', data.endAt)
+    if (data.docsUrl) setValue('docsUrl', data.docsUrl)
+    // Auto-save the filled form
+    updateMutation.mutate({
+      title: data.title,
+      tagline: data.tagline,
+      city: data.city || undefined,
+      prizePool: data.prizePool || undefined,
+      startAt: data.startAt,
+      endAt: data.endAt,
+      docsUrl: data.docsUrl || undefined,
+      source: data.source || 'external',
+      organizer: data.organizer || 'External',
+    })
+  }
+
   if (isLoadingHackathon) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -354,10 +393,16 @@ export function HackathonSettings() {
             </AlertDialog>
           )}
           {!isLocked && (
-            <Button type="button" variant="outline" className="gap-2" onClick={() => setIsSetupWizardOpen(true)}>
-              <Wand2 className="h-4 w-4" />
-              {t('settings.setup_wizard.open')}
-            </Button>
+            <>
+              <Button type="button" variant="outline" className="gap-2" onClick={() => setIsAutoFillOpen(true)}>
+                <Sparkles className="h-4 w-4" />
+                AI 自动填写
+              </Button>
+              <Button type="button" variant="outline" className="gap-2" onClick={() => setIsSetupWizardOpen(true)}>
+                <Wand2 className="h-4 w-4" />
+                {t('settings.setup_wizard.open')}
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -445,6 +490,12 @@ export function HackathonSettings() {
         existingSubmissionFields={submissionSchema}
         isApplying={updateMutation.isPending}
         onApply={onApplySetupWizard}
+      />
+
+      <AutoFillDialog
+        open={isAutoFillOpen}
+        onOpenChange={setIsAutoFillOpen}
+        onApply={handleAutoFill}
       />
     </div>
   )

@@ -176,6 +176,11 @@ export function Hackathons() {
                               {t(`hackathons.status.${h.status}`)}
                             </div>
                           )}
+                          {h.source && h.source !== 'openhackathon' && (
+                            <div className="inline-flex items-center rounded-full bg-purple-500/20 px-2.5 py-1 text-xs font-medium text-purple-700 dark:text-purple-300">
+                              {h.organizer || h.source}
+                            </div>
+                          )}
                           {isSelected && (
                             <div className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground">
                               <Check className="h-3 w-3" />

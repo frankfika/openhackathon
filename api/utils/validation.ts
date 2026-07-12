@@ -105,7 +105,8 @@ export function normalizeAdminBasePath(value?: string | null) {
   return normalized === '/' ? fallback : normalized;
 }
 
-// ===== Input length limits =====
+export const MAX_ORGANIZER_LENGTH = 200;
+export const MAX_EXTERNAL_URL_LENGTH = 2000;
 
 export const MAX_TITLE_LENGTH = 200;
 export const MAX_TAGLINE_LENGTH = 500;
