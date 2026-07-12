@@ -42,7 +42,13 @@ export async function getOrCreateUserFromWallet(
   }
 
   // Create a fresh Web3 user with this wallet as primary.
-  const role = WEB3_DEFAULT_ROLE === 'admin' ? 'admin' : 'judge';
+  // Spec P0-4: web3 default role = 'user'. Allow admin/judge/user env override,
+  // fall back to 'user' for unknown values (was 'judge' which gave new web3 users
+  // admin-level access — a P0 security hole).
+  const role: 'admin' | 'judge' | 'user' =
+    WEB3_DEFAULT_ROLE === 'admin' || WEB3_DEFAULT_ROLE === 'judge'
+      ? WEB3_DEFAULT_ROLE
+      : 'user';
   const user = await prisma.user.create({
     data: {
       name: walletDisplayName(address, chain),

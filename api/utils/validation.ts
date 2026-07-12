@@ -34,7 +34,7 @@ export function isValidPassword(password: string): boolean {
 }
 
 export function asUserRole(value: unknown): UserRole | null {
-  if (value === 'admin' || value === 'judge') return value;
+  if (value === 'admin' || value === 'judge' || value === 'user') return value;
   return null;
 }
 
