@@ -80,7 +80,7 @@ export const SUPPORTED_CHAINS = (process.env.SUPPORTED_CHAINS || 'ethereum,polyg
   .split(',')
   .map((chain) => chain.trim().toLowerCase())
   .filter(Boolean);
-export const WEB3_DEFAULT_ROLE = asString(process.env.WEB3_DEFAULT_ROLE) || 'judge';
+export const WEB3_DEFAULT_ROLE = asString(process.env.WEB3_DEFAULT_ROLE) || 'user';
 
 // On-chain attestation
 export const ENABLE_ONCHAIN_STORAGE = process.env.ENABLE_ONCHAIN_STORAGE === 'true';
