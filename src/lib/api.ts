@@ -360,6 +360,12 @@ export const api = {
     const res = await axios.post<{ success: boolean; user: User }>(`${API_URL}/auth/link-wallet`, payload)
     return res.data
   },
+  unlinkWallet: async (address: string, chain: string): Promise<{ success: boolean }> => {
+    const res = await axios.delete<{ success: boolean }>(`${API_URL}/auth/wallets`, {
+      params: { address, chain },
+    })
+    return res.data
+  },
 
   // Cross-hackathon identity & global leaderboard
   getGlobalLeaderboard: async (params?: { chain?: string; limit?: number }) => {
@@ -430,12 +436,20 @@ export const api = {
   },
 
   // AI Services
-  analyzeProject: async (projectId: string) => {
-    const res = await axios.post(`${API_URL}/ai/analyze-project/${projectId}`)
+  analyzeProject: async (projectId: string, force = false) => {
+    const res = await axios.post(`${API_URL}/ai/analyze-project/${projectId}`, { force })
     return res.data
   },
   batchAnalyzeProjects: async (params: { projectIds?: string[]; hackathonId?: string }) => {
     const res = await axios.post(`${API_URL}/ai/batch-analyze`, params)
+    return res.data
+  },
+  getBatchStatus: async (taskId: string) => {
+    const res = await axios.get(`${API_URL}/ai/batch-status/${taskId}`)
+    return res.data
+  },
+  getAIMetrics: async () => {
+    const res = await axios.get(`${API_URL}/ai/metrics`)
     return res.data
   },
   getScoringConsistency: async (hackathonId: string) => {

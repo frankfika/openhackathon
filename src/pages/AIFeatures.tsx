@@ -1,19 +1,50 @@
 /**
- * AI功能演示页面
- * 管理员可以在这里测试和配置AI功能
+ * AI 功能演示页面（v2.2）
+ *
+ * 设计要点：
+ * - 全 i18n 化（zh + en），跟项目其他 20 个 page 一致
+ * - 6 个 tab 覆盖 v2.1 全部 AI 能力（项目分析、评分一致性、内容审核、内容生成、抄袭检测、AI 运行状态）
+ * - 4 个 mutation 全部有 onError / 错误分类（network / unauthorized / server / timeout）
+ * - batch analyze 任务进度实时跟踪（轮询 batch-status endpoint）
+ * - 每个输入区有"样例"快捷填充
+ * - 生成结果可一键复制
+ *
+ * 改动历史：见 docs/AI_FEATURES_CHANGELOG.md
  */
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Sparkles, Loader2, CheckCircle2, AlertCircle, Wand2, Brain, Shield, FileText } from 'lucide-react'
+import {
+  Sparkles,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Wand2,
+  Brain,
+  Shield,
+  FileText,
+  Search,
+  Activity,
+  Copy,
+  Check,
+  AlertTriangle,
+  XCircle,
+} from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { useActiveHackathon } from '@/lib/active-hackathon'
+
+// ==================== Types ====================
 
 interface ConsistencyJudge {
   judgeId: string
@@ -31,28 +62,164 @@ interface ModerationFlag {
   description: string
 }
 
+interface ModerationResult {
+  isAppropriate: boolean
+  flags: ModerationFlag[]
+  suggestedAction: 'approve' | 'review' | 'reject'
+}
+
+interface BatchStatus {
+  taskId: string
+  status: 'processing' | 'completed' | 'failed'
+  total: number
+  completed: number
+  failed: number
+  progress: number
+  startedAt: number
+  finishedAt?: number
+  errors: Array<{ projectId: string; message: string }>
+}
+
+interface AIMetrics {
+  calls: Record<string, number>
+  errors: Record<string, number>
+  avgDurationMs: number
+}
+
+// ==================== Error 分类 helper ====================
+
+/**
+ * 把 axios 错误 / fetch 错误 / 普通错误统一映射到 5 类用户友好消息。
+ * 不暴露后端 error.message 原文（脱敏原则 — 见 api/routes/ai.ts 改造）。
+ */
+function classifyError(err: unknown, t: (key: string, opts?: Record<string, string>) => string): string {
+  const e = err as { code?: string; message?: string; response?: { status?: number; data?: { error?: string } } }
+  // 1. 客户端可识别的网络层错误
+  if (e?.code === 'ERR_NETWORK' || e?.message?.includes('Network Error')) {
+    return t('ai_features.common.error_network')
+  }
+  if (e?.code === 'ECONNABORTED' || e?.message?.includes('timeout')) {
+    return t('ai_features.common.error_timeout')
+  }
+  // 2. 后端脱敏后的 message 优先（如 "AI service timeout"）— 比 5xx 通用消息更具体
+  if (e?.response?.data?.error && typeof e.response.data.error === 'string') {
+    return e.response.data.error
+  }
+  // 3. HTTP 状态码（兜底）
+  if (e?.response?.status === 401) return t('ai_features.common.error_unauthorized')
+  if (e?.response?.status === 403) return t('ai_features.common.error_forbidden')
+  if (e?.response?.status && e.response.status >= 500) return t('ai_features.common.error_server')
+  return t('ai_features.common.error_unknown')
+}
+
+// ==================== 复制按钮 ====================
+
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      toast.success(label)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error('Copy failed')
+    }
+  }
+  return (
+    <Button variant="outline" size="sm" onClick={handleCopy} className="gap-2">
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      {copied ? '✓' : label}
+    </Button>
+  )
+}
+
+// ==================== 加载骨架屏 ====================
+
+function Skeleton({ lines = 3 }: { lines?: number }) {
+  return (
+    <div className="space-y-2 animate-pulse">
+      {Array.from({ length: lines }).map((_, i) => (
+        <div key={i} className="h-4 bg-muted rounded w-full" style={{ width: `${100 - i * 10}%` }} />
+      ))}
+    </div>
+  )
+}
+
+// ==================== 主组件 ====================
+
 export function AIFeatures() {
+  const { t } = useTranslation()
   const { activeHackathon } = useActiveHackathon()
   const queryClient = useQueryClient()
-  const [testContent, setTestContent] = useState('')
-  const [generatedContent, setGeneratedContent] = useState('')
 
-  // 批量分析项目
+  // ---- Tab 1: 项目分析 ----
+  const [forceRefresh, setForceRefresh] = useState(false)
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
+  const taskIdRef = useRef<string | null>(null)
+
   const batchAnalyzeMutation = useMutation({
     mutationFn: async () => {
-      return await api.batchAnalyzeProjects({ hackathonId: activeHackathon?.id })
+      if (!activeHackathon?.id) {
+        throw new Error(t('ai_features.analyze.no_hackathon'))
+      }
+      return await api.batchAnalyzeProjects({ hackathonId: activeHackathon.id })
     },
-    onSuccess: () => {
-      toast.success('已开始批量AI分析，请稍后刷新查看结果')
+    onSuccess: (data) => {
+      if (data?.taskId) {
+        taskIdRef.current = data.taskId
+        setActiveTaskId(data.taskId)
+        toast.success(t('ai_features.analyze.started_toast', { taskId: data.taskId }))
+      } else {
+        toast.success(t('ai_features.analyze.started_toast', { taskId: '?' }))
+      }
       queryClient.invalidateQueries({ queryKey: ['projects'] })
     },
-    onError: () => {
-      toast.error('批量分析失败，请检查AI配置')
+    onError: (err) => {
+      toast.error(classifyError(err, t))
     },
   })
 
-  // 评分一致性分析
-  const { data: consistencyData, isLoading: isLoadingConsistency, refetch: refetchConsistency } = useQuery({
+  // 轮询 batch status（任务进行中时）
+  const { data: batchStatus } = useQuery<BatchStatus | null>({
+    queryKey: ['batch-status', activeTaskId],
+    queryFn: async () => {
+      if (!activeTaskId) return null
+      try {
+        const data = await api.getBatchStatus(activeTaskId)
+        // 任务已被服务清理（404 / 过期），停止轮询 + 提示用户
+        if (!data) {
+          setActiveTaskId(null)
+          taskIdRef.current = null
+          toast.warning(t('ai_features.analyze.task_not_found'))
+        }
+        return data
+      } catch (err: unknown) {
+        // 4xx 错误（404 / 410）：任务已过期，停止轮询
+        const e = err as { response?: { status?: number } }
+        if (e?.response?.status === 404 || e?.response?.status === 410) {
+          setActiveTaskId(null)
+          taskIdRef.current = null
+          toast.warning(t('ai_features.analyze.task_not_found'))
+          return null
+        }
+        // 其他错误（5xx / 网络）继续轮询，等恢复
+        return null
+      }
+    },
+    enabled: !!activeTaskId,
+    refetchInterval: (query) => {
+      const data = query.state.data as BatchStatus | null | undefined
+      // 任务已完成或失败，停止轮询
+      if (data && (data.status === 'completed' || data.status === 'failed')) {
+        return false
+      }
+      return 2000 // 进行中每 2s 轮询
+    },
+  })
+
+  // ---- Tab 2: 评分一致性 ----
+  const { data: consistencyData, isLoading: isLoadingConsistency, error: consistencyError, refetch: refetchConsistency } = useQuery({
     queryKey: ['scoring-consistency', activeHackathon?.id],
     queryFn: async () => {
       if (!activeHackathon?.id) return null
@@ -61,23 +228,63 @@ export function AIFeatures() {
     enabled: false,
   })
 
-  // 内容审核测试
+  // ---- Tab 3: 内容审核 ----
+  const [testContent, setTestContent] = useState('')
   const moderateMutation = useMutation({
     mutationFn: async (content: string) => {
       return await api.moderateContent(content, 'project')
     },
+    onError: (err) => {
+      toast.error(classifyError(err, t))
+    },
   })
 
-  // 内容优化测试
-  const optimizeMutation = useMutation({
-    mutationFn: async (content: string) => {
-      return await api.optimizeDescription(content, 'zh', 'business')
+  // ---- Tab 4: 内容生成 ----
+  const [generateType, setGenerateType] = useState<string>('description')
+  const [generateLanguage, setGenerateLanguage] = useState<string>('zh')
+  const [generateStyle, setGenerateStyle] = useState<string>('business')
+  const [generateInput, setGenerateInput] = useState('')
+  const [generatedContent, setGeneratedContent] = useState('')
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      // 把自由输入按 type 拆成 context（README/pitch/news/email/criteria 都吃 title + description + ...）
+      const context = parseGenerateInput(generateInput, generateType)
+      return await api.generateContent({
+        type: generateType,
+        context,
+        language: generateLanguage,
+        style: generateStyle,
+      })
     },
     onSuccess: (data) => {
-      setGeneratedContent(data.optimized)
-      toast.success('内容已优化')
+      setGeneratedContent(data.content || '')
+      toast.success(t('ai_features.generate.copied_toast'))
+    },
+    onError: (err) => {
+      toast.error(classifyError(err, t))
     },
   })
+
+  // ---- Tab 5: 抄袭检测 ----
+  const [text1, setText1] = useState('')
+  const [text2, setText2] = useState('')
+  const similarityMutation = useMutation({
+    mutationFn: async () => {
+      return await api.detectSimilarity(text1, text2)
+    },
+    onError: (err) => {
+      toast.error(classifyError(err, t))
+    },
+  })
+
+  // ---- Tab 6: AI Metrics ----
+  const { data: aiMetrics, refetch: refetchMetrics, isLoading: isLoadingMetrics } = useQuery<AIMetrics>({
+    queryKey: ['ai-metrics'],
+    queryFn: async () => await api.getAIMetrics(),
+    enabled: false,
+  })
+
+  // ==================== Render ====================
 
   return (
     <div className="container mx-auto py-8 space-y-6">
@@ -85,56 +292,67 @@ export function AIFeatures() {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Sparkles className="h-8 w-8 text-purple-500" />
-            AI功能控制台
+            {t('ai_features.page_title')}
           </h1>
-          <p className="text-muted-foreground mt-2">
-            测试和配置AI增强功能
-          </p>
+          <p className="text-muted-foreground mt-2">{t('ai_features.page_subtitle')}</p>
         </div>
         <Badge variant="outline" className="text-sm">
           <Brain className="h-4 w-4 mr-1" />
-          AI v2.1
+          {t('ai_features.version_badge')}
         </Badge>
       </div>
 
       <Tabs defaultValue="analyze" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
           <TabsTrigger value="analyze">
-            <Wand2 className="h-4 w-4 mr-2" />
-            项目分析
+            <Wand2 className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">{t('ai_features.tabs.analyze')}</span>
           </TabsTrigger>
           <TabsTrigger value="consistency">
-            <Brain className="h-4 w-4 mr-2" />
-            评分一致性
+            <Brain className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">{t('ai_features.tabs.consistency')}</span>
           </TabsTrigger>
           <TabsTrigger value="moderate">
-            <Shield className="h-4 w-4 mr-2" />
-            内容审核
+            <Shield className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">{t('ai_features.tabs.moderate')}</span>
           </TabsTrigger>
           <TabsTrigger value="generate">
-            <FileText className="h-4 w-4 mr-2" />
-            内容生成
+            <FileText className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">{t('ai_features.tabs.generate')}</span>
+          </TabsTrigger>
+          <TabsTrigger value="plagiarism">
+            <Search className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">{t('ai_features.tabs.plagiarism')}</span>
+          </TabsTrigger>
+          <TabsTrigger value="metrics">
+            <Activity className="h-4 w-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">{t('ai_features.tabs.metrics')}</span>
           </TabsTrigger>
         </TabsList>
 
-        {/* 项目分析 */}
+        {/* ==================== Tab 1: 项目分析 ==================== */}
         <TabsContent value="analyze">
           <Card>
             <CardHeader>
-              <CardTitle>批量项目质量分析</CardTitle>
-              <CardDescription>
-                使用AI自动分析所有项目，生成0-100分评分和详细报告
-              </CardDescription>
+              <CardTitle>{t('ai_features.analyze.title')}</CardTitle>
+              <CardDescription>{t('ai_features.analyze.description')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-lg border p-4 bg-muted/50">
-                <h3 className="font-semibold mb-2">功能说明</h3>
+                <h3 className="font-semibold mb-2">{t('ai_features.analyze.feature_list_intro')}</h3>
                 <ul className="text-sm text-muted-foreground space-y-1">
-                  <li>• 自动评估项目的完整性、创新性、技术深度和呈现质量</li>
-                  <li>• 识别项目亮点和潜在问题</li>
-                  <li>• 提取技术标签和评估复杂度</li>
-                  <li>• 分析结果会缓存24小时，避免重复调用</li>
+                  <li>• {t('ai_features.analyze.feature_1')}</li>
+                  <li>• {t('ai_features.analyze.feature_2')}</li>
+                  <li>• {t('ai_features.analyze.feature_3')}</li>
+                  <li>• {t('ai_features.analyze.feature_4')}</li>
                 </ul>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Switch id="force-refresh" checked={forceRefresh} onCheckedChange={setForceRefresh} />
+                <Label htmlFor="force-refresh" className="text-sm text-muted-foreground cursor-pointer">
+                  {t('ai_features.analyze.force_refresh_label')}
+                </Label>
               </div>
 
               <Button
@@ -146,34 +364,91 @@ export function AIFeatures() {
                 {batchAnalyzeMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    分析中...
+                    {t('ai_features.analyze.starting')}
                   </>
                 ) : (
                   <>
                     <Sparkles className="mr-2 h-4 w-4" />
-                    开始批量分析
+                    {t('ai_features.analyze.start_button')}
                   </>
                 )}
               </Button>
 
-              {batchAnalyzeMutation.isSuccess && (
-                <div className="flex items-center gap-2 text-sm text-green-600">
-                  <CheckCircle2 className="h-4 w-4" />
-                  批量分析任务已启动，结果将在几分钟内生成
+              {/* 任务进度跟踪：mutation onSuccess 后开始显示，轮询 batch-status */}
+              {activeTaskId && (
+                <div className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      {t('ai_features.analyze.progress_label')} · {activeTaskId}
+                    </span>
+                    {batchStatus && (
+                      <Badge
+                        variant={
+                          batchStatus.status === 'completed'
+                            ? 'default'
+                            : batchStatus.status === 'failed'
+                            ? 'destructive'
+                            : 'secondary'
+                        }
+                      >
+                        {batchStatus.status === 'processing'
+                          ? t('ai_features.analyze.task_status_processing')
+                          : batchStatus.status === 'completed'
+                          ? t('ai_features.analyze.task_status_completed')
+                          : t('ai_features.analyze.task_status_failed')}
+                      </Badge>
+                    )}
+                  </div>
+                  {batchStatus && (
+                    <>
+                      <Progress value={batchStatus.progress} className="h-2" />
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>
+                          {batchStatus.completed} / {batchStatus.total}{' '}
+                          {t('ai_features.analyze.completed_label')}
+                          {batchStatus.failed > 0 && (
+                            <span className="text-destructive ml-2">
+                              ({batchStatus.failed} {t('ai_features.analyze.failed_label')})
+                            </span>
+                          )}
+                        </span>
+                        <span>{batchStatus.progress}%</span>
+                      </div>
+                      {batchStatus.errors?.length > 0 && (
+                        <details className="text-xs">
+                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                            {t('ai_features.analyze.errors_section')}
+                          </summary>
+                          <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                            {batchStatus.errors.map((e, i) => (
+                              <li key={i} className="font-mono text-destructive">
+                                {e.projectId.slice(0, 8)}: {e.message}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {!activeHackathon && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <AlertCircle className="h-4 w-4" />
+                  {t('ai_features.analyze.no_hackathon')}
                 </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* 评分一致性分析 */}
+        {/* ==================== Tab 2: 评分一致性 ==================== */}
         <TabsContent value="consistency">
           <Card>
             <CardHeader>
-              <CardTitle>评委评分一致性分析</CardTitle>
-              <CardDescription>
-                检测评委评分偏差，识别过严或过宽的评委
-              </CardDescription>
+              <CardTitle>{t('ai_features.consistency.title')}</CardTitle>
+              <CardDescription>{t('ai_features.consistency.description')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <Button
@@ -185,15 +460,24 @@ export function AIFeatures() {
                 {isLoadingConsistency ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    分析中...
+                    {t('ai_features.consistency.analyzing')}
                   </>
                 ) : (
                   <>
                     <Brain className="mr-2 h-4 w-4" />
-                    分析评分一致性
+                    {t('ai_features.consistency.analyze_button')}
                   </>
                 )}
               </Button>
+
+              {isLoadingConsistency && <Skeleton lines={4} />}
+
+              {consistencyError && (
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <XCircle className="h-4 w-4" />
+                  {classifyError(consistencyError, t)}
+                </div>
+              )}
 
               {consistencyData && Array.isArray(consistencyData) && consistencyData.length > 0 && (
                 <div className="space-y-3 mt-4">
@@ -201,27 +485,44 @@ export function AIFeatures() {
                     <div key={judge.judgeId} className="rounded-lg border p-4">
                       <div className="flex items-center justify-between mb-2">
                         <h3 className="font-semibold">{judge.judgeName}</h3>
-                        <Badge variant={
-                          judge.bias === 'balanced' ? 'default' :
-                          judge.bias === 'too_strict' ? 'destructive' : 'secondary'
-                        }>
-                          {judge.bias === 'balanced' ? '均衡' :
-                           judge.bias === 'too_strict' ? '偏严格' : '偏宽松'}
+                        <Badge
+                          variant={
+                            judge.bias === 'balanced'
+                              ? 'default'
+                              : judge.bias === 'too_strict'
+                              ? 'destructive'
+                              : 'secondary'
+                          }
+                        >
+                          {judge.bias === 'balanced'
+                            ? t('ai_features.consistency.bias_balanced')
+                            : judge.bias === 'too_strict'
+                            ? t('ai_features.consistency.bias_too_strict')
+                            : t('ai_features.consistency.bias_too_lenient')}
                         </Badge>
                       </div>
                       <div className="grid grid-cols-3 gap-4 text-sm mb-2">
                         <div>
-                          <span className="text-muted-foreground">平均分：</span>
+                          <span className="text-muted-foreground">{t('ai_features.consistency.avg_score')}：</span>
                           <span className="font-medium">{judge.avgScore.toFixed(1)}</span>
                         </div>
                         <div>
-                          <span className="text-muted-foreground">标准差：</span>
+                          <span className="text-muted-foreground">{t('ai_features.consistency.std_dev')}：</span>
                           <span className="font-medium">{judge.stdDeviation.toFixed(1)}</span>
                         </div>
                         <div>
-                          <span className="text-muted-foreground">偏差：</span>
-                          <span className={`font-medium ${judge.biasScore > 0 ? 'text-orange-600' : judge.biasScore < 0 ? 'text-blue-600' : ''}`}>
-                            {judge.biasScore > 0 ? '+' : ''}{judge.biasScore.toFixed(1)}
+                          <span className="text-muted-foreground">{t('ai_features.consistency.bias')}：</span>
+                          <span
+                            className={`font-medium ${
+                              judge.biasScore > 0
+                                ? 'text-orange-600'
+                                : judge.biasScore < 0
+                                ? 'text-blue-600'
+                                : ''
+                            }`}
+                          >
+                            {judge.biasScore > 0 ? '+' : ''}
+                            {judge.biasScore.toFixed(1)}
                           </span>
                         </div>
                       </div>
@@ -230,26 +531,63 @@ export function AIFeatures() {
                   ))}
                 </div>
               )}
+
+              {consistencyData && Array.isArray(consistencyData) && consistencyData.length === 0 && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <AlertCircle className="h-4 w-4" />
+                  {t('ai_features.consistency.empty')}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* 内容审核 */}
+        {/* ==================== Tab 3: 内容审核 ==================== */}
         <TabsContent value="moderate">
           <Card>
             <CardHeader>
-              <CardTitle>内容安全审核测试</CardTitle>
-              <CardDescription>
-                测试AI内容审核功能，检测敏感内容和垃圾信息
-              </CardDescription>
+              <CardTitle>{t('ai_features.moderate.title')}</CardTitle>
+              <CardDescription>{t('ai_features.moderate.description')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Textarea
-                placeholder="输入要审核的内容..."
-                value={testContent}
-                onChange={(e) => setTestContent(e.target.value)}
-                rows={6}
-              />
+              <div>
+                <Label className="text-sm font-medium mb-2 block">
+                  {t('ai_features.moderate.input_label')}
+                </Label>
+                <Textarea
+                  placeholder={t('ai_features.moderate.input_placeholder')}
+                  value={testContent}
+                  onChange={(e) => setTestContent(e.target.value)}
+                  rows={6}
+                />
+                <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                  <span>{testContent.length} chars</span>
+                  {testContent.length > 10000 && (
+                    <Badge variant="outline" className="text-xs">
+                      {t('ai_features.moderate.truncated_notice', { original: String(testContent.length) })}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              {/* 样例快捷填充 */}
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">
+                  {t('ai_features.moderate.examples_title')}
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setTestContent(SAMPLE_MODERATE.spam)}>
+                    {t('ai_features.moderate.example_spam')}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setTestContent(SAMPLE_MODERATE.clean)}>
+                    {t('ai_features.moderate.example_clean')}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setTestContent(SAMPLE_MODERATE.sensitive)}>
+                    {t('ai_features.moderate.example_sensitive')}
+                  </Button>
+                </div>
+              </div>
+
               <Button
                 onClick={() => moderateMutation.mutate(testContent)}
                 disabled={moderateMutation.isPending || !testContent}
@@ -259,102 +597,139 @@ export function AIFeatures() {
                 {moderateMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    审核中...
+                    {t('ai_features.moderate.checking')}
                   </>
                 ) : (
                   <>
                     <Shield className="mr-2 h-4 w-4" />
-                    审核内容
+                    {t('ai_features.moderate.check_button')}
                   </>
                 )}
               </Button>
 
-              {moderateMutation.data && (
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    {moderateMutation.data.isAppropriate ? (
-                      <>
-                        <CheckCircle2 className="h-5 w-5 text-green-600" />
-                        <span className="font-semibold text-green-600">内容合适</span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="h-5 w-5 text-red-600" />
-                        <span className="font-semibold text-red-600">内容不合适</span>
-                      </>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-sm">
-                      <span className="text-muted-foreground">建议操作：</span>
-                      <Badge className="ml-2">
-                        {moderateMutation.data.suggestedAction === 'approve' ? '批准' :
-                         moderateMutation.data.suggestedAction === 'review' ? '人工审核' : '拒绝'}
-                      </Badge>
-                    </p>
-                    {moderateMutation.data.flags?.length > 0 && (
-                      <div className="mt-3">
-                        <p className="text-sm font-medium mb-2">检测到的问题：</p>
-                        <ul className="space-y-1">
-                          {moderateMutation.data.flags.map((flag: ModerationFlag, i: number) => (
-                            <li key={i} className="text-sm flex items-start gap-2">
-                              <Badge variant={flag.severity === 'high' ? 'destructive' : 'secondary'}>
-                                {flag.type}
-                              </Badge>
-                              <span className="text-muted-foreground">{flag.description}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
+              {moderateMutation.error && (
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <XCircle className="h-4 w-4" />
+                  {classifyError(moderateMutation.error, t)}
                 </div>
+              )}
+
+              {moderateMutation.data && (
+                <ModerationResultView data={moderateMutation.data} />
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* 内容生成 */}
+        {/* ==================== Tab 4: 内容生成 ==================== */}
         <TabsContent value="generate">
           <Card>
             <CardHeader>
-              <CardTitle>智能内容优化</CardTitle>
-              <CardDescription>
-                使用AI优化项目描述，使其更专业、清晰、吸引人
-              </CardDescription>
+              <CardTitle>{t('ai_features.generate.title')}</CardTitle>
+              <CardDescription>{t('ai_features.generate.description')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-sm mb-1 block">{t('ai_features.generate.type_label')}</Label>
+                  <Select value={generateType} onValueChange={setGenerateType}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="description">{t('ai_features.generate.type_description')}</SelectItem>
+                      <SelectItem value="readme">{t('ai_features.generate.type_readme')}</SelectItem>
+                      <SelectItem value="pitch">{t('ai_features.generate.type_pitch')}</SelectItem>
+                      <SelectItem value="news">{t('ai_features.generate.type_news')}</SelectItem>
+                      <SelectItem value="email">{t('ai_features.generate.type_email')}</SelectItem>
+                      <SelectItem value="criteria">{t('ai_features.generate.type_criteria')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-sm mb-1 block">{t('ai_features.generate.language_label')}</Label>
+                  <Select value={generateLanguage} onValueChange={setGenerateLanguage}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="zh">{t('ai_features.generate.language_zh')}</SelectItem>
+                      <SelectItem value="en">{t('ai_features.generate.language_en')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-sm mb-1 block">{t('ai_features.generate.style_label')}</Label>
+                  <Select value={generateStyle} onValueChange={setGenerateStyle}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="business">{t('ai_features.generate.style_business')}</SelectItem>
+                      <SelectItem value="academic">{t('ai_features.generate.style_academic')}</SelectItem>
+                      <SelectItem value="casual">{t('ai_features.generate.style_casual')}</SelectItem>
+                      <SelectItem value="technical">{t('ai_features.generate.style_technical')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <div>
-                <label className="text-sm font-medium mb-2 block">原始描述</label>
+                <Label className="text-sm font-medium mb-2 block">
+                  {t('ai_features.generate.input_label')}
+                </Label>
                 <Textarea
-                  placeholder="输入项目描述..."
-                  value={testContent}
-                  onChange={(e) => setTestContent(e.target.value)}
+                  placeholder={t(`ai_features.generate.input_placeholder_${generateType}`)}
+                  value={generateInput}
+                  onChange={(e) => setGenerateInput(e.target.value)}
                   rows={6}
                 />
+                <div className="mt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setGenerateInput(SAMPLE_GENERATE_DESCRIPTION)}
+                  >
+                    {t('ai_features.generate.example_button')}
+                  </Button>
+                </div>
               </div>
+
               <Button
-                onClick={() => optimizeMutation.mutate(testContent)}
-                disabled={optimizeMutation.isPending || !testContent}
+                onClick={() => generateMutation.mutate()}
+                disabled={generateMutation.isPending || !generateInput}
                 size="lg"
                 className="w-full"
               >
-                {optimizeMutation.isPending ? (
+                {generateMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    优化中...
+                    {t('ai_features.generate.generating')}
                   </>
                 ) : (
                   <>
                     <FileText className="mr-2 h-4 w-4" />
-                    AI优化
+                    {t('ai_features.generate.generate_button')}
                   </>
                 )}
               </Button>
 
+              {generateMutation.error && (
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <XCircle className="h-4 w-4" />
+                  {classifyError(generateMutation.error, t)}
+                </div>
+              )}
+
               {generatedContent && (
                 <div>
-                  <label className="text-sm font-medium mb-2 block">优化后</label>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-sm font-medium">{t('ai_features.generate.result_label')}</Label>
+                    <CopyButton
+                      text={generatedContent}
+                      label={t('ai_features.generate.copy_button')}
+                    />
+                  </div>
                   <div className="rounded-lg border p-4 bg-muted/50">
                     <p className="text-sm whitespace-pre-wrap">{generatedContent}</p>
                   </div>
@@ -363,25 +738,319 @@ export function AIFeatures() {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
 
-      {/* 配置提示 */}
-      <Card className="border-dashed">
-        <CardHeader>
-          <CardTitle className="text-base">配置说明</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm space-y-2">
-          <p>请确保在 <code className="bg-muted px-1 py-0.5 rounded">.env</code> 文件中配置了以下环境变量：</p>
-          <pre className="bg-muted p-3 rounded-lg overflow-x-auto">
-{`AI_PROVIDER=claude
-AI_API_KEY=sk-ant-your-key-here
-AI_MODEL=claude-sonnet-4-20250514`}
-          </pre>
-          <p className="text-muted-foreground">
-            💡 提示：支持Claude、OpenAI、DeepSeek和本地Ollama模型
-          </p>
-        </CardContent>
-      </Card>
+        {/* ==================== Tab 5: 抄袭检测 ==================== */}
+        <TabsContent value="plagiarism">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('ai_features.plagiarism.title')}</CardTitle>
+              <CardDescription>{t('ai_features.plagiarism.description')}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium mb-2 block">
+                  {t('ai_features.plagiarism.text1_label')}
+                </Label>
+                <Textarea
+                  placeholder={t('ai_features.plagiarism.text_placeholder')}
+                  value={text1}
+                  onChange={(e) => setText1(e.target.value)}
+                  rows={5}
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-medium mb-2 block">
+                  {t('ai_features.plagiarism.text2_label')}
+                </Label>
+                <Textarea
+                  placeholder={t('ai_features.plagiarism.text_placeholder')}
+                  value={text2}
+                  onChange={(e) => setText2(e.target.value)}
+                  rows={5}
+                />
+              </div>
+              <div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setText1(SAMPLE_PLAGIARISM_1)
+                    setText2(SAMPLE_PLAGIARISM_2)
+                  }}
+                >
+                  {t('ai_features.plagiarism.example_button')}
+                </Button>
+              </div>
+              <Button
+                onClick={() => similarityMutation.mutate()}
+                disabled={similarityMutation.isPending || !text1 || !text2}
+                size="lg"
+                className="w-full"
+              >
+                {similarityMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t('ai_features.plagiarism.comparing')}
+                  </>
+                ) : (
+                  <>
+                    <Search className="mr-2 h-4 w-4" />
+                    {t('ai_features.plagiarism.compare_button')}
+                  </>
+                )}
+              </Button>
+
+              {similarityMutation.error && (
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <XCircle className="h-4 w-4" />
+                  {classifyError(similarityMutation.error, t)}
+                </div>
+              )}
+
+              {similarityMutation.data && (
+                <SimilarityResultView similarity={similarityMutation.data.similarity} />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ==================== Tab 6: AI Metrics ==================== */}
+        <TabsContent value="metrics">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>{t('ai_features.metrics.title')}</CardTitle>
+                <CardDescription>{t('ai_features.metrics.description')}</CardDescription>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => refetchMetrics()}>
+                {t('ai_features.metrics.refresh_button')}
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {isLoadingMetrics && <Skeleton lines={4} />}
+
+              {aiMetrics && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <MetricCard
+                      label={t('ai_features.metrics.metric_calls')}
+                      value={Object.values(aiMetrics.calls).reduce((a, b) => a + b, 0)}
+                    />
+                    <MetricCard
+                      label={t('ai_features.metrics.metric_errors')}
+                      value={Object.values(aiMetrics.errors).reduce((a, b) => a + b, 0)}
+                      variant={Object.values(aiMetrics.errors).reduce((a, b) => a + b, 0) > 0 ? 'warning' : 'default'}
+                    />
+                    <MetricCard
+                      label={t('ai_features.metrics.metric_timeout')}
+                      value={aiMetrics.errors.timeout || 0}
+                      variant={(aiMetrics.errors.timeout || 0) > 0 ? 'destructive' : 'default'}
+                    />
+                    <MetricCard
+                      label={t('ai_features.metrics.metric_avg_duration')}
+                      value={aiMetrics.avgDurationMs}
+                      unit="ms"
+                    />
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold mb-2">{t('ai_features.metrics.by_provider')}</h3>
+                    <div className="space-y-2">
+                      {Object.entries(aiMetrics.calls).map(([provider, count]) => {
+                        const errCount = aiMetrics.errors[provider] || 0
+                        return (
+                          <div
+                            key={provider}
+                            className="flex items-center justify-between text-sm border rounded p-2"
+                          >
+                            <span className="font-mono">{provider}</span>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                              <span>calls: {count}</span>
+                              <span className={errCount > 0 ? 'text-destructive' : ''}>errs: {errCount}</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {aiMetrics &&
+                Object.values(aiMetrics.calls).reduce((a, b) => a + b, 0) === 0 && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <AlertCircle className="h-4 w-4" />
+                    {t('ai_features.metrics.no_data')}
+                  </div>
+                )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
+}
+
+// ==================== Sub-views ====================
+
+function ModerationResultView({ data }: { data: ModerationResult }) {
+  const { t } = useTranslation()
+  return (
+    <div className="rounded-lg border p-4">
+      <div className="flex items-center gap-2 mb-3">
+        {data.isAppropriate ? (
+          <>
+            <CheckCircle2 className="h-5 w-5 text-green-600" />
+            <span className="font-semibold text-green-600">
+              {t('ai_features.moderate.result_appropriate')}
+            </span>
+          </>
+        ) : (
+          <>
+            <AlertTriangle className="h-5 w-5 text-red-600" />
+            <span className="font-semibold text-red-600">
+              {t('ai_features.moderate.result_inappropriate')}
+            </span>
+          </>
+        )}
+      </div>
+      <div className="space-y-2">
+        <p className="text-sm">
+          <span className="text-muted-foreground">{t('ai_features.moderate.suggested_action')}：</span>
+          <Badge className="ml-2">
+            {data.suggestedAction === 'approve'
+              ? t('ai_features.moderate.action_approve')
+              : data.suggestedAction === 'review'
+              ? t('ai_features.moderate.action_review')
+              : t('ai_features.moderate.action_reject')}
+          </Badge>
+        </p>
+        {data.flags?.length > 0 && (
+          <div className="mt-3">
+            <p className="text-sm font-medium mb-2">{t('ai_features.moderate.flags_title')}：</p>
+            <ul className="space-y-1">
+              {data.flags.map((flag, i) => (
+                <li key={i} className="text-sm flex items-start gap-2">
+                  <Badge variant={flag.severity === 'high' ? 'destructive' : 'secondary'}>
+                    {flag.type}
+                  </Badge>
+                  <span className="text-muted-foreground">{flag.description}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SimilarityResultView({ similarity }: { similarity: number }) {
+  const { t } = useTranslation()
+  const variant = similarity > 70 ? 'destructive' : similarity > 30 ? 'default' : 'secondary'
+  const interpretationKey =
+    similarity > 70
+      ? 'result_interpretation_high'
+      : similarity > 30
+      ? 'result_interpretation_medium'
+      : 'result_interpretation_low'
+  return (
+    <div className="rounded-lg border p-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">
+          {t('ai_features.plagiarism.result_similarity')}
+        </span>
+        <Badge variant={variant}>{similarity}%</Badge>
+      </div>
+      <div className="h-2 bg-muted rounded overflow-hidden">
+        <div
+          className={`h-full transition-all ${
+            similarity > 70 ? 'bg-red-500' : similarity > 30 ? 'bg-yellow-500' : 'bg-green-500'
+          }`}
+          style={{ width: `${Math.min(100, Math.max(0, similarity))}%` }}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">{t(`ai_features.plagiarism.${interpretationKey}`)}</p>
+    </div>
+  )
+}
+
+function MetricCard({
+  label,
+  value,
+  unit,
+  variant = 'default',
+}: {
+  label: string
+  value: number
+  unit?: string
+  variant?: 'default' | 'warning' | 'destructive'
+}) {
+  const colorClass =
+    variant === 'destructive' ? 'text-red-600' : variant === 'warning' ? 'text-orange-600' : ''
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className={`text-2xl font-bold ${colorClass}`}>
+        {value}
+        {unit && <span className="text-sm text-muted-foreground ml-1">{unit}</span>}
+      </div>
+    </div>
+  )
+}
+
+// ==================== 样例 / 工具 ====================
+
+const SAMPLE_MODERATE = {
+  spam: '🔥🔥🔥 免费送 iPhone 15 Pro Max！加微信 123456，立刻发货！100% 正品，假一赔十！限时优惠仅剩 3 个名额！',
+  clean: '我们团队开发了一个 AI 驱动的代码审查工具，能在 PR 提交时自动检测安全漏洞、性能问题和最佳实践违规。核心技术栈：TypeScript + Rust + Claude API。',
+  sensitive: '某些政治敏感话题的讨论，包含不当言论和人身攻击。',
+}
+
+const SAMPLE_GENERATE_DESCRIPTION = `一个面向中小型开发团队的 AI 辅助代码审查平台。
+核心功能：PR 提交时自动扫描安全漏洞、性能瓶颈和代码风格问题，并给出修复建议。
+技术栈：Next.js + TypeScript + PostgreSQL + Claude API。
+目标用户：5-50 人规模的技术团队，希望在 code review 阶段提效 50%。`
+
+const SAMPLE_PLAGIARISM_1 = '我们开发了一个 AI 驱动的代码审查工具，能在 PR 提交时自动检测安全漏洞、性能问题和最佳实践违规。'
+const SAMPLE_PLAGIARISM_2 = '我们做了一个 AI 代码 review 平台，提交 PR 时自动扫描安全 bug、性能瓶颈和代码风格，给出修改建议。'
+
+function parseGenerateInput(input: string, type: string): Record<string, unknown> {
+  // 简单规则：把多行输入按行拆，不同 type 映射到不同 context 字段
+  const lines = input.split('\n').map((l) => l.trim()).filter(Boolean)
+  switch (type) {
+    case 'description':
+      return { original: input }
+    case 'readme':
+      return {
+        title: lines[0] || '',
+        description: lines[1] || '',
+        techStack: lines[2] ? lines[2].split(/[,，;；]/) : [],
+      }
+    case 'pitch':
+      return {
+        title: lines[0] || '',
+        description: lines[1] || '',
+        goal: lines[2] || '',
+      }
+    case 'news':
+      return {
+        title: lines[0] || '',
+        award: lines[1] || '',
+        description: lines[2] || '',
+      }
+    case 'email':
+      return {
+        subject: lines[0] || '',
+        recipient: lines[1] || '',
+        scenario: lines[2] || '',
+      }
+    case 'criteria':
+      return {
+        theme: lines[0] || '',
+        focus: lines[1] || '',
+      }
+    default:
+      return { customPrompt: input }
+  }
 }
