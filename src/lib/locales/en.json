@@ -876,7 +876,7 @@
   "ai_features": {
     "page_title": "AI Features Console",
     "page_subtitle": "Test and configure AI enhancement features",
-    "version_badge": "AI v2.1",
+    "version_badge": "AI v2.2",
     "tabs": {
       "analyze": "Project Analysis",
       "consistency": "Scoring Consistency",
@@ -904,8 +904,7 @@
       "task_status_completed": "Completed",
       "task_status_failed": "Failed",
       "task_not_found": "Task expired or not found (retained for 1h max)",
-      "errors_section": "Failed projects (max 20 shown)",
-      "force_refresh_label": "Force re-analyze (ignore 24h cache)"
+      "errors_section": "Failed projects (max 20 shown)"
     },
     "consistency": {
       "title": "Judge Scoring Consistency Analysis",

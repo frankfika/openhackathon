@@ -40,19 +40,15 @@ test.describe('AI Features Page (v2.2)', () => {
     await expect(tabs).toHaveCount(6);
   });
 
-  test('Tab 1 项目分析：force-refresh switch + batch 进度跟踪', async ({ page }) => {
+  test('Tab 1 项目分析：开始按钮 + batch 进度跟踪', async ({ page }) => {
     // 默认在 analyze tab
     await expect(page.getByRole('tab', { name: /项目分析|Project Analysis/ })).toHaveAttribute('data-state', 'active');
-
-    // force-refresh switch 存在
-    await expect(page.getByLabel(/强制重新分析|Force re-analyze/)).toBeVisible();
 
     // 开始按钮存在
     const startBtn = page.getByRole('button', { name: /开始批量分析|Start Batch Analysis/ });
     await expect(startBtn).toBeVisible();
 
     // 点开始后 UI 切换（不需要等 batch 完成 — dev server 跑的话 batch 是真的）
-    // 这里只验证按钮 disabled / 进度 UI 出现
     // 如果环境没 AI key，batch-analyze 会 500，toast 会显示错误分类（5 类之一）
     // 如果有 key，会进 processing 并显示 taskId
     await startBtn.click();

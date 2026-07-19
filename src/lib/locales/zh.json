@@ -877,7 +877,7 @@
   "ai_features": {
     "page_title": "AI 功能控制台",
     "page_subtitle": "测试和配置 AI 增强功能",
-    "version_badge": "AI v2.1",
+    "version_badge": "AI v2.2",
     "tabs": {
       "analyze": "项目分析",
       "consistency": "评分一致性",
@@ -905,8 +905,7 @@
       "task_status_completed": "已完成",
       "task_status_failed": "失败",
       "task_not_found": "任务已过期或不存在（最多保留 1 小时）",
-      "errors_section": "失败项目（最多展示 20 条）",
-      "force_refresh_label": "强制重新分析（忽略 24h 缓存）"
+      "errors_section": "失败项目（最多展示 20 条）"
     },
     "consistency": {
       "title": "评委评分一致性分析",

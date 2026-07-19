@@ -349,7 +349,7 @@ export function registerAIRoutes(
    * POST /api/ai/optimize-description
    * 优化项目描述
    */
-  app.post('/api/ai/optimize-description', async (req: Request, res: Response) => {
+  app.post('/api/ai/optimize-description', requireAuth, async (req: Request, res: Response) => {
     try {
       const { description, language = 'zh', style = 'business' } = req.body
 
@@ -378,7 +378,7 @@ export function registerAIRoutes(
    * POST /api/ai/moderate-content
    * 审核内容是否合规
    */
-  app.post('/api/ai/moderate-content', async (req: Request, res: Response) => {
+  app.post('/api/ai/moderate-content', requireAuth, async (req: Request, res: Response) => {
     try {
       const { content, type = 'project' } = req.body
 

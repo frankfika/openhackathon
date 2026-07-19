@@ -12,7 +12,7 @@
  * 改动历史：见 docs/AI_FEATURES_CHANGELOG.md
  */
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Sparkles,
@@ -38,9 +38,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api'
+import { classifyApiError } from '@/lib/api-error'
 import { toast } from 'sonner'
 import { useActiveHackathon } from '@/lib/active-hackathon'
 
@@ -92,25 +92,7 @@ interface AIMetrics {
  * 把 axios 错误 / fetch 错误 / 普通错误统一映射到 5 类用户友好消息。
  * 不暴露后端 error.message 原文（脱敏原则 — 见 api/routes/ai.ts 改造）。
  */
-function classifyError(err: unknown, t: (key: string, opts?: Record<string, string>) => string): string {
-  const e = err as { code?: string; message?: string; response?: { status?: number; data?: { error?: string } } }
-  // 1. 客户端可识别的网络层错误
-  if (e?.code === 'ERR_NETWORK' || e?.message?.includes('Network Error')) {
-    return t('ai_features.common.error_network')
-  }
-  if (e?.code === 'ECONNABORTED' || e?.message?.includes('timeout')) {
-    return t('ai_features.common.error_timeout')
-  }
-  // 2. 后端脱敏后的 message 优先（如 "AI service timeout"）— 比 5xx 通用消息更具体
-  if (e?.response?.data?.error && typeof e.response.data.error === 'string') {
-    return e.response.data.error
-  }
-  // 3. HTTP 状态码（兜底）
-  if (e?.response?.status === 401) return t('ai_features.common.error_unauthorized')
-  if (e?.response?.status === 403) return t('ai_features.common.error_forbidden')
-  if (e?.response?.status && e.response.status >= 500) return t('ai_features.common.error_server')
-  return t('ai_features.common.error_unknown')
-}
+function classifyError(err: unknown, t: (key: string, opts?: Record<string, string>) => string): string { return classifyApiError(err, t) }
 
 // ==================== 复制按钮 ====================
 
@@ -154,9 +136,7 @@ export function AIFeatures() {
   const queryClient = useQueryClient()
 
   // ---- Tab 1: 项目分析 ----
-  const [forceRefresh, setForceRefresh] = useState(false)
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
-  const taskIdRef = useRef<string | null>(null)
 
   const batchAnalyzeMutation = useMutation({
     mutationFn: async () => {
@@ -167,7 +147,6 @@ export function AIFeatures() {
     },
     onSuccess: (data) => {
       if (data?.taskId) {
-        taskIdRef.current = data.taskId
         setActiveTaskId(data.taskId)
         toast.success(t('ai_features.analyze.started_toast', { taskId: data.taskId }))
       } else {
@@ -190,7 +169,6 @@ export function AIFeatures() {
         // 任务已被服务清理（404 / 过期），停止轮询 + 提示用户
         if (!data) {
           setActiveTaskId(null)
-          taskIdRef.current = null
           toast.warning(t('ai_features.analyze.task_not_found'))
         }
         return data
@@ -199,7 +177,6 @@ export function AIFeatures() {
         const e = err as { response?: { status?: number } }
         if (e?.response?.status === 404 || e?.response?.status === 410) {
           setActiveTaskId(null)
-          taskIdRef.current = null
           toast.warning(t('ai_features.analyze.task_not_found'))
           return null
         }
@@ -346,13 +323,6 @@ export function AIFeatures() {
                   <li>• {t('ai_features.analyze.feature_3')}</li>
                   <li>• {t('ai_features.analyze.feature_4')}</li>
                 </ul>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Switch id="force-refresh" checked={forceRefresh} onCheckedChange={setForceRefresh} />
-                <Label htmlFor="force-refresh" className="text-sm text-muted-foreground cursor-pointer">
-                  {t('ai_features.analyze.force_refresh_label')}
-                </Label>
               </div>
 
               <Button
@@ -576,13 +546,13 @@ export function AIFeatures() {
                   {t('ai_features.moderate.examples_title')}
                 </Label>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setTestContent(SAMPLE_MODERATE.spam)}>
+                  <Button variant="outline" size="sm" onClick={() => setTestContent(SAMPLES.moderate.spam)}>
                     {t('ai_features.moderate.example_spam')}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setTestContent(SAMPLE_MODERATE.clean)}>
+                  <Button variant="outline" size="sm" onClick={() => setTestContent(SAMPLES.moderate.clean)}>
                     {t('ai_features.moderate.example_clean')}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setTestContent(SAMPLE_MODERATE.sensitive)}>
+                  <Button variant="outline" size="sm" onClick={() => setTestContent(SAMPLES.moderate.sensitive)}>
                     {t('ai_features.moderate.example_sensitive')}
                   </Button>
                 </div>
@@ -688,7 +658,7 @@ export function AIFeatures() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setGenerateInput(SAMPLE_GENERATE_DESCRIPTION)}
+                    onClick={() => setGenerateInput(SAMPLES.generate)}
                   >
                     {t('ai_features.generate.example_button')}
                   </Button>
@@ -774,8 +744,8 @@ export function AIFeatures() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    setText1(SAMPLE_PLAGIARISM_1)
-                    setText2(SAMPLE_PLAGIARISM_2)
+                    setText1(SAMPLES.plagiarism.text1)
+                    setText2(SAMPLES.plagiarism.text2)
                   }}
                 >
                   {t('ai_features.plagiarism.example_button')}
@@ -1001,19 +971,25 @@ function MetricCard({
 
 // ==================== 样例 / 工具 ====================
 
-const SAMPLE_MODERATE = {
-  spam: '🔥🔥🔥 免费送 iPhone 15 Pro Max！加微信 123456，立刻发货！100% 正品，假一赔十！限时优惠仅剩 3 个名额！',
-  clean: '我们团队开发了一个 AI 驱动的代码审查工具，能在 PR 提交时自动检测安全漏洞、性能问题和最佳实践违规。核心技术栈：TypeScript + Rust + Claude API。',
-  sensitive: '某些政治敏感话题的讨论，包含不当言论和人身攻击。',
-}
-
-const SAMPLE_GENERATE_DESCRIPTION = `一个面向中小型开发团队的 AI 辅助代码审查平台。
+/**
+ * 统一的样例数据，按 tab + 用途分类。
+ * 用途：在用户首次进入时一键填充输入框，降低首次使用门槛。
+ */
+const SAMPLES = {
+  moderate: {
+    spam: '🔥🔥🔥 免费送 iPhone 15 Pro Max！加微信 123456，立刻发货！100% 正品，假一赔十！限时优惠仅剩 3 个名额！',
+    clean: '我们团队开发了一个 AI 驱动的代码审查工具，能在 PR 提交时自动检测安全漏洞、性能问题和最佳实践违规。核心技术栈：TypeScript + Rust + Claude API。',
+    sensitive: '某些政治敏感话题的讨论，包含不当言论和人身攻击。',
+  },
+  generate: `一个面向中小型开发团队的 AI 辅助代码审查平台。
 核心功能：PR 提交时自动扫描安全漏洞、性能瓶颈和代码风格问题，并给出修复建议。
 技术栈：Next.js + TypeScript + PostgreSQL + Claude API。
-目标用户：5-50 人规模的技术团队，希望在 code review 阶段提效 50%。`
-
-const SAMPLE_PLAGIARISM_1 = '我们开发了一个 AI 驱动的代码审查工具，能在 PR 提交时自动检测安全漏洞、性能问题和最佳实践违规。'
-const SAMPLE_PLAGIARISM_2 = '我们做了一个 AI 代码 review 平台，提交 PR 时自动扫描安全 bug、性能瓶颈和代码风格，给出修改建议。'
+目标用户：5-50 人规模的技术团队，希望在 code review 阶段提效 50%。`,
+  plagiarism: {
+    text1: '我们开发了一个 AI 驱动的代码审查工具，能在 PR 提交时自动检测安全漏洞、性能问题和最佳实践违规。',
+    text2: '我们做了一个 AI 代码 review 平台，提交 PR 时自动扫描安全 bug、性能瓶颈和代码风格，给出修改建议。',
+  },
+} as const
 
 function parseGenerateInput(input: string, type: string): Record<string, unknown> {
   // 简单规则：把多行输入按行拆，不同 type 映射到不同 context 字段

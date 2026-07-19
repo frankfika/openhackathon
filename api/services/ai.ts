@@ -151,6 +151,7 @@ export const ProjectAssessmentSchema = z.object({
   suggestedPriority: z.enum(['high', 'medium', 'low']).describe('推荐评审优先级'),
   technicalTags: z.array(z.string()).describe('识别的技术标签'),
   estimatedComplexity: z.enum(['beginner', 'intermediate', 'advanced', 'expert']),
+  isFallback: z.boolean().optional().describe('true = AI 失败时返回的占位结果，不是真 AI 评分'),
 })
 
 export type ProjectAssessment = z.infer<typeof ProjectAssessmentSchema>
@@ -575,6 +576,7 @@ ${project.tags ? `标签：${project.tags.join(', ')}` : ''}
     } catch (error: any) {
       console.error('Project analysis failed:', error)
       // 返回默认值，避免阻塞流程
+      // isFallback=true 标记这是占位结果，UI 应展示警告
       return {
         overallScore: 50,
         dimensions: {
@@ -588,6 +590,7 @@ ${project.tags ? `标签：${project.tags.join(', ')}` : ''}
         suggestedPriority: 'medium',
         technicalTags: [],
         estimatedComplexity: 'intermediate',
+        isFallback: true,
       }
     }
   }
