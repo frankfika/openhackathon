@@ -68,16 +68,43 @@ After login, admins enter the dashboard with a sidebar grouped by domain:
 
 ![Assignments](./docs/assets/assignments.png)
 
-### 5. AI Enhancement System (v2.1)
-AI-powered capabilities for every role:
-- 🤖 **Project Quality Assessment**: AI automatically analyzes projects and generates a 0-100 score with detailed reports
-- 🎯 **Judge Assistant**: provides AI suggestions, project summaries, key technical points, and scoring references during review
-- 📊 **Scoring Consistency Analysis**: monitors judge score deviations in real time and identifies overly strict or lenient judges
-- 🛡️ **Content Moderation**: automatically detects sensitive content and spam
-- ✍️ **Smart Content Generation**: one-click README generation, project description optimization, and event marketing copy
-- 🔍 **Plagiarism Detection**: intelligently identifies similar projects
+### 5. AI Enhancement System (v2.2)
+AI-powered capabilities for every role, 6 capabilities across 6 tabs:
+
+- 🤖 **Project Quality Assessment**: AI auto-analyzes projects with 0-100 score + 4 dimensions (completeness / innovation / technical depth / presentation). Single + batch (5-concurrency pool + real-time progress tracking)
+- 🎯 **Judge Assistant**: AI suggestions, project summaries, key technical points, scoring references during review
+- 📊 **Scoring Consistency Analysis**: monitors judge score deviations in real time, identifies overly strict or lenient judges (AI suggestions run in parallel — 10 judges 30s → 3s)
+- 🛡️ **Content Moderation**: detects sensitive content, spam, hate speech (5 flag types + 3 severity levels + suggested action approve/review/reject)
+- ✍️ **Smart Content Generation**: README, description optimization, pitch deck outline, news article, email, scoring criteria (6 types × 2 languages × 4 styles = 48 combinations)
+- 🔍 **Plagiarism Detection**: two-text compare / pairwise project compare within same hackathon (>70% high risk / 30-70% medium / <30% low)
 
 Supports multiple AI providers: Claude (Anthropic), OpenAI, DeepSeek, and local Ollama.
+
+#### v2.2 Key Improvements
+- ✅ **6 tabs cover all AI capabilities** (previously only 4 — missing plagiarism + AI metrics)
+- ✅ **5-category error classification UX** (network / unauthorized / forbidden / server / timeout), no internal stack / API key exposure
+- ✅ **Batch task progress tracking** (real-time polling + progress bar + failed project list, `taskId` no longer orphaned)
+- ✅ **30s fetch timeout + error sanitization** (upstream hang no longer kills the server)
+- ✅ **Full i18n coverage** (zh + en), the only page out of 21 missing `useTranslation` is now fixed
+- ✅ **Fetch timeout + input truncation** (prevents malicious payloads from burning tokens)
+- ✅ **AI Metrics visualization** (admins can directly see calls / errors / duration / provider breakdown)
+
+#### Detailed Documentation
+- 📖 [AI_FEATURES_CHANGELOG.md](./docs/AI_FEATURES_CHANGELOG.md) — Complete v2.1 → v2.2 changelog
+- 🎨 [AI_FEATURES_UX.md](./docs/AI_FEATURES_UX.md) — 6-tab UX design + user stories + error classification rules
+- 🔌 [AI_FEATURES_API.md](./docs/AI_FEATURES_API.md) — Complete documentation of 11 API endpoints
+- 👥 [USER_GUIDE_AI.md](./docs/USER_GUIDE_AI.md) — User-facing guide (admin / judge / participant)
+
+#### Quick Setup
+```bash
+# In .env, pick one provider:
+AI_PROVIDER=claude                                    # claude / openai / local
+AI_API_KEY=sk-ant-your-key-here                       # Anthropic API key
+AI_MODEL=claude-sonnet-4-20250514                     # optional, defaults per provider
+# AI_BASE_URL=https://api.anthropic.com/v1             # optional, defaults per provider
+```
+
+Go to admin → **AI Features Console** (`/admin/ai-features`) to see all 6 tabs, no CLI needed.
 
 ![AI Features](./docs/assets/ai-features.png)
 
@@ -218,6 +245,27 @@ npm run dev            # Start frontend + backend only (manage DB yourself)
 | Judge | `charlie@designstudio.io` | `password` |
 | Empty judge | `judge1@openhackathon.com` | `password` |
 
+### AI Features Configuration (optional)
+The AI enhancement system (project assessment, content moderation, smart generation, etc.) **requires an API key to work**. Without configuration, the project will still start — AI-related features will just return "AI service error".
+
+Pick one provider in `.env`:
+```bash
+# Claude (Anthropic) — recommended
+AI_PROVIDER=claude
+AI_API_KEY=sk-ant-api03-your-key-here
+
+# OpenAI
+AI_PROVIDER=openai
+AI_API_KEY=sk-your-openai-key-here
+
+# Local Ollama (no key, free)
+AI_PROVIDER=local
+# AI_API_KEY leave empty
+# AI_BASE_URL=http://localhost:11434/v1
+```
+
+After setup, visit `/admin/ai-features` to use all 6 AI tabs. See [AI_FEATURES_API.md](./docs/AI_FEATURES_API.md) for full documentation.
+
 ---
 
 ## 🧪 Testing
@@ -277,6 +325,20 @@ node scripts/capture-screenshots.mjs
 ## 📝 Changelog
 
 ### v2.2 (2026-07)
+
+#### AI Enhancement System Overhaul
+- 🔧 **Fixed v2.1 silent bug**: zod v3→v4 upgrade changed the `_def.shape()` API, causing v2.1's schema mode to 100% silently fall back — `analyzeProject` always returned the default 50 score, `moderateContent` always returned "needs review". **AI detection in v2.1 was never actually working.** Fully fixed by rewriting `zodToJsonSchema` for v4.
+- 🎨 **AIFeatures UI overhaul**: 4 tabs → 6 tabs (added Plagiarism Detection + AI Metrics), every tab now has loading / empty / error / success states
+- 📊 **Batch task progress tracking**: previously `taskId` was orphaned (returned but no way to query). New `GET /api/ai/batch-status/:taskId` endpoint + frontend 2s polling + progress bar + failed project list
+- 🛡️ **5-category error classification UX** (network / unauthorized / forbidden / server / timeout), no internal stack / API key leakage
+- ⏱️ **30s fetch timeout** (AbortController), upstream hang no longer kills the server
+- 🌍 **Full i18n coverage** (zh + en), the only page out of 21 missing `useTranslation` is now fixed
+- ⚡ **Parallel execution**: `analyzeScoringConsistency` (10 judges 30s → 3s), `check-plagiarism` pairwise, `batch-analyze` 5-concurrency pool
+- 📈 **AI Metrics visualization**: new `GET /api/ai/metrics` endpoint + 6th tab, admins can see calls / errors / duration / provider breakdown
+- 🧪 **36 unit tests + 9 e2e tests** (`api/__tests__/ai.test.ts` + `e2e/ai-features.spec.ts`)
+- 📖 **3 AI documentation files** (`docs/AI_FEATURES_{CHANGELOG,UX,API}.md`)
+
+#### Security & Stability
 - 🔒 **Security hardening**: closed 8 password-hash leaks. The public `GET /api/projects/:id` endpoint and 7 admin/judge endpoints previously used Prisma's `include: { judge: true }` / `user: true` which returned the full `User` row, including the bcrypt `password` hash. All of them now use an explicit `select` whitelist (`id, email, name, role, avatarUrl, createdAt`). `auth.ts` and `web3-auth.ts` still use `sanitizeUser` as a second-line defense.
 - 🛣️ **Admin route completion**: `/admin/activity` (ActivityLog) and `/admin/account` (Account) had their route shells declared but the `lazy()` imports were never wired in — both now render correctly.
 - 🩹 **Status display sync**: the public header status chip and hero badge now both flip to `Completed` once `endAt` is in the past (previously kept showing `ACTIVE` until the admin manually flipped the status field).

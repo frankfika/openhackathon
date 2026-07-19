@@ -68,16 +68,43 @@ OpenHackathon 是面向黑客松主办方、评委与参赛团队的**全流程�
 
 ![Assignments](./docs/assets/assignments.png)
 
-### 5. AI 增强系统（v2.1）
-智能化赋能每个角色：
-- 🤖 **项目质量评估**：AI 自动分析项目，生成 0-100 分评分 + 详细报告
+### 5. AI 增强系统（v2.2）
+智能化赋能每个角色，6 大能力 6 个 tab 集中管理：
+
+- 🤖 **项目质量评估**：AI 自动分析项目，生成 0-100 分评分 + 4 维度详情（完整性 / 创新性 / 技术深度 / 呈现质量），支持单项目评估 + 批量分析（5 并发池 + 实时进度跟踪）
 - 🎯 **评委智能助手**：评审时提供 AI 建议、项目摘要、关键技术点、评分参考
-- 📊 **评分一致性分析**：实时监控评委评分偏差，识别过严/过宽评委
-- 🛡️ **内容审核**：自动检测敏感内容、垃圾信息
-- ✍️ **智能内容生成**：一键生成 README、优化项目描述、生成赛事宣传文案
-- 🔍 **抄袭检测**：智能识别相似项目
+- 📊 **评分一致性分析**：实时监控评委评分偏差，识别过严/过宽评委（AI suggestion 并发执行，10 评委从 30s 降到 ~3s）
+- 🛡️ **内容审核**：自动检测敏感内容、垃圾信息、仇恨言论（5 类 flag + 3 档严重度 + 建议操作 approve/review/reject）
+- ✍️ **智能内容生成**：一键生成 README、优化项目描述、Pitch Deck 大纲、新闻稿、邮件、评分标准（6 type × 2 language × 4 style = 48 种组合）
+- 🔍 **抄袭检测**：两段文本对比 / 同赛事项目 pairwise 对比（>70% 高风险 / 30-70% 中风险 / <30% 低风险）
 
 支持 Claude (Anthropic)、OpenAI、DeepSeek、本地 Ollama 等多种 AI 提供商。
+
+#### v2.2 核心改进
+- ✅ **6 个 tab 覆盖全部 AI 能力**（之前只有 4 个，缺抄袭检测和 AI 运行状态）
+- ✅ **5 类错误分类 UX**（network / unauthorized / forbidden / server / timeout），不暴露内部 stack / API key
+- ✅ **batch 任务进度跟踪**（实时轮询 + 进度条 + 失败项目列表，taskId 不再是孤儿）
+- ✅ **fetch 30s 超时 + 错误脱敏**（上游 hang 不再拖死 server）
+- ✅ **i18n 全覆盖**（zh + en 双语，21 个 page 唯一缺失补齐）
+- ✅ **fetch timeout + 输入截断**（防恶意 payload 烧 token）
+- ✅ **AI Metrics 可视化**（admin 直接看 calls / errors / duration / provider 分布）
+
+#### 详细文档
+- 📖 [AI_FEATURES_CHANGELOG.md](./docs/AI_FEATURES_CHANGELOG.md) — v2.1 → v2.2 完整改动历史
+- 🎨 [AI_FEATURES_UX.md](./docs/AI_FEATURES_UX.md) — 6 tab UX 设计 + 用户故事 + 错误分类规则
+- 🔌 [AI_FEATURES_API.md](./docs/AI_FEATURES_API.md) — 11 个 API 端点完整文档
+- 👥 [USER_GUIDE_AI.md](./docs/USER_GUIDE_AI.md) — 给最终用户看的使用指南（admin / 评委 / 参赛者）
+
+#### 快速配置
+```bash
+# .env 文件中配置 AI（任选其一）
+AI_PROVIDER=claude                                    # claude / openai / local
+AI_API_KEY=sk-ant-your-key-here                       # Anthropic API key
+AI_MODEL=claude-sonnet-4-20250514                     # 可选，留空用 provider 默认
+# AI_BASE_URL=https://api.anthropic.com/v1             # 可选，留空用 provider 默认
+```
+
+进入 admin 后台 → **AI 功能控制台**（`/admin/ai-features`）即可看到 6 个 tab，无需命令行。
 
 ![AI Features](./docs/assets/ai-features.png)
 
@@ -218,6 +245,27 @@ npm run dev            # 仅启动前后端（需自行管理数据库）
 | 评委 | `charlie@designstudio.io` | `password` |
 | 空评委 | `judge1@openhackathon.com` | `password` |
 
+### AI 功能配置（可选）
+AI 增强系统（项目评估、内容审核、智能生成等）**需要配置 API key 才能工作**。不配置也能启动项目，只是 AI 相关功能会返回"AI service error"。
+
+`.env` 中任选一种 provider：
+```bash
+# Claude (Anthropic) — 推荐
+AI_PROVIDER=claude
+AI_API_KEY=sk-ant-api03-your-key-here
+
+# OpenAI
+AI_PROVIDER=openai
+AI_API_KEY=sk-your-openai-key-here
+
+# 本地 Ollama (无 key，免费)
+AI_PROVIDER=local
+# AI_API_KEY 留空
+# AI_BASE_URL=http://localhost:11434/v1
+```
+
+配置后到 `/admin/ai-features` 即可使用 6 个 AI tab。详细文档见 [AI_FEATURES_API.md](./docs/AI_FEATURES_API.md)。
+
 ---
 
 ## 🧪 测试
@@ -277,6 +325,20 @@ node scripts/capture-screenshots.mjs
 ## 📝 更新日志
 
 ### v2.2 (2026-07)
+
+#### AI 增强系统全面重做
+- 🔧 **修复 v2.1 上线时埋的真 bug**：zod v3→v4 升级后 `_def.shape()` API 变了，导致 v2.1 schema 模式 100% 静默 fallback — `analyzeProject` 永远返回默认 50 分，`moderateContent` 永远返回"需要 review"。**AI 检测 v2.1 实际上从未真工作过**，这次彻底修复（重写 `zodToJsonSchema` 支持 v4 完整 API）
+- 🎨 **AIFeatures UI 全面重做**：从 4 tabs → 6 tabs（新增 抄袭检测 + AI Metrics），每个 tab 都有 loading / empty / error / success 4 态
+- 📊 **batch 任务进度跟踪**：之前 `taskId` 是孤儿（返回后没地方查），现在新增 `GET /api/ai/batch-status/:taskId` endpoint + 前端 2s 轮询 + 进度条 + 失败项目列表
+- 🛡️ **5 类错误分类 UX**（network / unauthorized / forbidden / server / timeout），不暴露内部 stack / API key 痕迹
+- ⏱️ **fetch 30s 超时**（AbortController），上游 hang 不再拖死 server
+- 🌍 **i18n 全覆盖**（zh + en 双语），是 21 个 page 里唯一缺失 `useTranslation` 的 AIFeatures，现在补齐
+- ⚡ **并发执行**：`analyzeScoringConsistency`（10 评委 30s → 3s）、`check-plagiarism` pairwise、`batch-analyze` 5 并发池
+- 📈 **AI Metrics 可视化**：新增 `GET /api/ai/metrics` endpoint + 第 6 个 tab，admin 可看 calls / errors / duration / provider 分布
+- 🧪 **36 个单测 + 9 个 e2e**（`api/__tests__/ai.test.ts` + `e2e/ai-features.spec.ts`）
+- 📖 **3 个 AI 文档**（`docs/AI_FEATURES_{CHANGELOG,UX,API}.md`）
+
+#### 安全与稳定
 - 🔒 **安全加固**：修复 8 处密码哈希泄露漏洞。`/api/projects/:id`（公开端点，无鉴权）和 7 个 admin/judge 端点此前通过 Prisma 的 `include: { judge: true }` / `user: true` 把整张 `User` 行返回给前端，包括 `password` bcrypt 哈希。已全部改为显式 `select` 白名单字段（`id, email, name, role, avatarUrl, createdAt`），保留全字段的 `auth.ts` / `web3-auth.ts` 仍走 `sanitizeUser` 兜底。
 - 🛣️ **管理后台补全路由**：`/admin/activity`（操作日志）和 `/admin/account`（账户设置）此前路由外壳已声明但 `lazy()` import 未接，现在可正常访问 `ActivityLogPage` / `Account` 页面。
 - 🩹 **状态显示同步**：公共 header 状态徽章与 hero badge 现在统一在 `endAt` 过零点时显示 `Completed`（之前会继续显示 `ACTIVE` 直到管理员手动改 status 字段）。

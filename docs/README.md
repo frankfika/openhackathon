@@ -268,7 +268,26 @@ OpenHackathon v2.1 已完成全面升级：
 
 ---
 
-**交付时间**：2024年1月  
-**版本**：v2.1-ai  
+## v2.2 (2026-07) 持续优化
+
+> v2.1 上线后发现的真 bug + UX 全面重做 + 完整文档。详见：
+
+- 📖 [AI_FEATURES_CHANGELOG.md](./AI_FEATURES_CHANGELOG.md) — 完整改动历史（v2.1 → v2.2）
+- 🎨 [AI_FEATURES_UX.md](./AI_FEATURES_UX.md) — 6 tab UX 设计
+- 🔌 [AI_FEATURES_API.md](./AI_FEATURES_API.md) — 11 个 API 端点文档
+- 👥 [USER_GUIDE_AI.md](./USER_GUIDE_AI.md) — 给最终用户看的使用指南
+
+### 关键改动一句话总结
+
+- **修了 v2.1 上线时埋的真 bug** — zod v3→v4 API 变化导致 schema 模式 100% 静默 fallback（AI 检测从未真工作）
+- **AIFeatures UI 全面重做** — 4 → 6 tabs，5 类错误分类，i18n 全覆盖，batch 进度跟踪
+- **后端 fetch 30s 超时 + 错误脱敏** — 上游 hang 不再拖死 server，不暴露 API key
+- **36 个单测 + 9 个 e2e + 3 个文档** — 测试覆盖完整，文档齐全
+
+---
+
+**v2.1 交付时间**：2024年1月  
+**v2.2 更新时间**：2026-07  
+**版本**：v2.2  
 **技术栈**：React 18 + Express + PostgreSQL + Claude AI  
 **开源协议**：MIT
