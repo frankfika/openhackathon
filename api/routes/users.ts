@@ -44,7 +44,9 @@ export function registerUserRoutes(
       if (existing) {
         return res.status(409).json({ error: 'A user with this email already exists' });
       }
-      const hashedPassword = await bcrypt.hash(passwordValue, 10);
+      // SECURITY: bcrypt cost factor 12 (industry baseline as of 2025).
+      // 10 is crackable on a single modern GPU in days; 12 raises cost ~16x.
+      const hashedPassword = await bcrypt.hash(passwordValue, 12);
       const user = await prisma.user.create({
         data: {
           email: emailValue,

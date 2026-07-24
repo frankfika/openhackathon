@@ -59,7 +59,9 @@ export function registerSetupRoutes(app: Express, prisma: PrismaClient) {
         return res.status(409).json({ error: 'A user with this email already exists' });
       }
 
-      const hashedPassword = await bcrypt.hash(adminPasswordValue, 10);
+      // SECURITY: bcrypt cost factor 12 (matches users.ts). Higher cost slows
+      // both attacker brute-force and honest login by ~250ms — acceptable.
+      const hashedPassword = await bcrypt.hash(adminPasswordValue, 12);
 
       const result = await prisma.$transaction(async (tx) => {
         const adminUser = await tx.user.create({

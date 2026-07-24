@@ -59,6 +59,10 @@ export const AUTH_RATE_LIMIT_WINDOW_MS = readPositiveInteger(process.env.AUTH_RA
 export const AUTH_RATE_LIMIT_MAX = readPositiveInteger(process.env.AUTH_RATE_LIMIT_MAX, 20);
 export const SUBMISSION_RATE_LIMIT_WINDOW_MS = readPositiveInteger(process.env.SUBMISSION_RATE_LIMIT_WINDOW_MS, 10 * 60 * 1000);
 export const SUBMISSION_RATE_LIMIT_MAX = readPositiveInteger(process.env.SUBMISSION_RATE_LIMIT_MAX, 30);
+// SECURITY: AI endpoints are expensive (LLM calls). Cap each user at 30 calls / minute
+// to prevent a logged-in judge from exhausting the AI provider's token budget.
+export const AI_RATE_LIMIT_WINDOW_MS = readPositiveInteger(process.env.AI_RATE_LIMIT_WINDOW_MS, 60 * 1000);
+export const AI_RATE_LIMIT_MAX = readPositiveInteger(process.env.AI_RATE_LIMIT_MAX, 30);
 export const SUBMISSION_RECEIPT_PREFIX = (process.env.SUBMISSION_RECEIPT_PREFIX || 'SUB').trim().toUpperCase() || 'SUB';
 export const SUBMISSION_EMAIL_ENABLED = process.env.SUBMISSION_EMAIL_ENABLED === 'true';
 export const SUBMISSION_EMAIL_HOST = process.env.SMTP_HOST;

@@ -14,6 +14,8 @@ import {
   AUTH_RATE_LIMIT_MAX,
   SUBMISSION_RATE_LIMIT_WINDOW_MS,
   SUBMISSION_RATE_LIMIT_MAX,
+  AI_RATE_LIMIT_WINDOW_MS,
+  AI_RATE_LIMIT_MAX,
 } from './config';
 import type { AuthUser, JwtPayload } from './types';
 import { normalizeEmail, asUserRole } from './utils/validation';
@@ -155,9 +157,25 @@ export const submissionRateLimiter = rateLimit({
   max: SUBMISSION_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
+  // SECURITY: key off IP first so a user with a missing/empty submitterEmail
+  // body still gets rate-limited. Email is a soft second key (allows per-account
+  // throttling when present) but must never be the only key.
   keyGenerator: (req) => {
+    const ipKey = ipKeyGenerator(req.ip);
     const email = normalizeEmail(req.body?.submitterEmail);
-    return email || ipKeyGenerator(req.ip);
+    return email ? `${ipKey}:${email}` : ipKey;
   },
   message: { error: 'Too many submissions. Please try again later.' },
+});
+
+// SECURITY: AI endpoints are expensive. Limit each authenticated user to
+// AI_RATE_LIMIT_MAX calls per AI_RATE_LIMIT_WINDOW_MS (default 30/min).
+// Skip when AUTH_DISABLED (test mode) so the suite isn't throttled.
+export const aiRateLimiter = rateLimit({
+  windowMs: AI_RATE_LIMIT_WINDOW_MS,
+  max: AI_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => AUTH_DISABLED,
+  message: { error: 'Too many AI requests. Please slow down.' },
 });

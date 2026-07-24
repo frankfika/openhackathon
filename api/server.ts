@@ -24,7 +24,7 @@ import {
 } from './config';
 import { normalizeAdminBasePath } from './utils/validation';
 import { resolveSubmissionEmailPort, resolveSubmissionEmailTimeout } from './utils/email';
-import { createAuthMiddleware, apiRateLimiter, authRateLimiter, submissionRateLimiter } from './middleware';
+import { createAuthMiddleware, apiRateLimiter, authRateLimiter, submissionRateLimiter, aiRateLimiter } from './middleware';
 
 // Import route registration functions
 import { registerHealthRoutes } from './routes/health';
@@ -80,6 +80,14 @@ if (!IS_PRODUCTION && JWT_SECRET === DEFAULT_JWT_SECRET && process.env.NODE_ENV 
 
 // ===== Default site settings =====
 
+if (IS_PRODUCTION && !process.env.ADMIN_BASE_PATH && !process.env.VITE_ADMIN_BASE_PATH) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[SECURITY] adminBasePath is using the default "/admin". ' +
+      'Set ADMIN_BASE_PATH to a non-guessable path (e.g. "/portal-x9f2") to reduce brute-force exposure.'
+  );
+}
+
 const DEFAULT_SITE_SETTINGS = {
   siteName: 'OpenHackathon',
   adminBasePath: normalizeAdminBasePath(process.env.ADMIN_BASE_PATH || process.env.VITE_ADMIN_BASE_PATH || '/admin'),
@@ -105,7 +113,15 @@ const DEFAULT_SITE_SETTINGS = {
 
 const { requireAuth, requireAdmin } = createAuthMiddleware(prisma);
 
-const allowAllCors = CORS_ALLOW_ALL || (!IS_PRODUCTION && CORS_ORIGINS.length === 0);
+// SECURITY: dev no longer defaults to allow-all origins. Operators must set
+// CORS_ORIGINS explicitly even in development; the previous default made it
+// trivial to ship a staging instance that lets any origin read authenticated
+// API responses. Set CORS_ALLOW_ALL=true ONLY for local debugging.
+const allowAllCors = CORS_ALLOW_ALL;
+if (!IS_PRODUCTION && CORS_ORIGINS.length === 0 && !CORS_ALLOW_ALL) {
+  // eslint-disable-next-line no-console
+  console.warn('[SECURITY] No CORS_ORIGINS configured. Browser cross-origin requests will be blocked; same-origin via vite proxy still works.');
+}
 const corsOptions: cors.CorsOptions = allowAllCors
   ? { origin: true, credentials: true }
   : { origin: CORS_ORIGINS, credentials: true };
@@ -166,7 +182,11 @@ app.use('/uploads', express.static(UPLOADS_ROOT, {
   redirect: false,
   setHeaders: (res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    // SECURITY: 1-day cache (was 1 year + immutable). Uploads can be re-uploaded
+    // by admins to correct mistakes, so 1 year was too sticky. Operators
+    // uploading sensitive material (e.g. an admin screenshot) should use
+    // /api/admin/upload with an auth-gated signed-URL flow (TODO SECURITY-P2).
+    res.setHeader('Cache-Control', 'public, max-age=86400, must-revalidate');
   },
 }));
 app.use('/api', apiRateLimiter);
@@ -192,7 +212,7 @@ registerActivityLogRoutes(app, prisma, { requireAdmin });
 registerSystemResetRoutes(app, prisma, { requireAdmin });
 
 // AI Routes (supports both admin and judge access)
-registerAIRoutes(app, prisma, { requireAuth, requireAdmin });
+registerAIRoutes(app, prisma, { requireAuth, requireAdmin, aiRateLimiter });
 
 // ===== Catch-all =====
 

@@ -59,6 +59,23 @@ export function registerSystemResetRoutes(
         await tx.user.deleteMany({});
       });
 
+      // SECURITY: write an audit log AFTER the transaction completes (cannot
+      // be in the transaction because we just deleted the activityLog table).
+      // The factory reset nukes everything including users, so we use system
+      // actor credentials. (P0-5 follow-on: this still leaves a permanent
+      // forensic record of the action.)
+      try {
+        await prisma.$queryRaw`
+          INSERT INTO "ActivityLog" (id, "actorId", "actorRole", "actorName", action, "entityType", "entityId", metadata, "createdAt")
+          VALUES (gen_random_uuid()::text, ${adminUser.id}, 'admin', ${adminUser.name || adminUser.email}, 'system_reset', 'system', 'system', ${JSON.stringify({ mode: 'factory' })}::jsonb, NOW())
+        `;
+      } catch (logError) {
+        // If the audit insert fails (e.g. table was just dropped) the reset
+        // still succeeded, but operators need to know audit is missing.
+        // eslint-disable-next-line no-console
+        console.error('[SECURITY] factory reset completed but audit log write failed:', logError);
+      }
+
       return res.json({ success: true, mode: 'factory' });
     } catch (error) {
       console.error('System reset error:', error);

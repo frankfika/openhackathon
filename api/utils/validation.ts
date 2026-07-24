@@ -34,7 +34,7 @@ export function isValidPassword(password: string): boolean {
 }
 
 export function asUserRole(value: unknown): UserRole | null {
-  if (value === 'admin' || value === 'judge' || value === 'user') return value;
+  if (value === 'admin' || value === 'judge') return value;
   return null;
 }
 
@@ -42,10 +42,25 @@ export function getErrorMessage(error: unknown, fallback: string): string {
   if (error && typeof error === 'object' && 'message' in error) {
     const message = (error as { message?: unknown }).message;
     if (typeof message === 'string' && message.trim()) {
-      return message;
+      return sanitizeFsErrorMessage(message, fallback);
     }
   }
   return fallback;
+}
+
+// SECURITY: filter out fs error details (paths, errno codes) before returning
+// to the client. Internal callers can use the raw message via console.error.
+function sanitizeFsErrorMessage(message: string, fallback: string): string {
+  // Node fs errors carry the file path in the message ("ENOENT: no such file or directory, open '/etc/passwd'")
+  // Strip everything after the colon when it looks like a path leak.
+  if (/ENOENT|EACCES|EPERM|EISDIR|EEXIST|EBUSY|ETXTBSY|EROFS|EFTYPE|ELOOP/.test(message)) {
+    return fallback;
+  }
+  // Also strip anything that looks like an absolute or relative file path.
+  if (/(?:^|\s)[\/'"][\/'\w.\-]+\.[a-z0-9]{1,5}(?:[\/'\s]|$)/i.test(message)) {
+    return fallback;
+  }
+  return message;
 }
 
 export function dedupeIds(ids: string[]): string[] {

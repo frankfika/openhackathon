@@ -57,7 +57,7 @@ setInterval(() => {
 export function registerAIRoutes(
   app: Express,
   prisma: PrismaClient,
-  { requireAuth, requireAdmin }: { requireAuth: RequestHandler; requireAdmin: RequestHandler },
+  { requireAuth, requireAdmin, aiRateLimiter }: { requireAuth: RequestHandler; requireAdmin: RequestHandler; aiRateLimiter: RequestHandler },
 ) {
   // ==================== 项目质量评估 ====================
 
@@ -327,7 +327,7 @@ export function registerAIRoutes(
    * POST /api/ai/generate-content
    * 生成各类内容（README、描述、新闻稿等）
    */
-  app.post('/api/ai/generate-content', requireAuth, async (req: Request, res: Response) => {
+  app.post('/api/ai/generate-content', requireAuth, aiRateLimiter, async (req: Request, res: Response) => {
     try {
       const { type, context, language, style } = req.body
 
@@ -349,7 +349,7 @@ export function registerAIRoutes(
    * POST /api/ai/optimize-description
    * 优化项目描述
    */
-  app.post('/api/ai/optimize-description', requireAuth, async (req: Request, res: Response) => {
+  app.post('/api/ai/optimize-description', requireAuth, aiRateLimiter, async (req: Request, res: Response) => {
     try {
       const { description, language = 'zh', style = 'business' } = req.body
 
@@ -378,7 +378,7 @@ export function registerAIRoutes(
    * POST /api/ai/moderate-content
    * 审核内容是否合规
    */
-  app.post('/api/ai/moderate-content', requireAuth, async (req: Request, res: Response) => {
+  app.post('/api/ai/moderate-content', requireAuth, aiRateLimiter, async (req: Request, res: Response) => {
     try {
       const { content, type = 'project' } = req.body
 
@@ -501,7 +501,7 @@ export function registerAIRoutes(
    * GET /api/ai/judge-suggestions/:assignmentId
    * 为评委提供评分建议
    */
-  app.get('/api/ai/judge-suggestions/:assignmentId', requireAuth, async (req: Request, res: Response) => {
+  app.get('/api/ai/judge-suggestions/:assignmentId', requireAuth, aiRateLimiter, async (req: Request, res: Response) => {
     try {
       const { assignmentId } = req.params
       const authUser = req.authUser
