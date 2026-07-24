@@ -1020,7 +1020,7 @@ describe('API integration tests (real database)', () => {
 
       const verified = jwt.verify(
         loginOk.body.token as string,
-        process.env.JWT_SECRET || 'openhackathon-change-this-secret',
+        process.env.JWT_SECRET!,
         {
           issuer: process.env.JWT_ISSUER || 'openhackathon',
           audience: process.env.JWT_AUDIENCE || 'openhackathon-clients',
