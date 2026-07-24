@@ -438,11 +438,16 @@ export function registerAIRoutes(
       }
 
       // 查找同一赛事下的其他项目
+      // PERFORMANCE: cap at 100 candidates to bound the pairwise LLM cost.
+      // 100 candidates × 1 detection ≈ 100 LLM calls per request; we order by
+      // recent submissions so the most-likely matches are checked first.
       const otherProjects = await prisma.project.findMany({
         where: {
           hackathonId: project.hackathonId,
           id: { not: projectId },
         },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
       })
 
       if (otherProjects.length === 0) {

@@ -158,10 +158,16 @@ export function registerLeaderboardRoutes(
       where: {
         ...(hackathonIdValue ? { hackathonId: hackathonIdValue } : {}),
       },
+      // PERFORMANCE: cap public leaderboard at 200 rows. The response only needs
+      // rank / title / score, not the full project list — admin can paginate.
+      take: 200,
       include: {
+        // Per-project cap on assignments to prevent the nested join from blowing up
+        // when a project has 1000+ historical judging records.
         assignments: {
           where: { status: 'completed' },
           select: { totalScore: true },
+          take: 5,
         },
       },
     });
