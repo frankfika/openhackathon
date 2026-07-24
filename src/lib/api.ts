@@ -17,6 +17,9 @@ import {
 const API_URL = '/api'
 
 // Lazy import to avoid circular dependency — auth.tsx exports these helpers
+// TODO(SECURITY-P1): Migrate to httpOnly Secure SameSite=Strict cookie issued by the
+// backend so XSS cannot exfiltrate the token. Requires a CSRF token strategy (e.g.
+// double-submit cookie) and a refresh-token rotation flow.
 function getActiveToken(): string | null {
   const isJudgePath = window.location.pathname.startsWith('/judge')
   const key = isJudgePath ? 'openhackathon_judge_token' : 'openhackathon_admin_token'

@@ -16,6 +16,9 @@ export default defineConfig({
       TEST_DATABASE_URL: 'postgresql://postgres:postgrespassword@localhost:5432/openhackathon_test?schema=public',
       DATABASE_URL: 'postgresql://postgres:postgrespassword@localhost:5432/openhackathon_test?schema=public',
       AUTH_DISABLED: 'true',
+      // SECURITY: required for the test suite to keep the AUTH_DISABLED header-based
+      // identity fallback. Outside CI/e2e this should never be set.
+      ALLOW_TEST_AUTH_HEADER: '1',
       SUBMISSION_RATE_LIMIT_WINDOW_MS: '60000',
       SUBMISSION_RATE_LIMIT_MAX: '8',
     },

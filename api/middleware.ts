@@ -4,6 +4,7 @@ import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import type { PrismaClient } from '@prisma/client';
 import {
   AUTH_DISABLED,
+  ALLOW_TEST_AUTH_HEADER,
   JWT_SECRET,
   JWT_ISSUER,
   JWT_AUDIENCE,
@@ -18,7 +19,9 @@ import type { AuthUser, JwtPayload } from './types';
 import { normalizeEmail, asUserRole } from './utils/validation';
 
 export function getAuthUserFromRequest(req: express.Request): AuthUser | null {
-  if (AUTH_DISABLED) {
+  // SECURITY: AUTH_DISABLED alone is no longer enough to accept x-test-* headers.
+  // The deployer must also set ALLOW_TEST_AUTH_HEADER=1 (typically only in CI / e2e).
+  if (AUTH_DISABLED && ALLOW_TEST_AUTH_HEADER) {
     const testRole = asUserRole(req.header('x-test-role')) || 'admin';
     return {
       id: req.header('x-test-user-id') || 'test-user',
@@ -26,6 +29,12 @@ export function getAuthUserFromRequest(req: express.Request): AuthUser | null {
       email: req.header('x-test-email') || 'test@example.com',
       name: req.header('x-test-name') || 'Test User',
     };
+  }
+
+  if (AUTH_DISABLED && !ALLOW_TEST_AUTH_HEADER) {
+    // Log once per request so misuse is visible, but do not return admin.
+    // eslint-disable-next-line no-console
+    console.warn('[SECURITY] AUTH_DISABLED is set but ALLOW_TEST_AUTH_HEADER is not; ignoring x-test-* headers');
   }
 
   const authorization = req.header('authorization');

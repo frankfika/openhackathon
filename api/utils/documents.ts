@@ -3,7 +3,18 @@ import { promises as fs } from 'fs';
 import { HACKATHON_DOCS_ROOT, ALLOWED_UPLOAD_IMAGE_EXTENSIONS, MIME_TO_IMAGE_EXTENSION } from '../config';
 
 export function sanitizePathSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]/g, '_');
+  // SECURITY: strict whitelist — refuses `.` and `..` to prevent path traversal
+  // (e.g. `..%2F..%2F` jumping out of HACKATHON_DOCS_ROOT).
+  if (typeof value !== 'string') {
+    throw new Error('Path segment must be a string');
+  }
+  if (value.length === 0 || value.length > 64) {
+    throw new Error('Path segment length must be 1..64');
+  }
+  if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+    throw new Error('Path segment must match [a-zA-Z0-9_-]+');
+  }
+  return value;
 }
 
 export function sanitizeFileStem(value: string): string {

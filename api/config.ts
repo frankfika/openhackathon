@@ -35,7 +35,11 @@ export function asString(value: unknown): string | undefined {
 export const VALID_ASSIGNMENT_STATUSES = new Set(['pending', 'in_progress', 'completed']);
 export const VALID_HACKATHON_STATUSES = new Set(['draft', 'upcoming', 'active', 'judging', 'completed']);
 export const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true';
-export const DEFAULT_JWT_SECRET = 'openhackathon-change-this-secret';
+// SECURITY: explicit opt-in for `x-test-*` headers when AUTH_DISABLED=true.
+// Dev/staging must set this to "1" alongside AUTH_DISABLED, otherwise startup throws.
+export const ALLOW_TEST_AUTH_HEADER = process.env.ALLOW_TEST_AUTH_HEADER === '1';
+// SECURITY: must NOT match any real-world secret. Used only when JWT_SECRET env is missing.
+export const DEFAULT_JWT_SECRET = '__INSECURE_DEFAULT_REPLACE_BEFORE_DEPLOY__';
 export const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
 export const JWT_EXPIRES_IN_SECONDS = Number(process.env.JWT_EXPIRES_IN_SECONDS || 60 * 60 * 24 * 7);
 export const JWT_ISSUER = asString(process.env.JWT_ISSUER) || 'openhackathon';

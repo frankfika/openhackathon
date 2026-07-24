@@ -1,4 +1,4 @@
-import type { Express } from 'express';
+import type { Express, RequestHandler } from 'express';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { asString, SUPPORTED_CHAINS } from '../config';
 import { resolveUserByWallet } from '../services/identity';
@@ -18,9 +18,15 @@ function explorerUrl(chain: string | undefined, txHash: string): string | null {
   return base ? `${base}${txHash}` : null;
 }
 
-export function registerIdentityRoutes(app: Express, prisma: PrismaClient) {
-  // Public: look up a user's cross-hackathon identity by wallet address
-  app.get('/api/identity/:address', async (req, res) => {
+export function registerIdentityRoutes(
+  app: Express,
+  prisma: PrismaClient,
+  { requireAuth }: { requireAuth: RequestHandler },
+) {
+  // SECURITY: previously this endpoint was unauthenticated and let anyone enumerate
+  // any wallet's global points / activities / on-chain tx history.
+  // Now requires login: a user can only look up wallets they own; admins can look up any.
+  app.get('/api/identity/:address', requireAuth, async (req, res) => {
     try {
       const address = asString(req.params.address);
       const chain = (asString(req.query.chain as string) || 'ethereum').toLowerCase();
@@ -39,6 +45,19 @@ export function registerIdentityRoutes(app: Express, prisma: PrismaClient) {
         return res.status(404).json({ error: 'No user found for this wallet' });
       }
 
+      // Authorization: requester must own a wallet with this address, or be an admin.
+      const requester = req.authUser!;
+      const isAdmin = requester.role === 'admin';
+      if (!isAdmin) {
+        const ownWallet = await prisma.walletAddress.findFirst({
+          where: { userId: requester.id, address: normalized, chain },
+          select: { id: true },
+        });
+        if (!ownWallet) {
+          return res.status(403).json({ error: 'You can only look up identities for wallets you own' });
+        }
+      }
+
       if (!user.isWeb3User) {
         return res.json({
           user: { id: user.id, name: user.name, isWeb3User: false },
@@ -50,6 +69,7 @@ export function registerIdentityRoutes(app: Express, prisma: PrismaClient) {
         where: { userId: user.id },
         include: { hackathon: { select: { title: true, startAt: true } } },
         orderBy: { createdAt: 'desc' },
+        take: 100,
       });
 
       res.json({
@@ -87,12 +107,17 @@ export function registerIdentityRoutes(app: Express, prisma: PrismaClient) {
     }
   });
 
-  // Public: a user's full cross-hackathon profile by userId
-  app.get('/api/users/:userId/global-profile', async (req, res) => {
+  // SECURITY: profile data is private. Only the user themselves or an admin may read.
+  app.get('/api/users/:userId/global-profile', requireAuth, async (req, res) => {
     try {
       const userId = asString(req.params.userId);
       if (!userId) {
         return res.status(400).json({ error: 'userId is required' });
+      }
+
+      const requester = req.authUser!;
+      if (requester.role !== 'admin' && requester.id !== userId) {
+        return res.status(403).json({ error: 'You can only view your own profile' });
       }
 
       const user = await prisma.user.findUnique({
@@ -108,6 +133,7 @@ export function registerIdentityRoutes(app: Express, prisma: PrismaClient) {
         where: { userId },
         include: { hackathon: { select: { title: true, startAt: true } } },
         orderBy: { createdAt: 'desc' },
+        take: 100,
       });
 
       res.json({
@@ -146,8 +172,9 @@ export function registerIdentityRoutes(app: Express, prisma: PrismaClient) {
     }
   });
 
-  // Public: global Web3 leaderboard (only isWeb3User=true)
-  app.get('/api/leaderboard/global-web3', async (req, res) => {
+  // SECURITY: leaderboard was public; rate-limit by requiring auth so anonymous
+  // scrapers cannot farm it. Limit/cap is still in place.
+  app.get('/api/leaderboard/global-web3', requireAuth, async (req, res) => {
     try {
       const chain = asString(req.query.chain as string)?.toLowerCase();
       const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);

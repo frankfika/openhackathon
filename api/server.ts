@@ -7,6 +7,7 @@ import { PrismaClient } from '@prisma/client';
 import {
   IS_PRODUCTION,
   AUTH_DISABLED,
+  ALLOW_TEST_AUTH_HEADER,
   DEFAULT_JWT_SECRET,
   JWT_SECRET,
   CORS_ALLOW_ALL,
@@ -58,7 +59,23 @@ if (IS_PRODUCTION && AUTH_DISABLED) {
 }
 
 if (IS_PRODUCTION && JWT_SECRET === DEFAULT_JWT_SECRET) {
-  throw new Error('JWT_SECRET must be set to a strong value in production');
+  throw new Error('JWT_SECRET must be set to a strong value in production (generate one with `openssl rand -hex 32`)');
+}
+
+// SECURITY: AUTH_DISABLED without ALLOW_TEST_AUTH_HEADER is a configuration mistake.
+// In any environment, refuse to start so this is caught at boot, not at first request.
+if (AUTH_DISABLED && !ALLOW_TEST_AUTH_HEADER) {
+  throw new Error(
+    '[SECURITY] AUTH_DISABLED=true requires ALLOW_TEST_AUTH_HEADER=1 (only set this in CI/e2e). ' +
+      'Refusing to start with x-test-* trust enabled without explicit opt-in.',
+  );
+}
+
+// SECURITY: refuse to run with the bundled default JWT secret outside dev —
+// even though the prod check above catches NODE_ENV=production, defend in depth.
+if (!IS_PRODUCTION && JWT_SECRET === DEFAULT_JWT_SECRET && process.env.NODE_ENV !== 'test') {
+  // eslint-disable-next-line no-console
+  console.warn('[SECURITY] JWT_SECRET is using the bundled default. Set JWT_SECRET before deploying.');
 }
 
 // ===== Default site settings =====
@@ -112,9 +129,34 @@ if (TRUST_PROXY !== undefined) {
   app.set('trust proxy', TRUST_PROXY);
 }
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      defaultSrc: ["'self'"],
+      // Vite dev injects inline scripts/styles; allow 'unsafe-inline' as a baseline.
+      // Tighten further in a follow-up if XSS is still a concern.
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      // Web3 + API + WalletConnect (WSS) connections
+      connectSrc: ["'self'", 'https:', 'wss:'],
+      // Disallow embedding the app in iframes (clickjacking protection)
+      frameAncestors: ["'none'"],
+      // Allow form submissions back to the API
+      formAction: ["'self'"],
+    },
+  },
   crossOriginEmbedderPolicy: false,
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  // Force HTTPS for 1 year, including subdomains. Production only.
+  strictTransportSecurity: IS_PRODUCTION
+    ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+    : false,
+  // Disallow MIME-type sniffing
+  noSniff: true,
+  // Disallow legacy XSS filter (browsers ignore it anyway; explicit is safer)
+  xssFilter: true,
 }));
 app.use(cors(corsOptions));
 app.use(express.json({ limit: JSON_BODY_LIMIT, type: shouldParseJsonBody }));
@@ -134,7 +176,7 @@ app.use('/api', apiRateLimiter);
 registerHealthRoutes(app, prisma);
 registerAuthRoutes(app, prisma, { authRateLimiter });
 registerWeb3AuthRoutes(app, prisma, { authRateLimiter, requireAuth });
-registerIdentityRoutes(app, prisma);
+registerIdentityRoutes(app, prisma, { requireAuth });
 registerSetupRoutes(app, prisma);
 registerSiteSettingsRoutes(app, prisma, { requireAdmin, defaultSiteSettings: DEFAULT_SITE_SETTINGS as unknown as Record<string, unknown> });
 registerHackathonRoutes(app, prisma, { requireAdmin });
