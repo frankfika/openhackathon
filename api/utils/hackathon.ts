@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { SiteSetting } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { cache } from './cache';
 import {
   HACKATHON_STATUS_PRIORITY,
   DEFAULT_HACKATHON_COVER_GRADIENT,
@@ -38,8 +39,13 @@ export async function listHackathonsWithRelations(client: PrismaLikeClient): Pro
 }
 
 export async function getCurrentHackathon(client: PrismaLikeClient): Promise<HackathonWithRelations | null> {
-  const hackathons = await listHackathonsWithRelations(client);
-  return hackathons[0] || null;
+  // PERFORMANCE: cached 30s. Called on every /api/hackathon and most admin
+  // dashboard renders, so even with SINGLE_HACKATHON_MODE filtering this is
+  // the hottest read path.
+  return cache.getOrLoad('current-hackathon', 30_000, async () => {
+    const hackathons = await listHackathonsWithRelations(client);
+    return hackathons[0] || null;
+  });
 }
 
 export async function getScopedHackathonId(client: PrismaLikeClient, input: unknown): Promise<string | undefined> {

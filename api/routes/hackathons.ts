@@ -5,6 +5,7 @@ import { SINGLE_HACKATHON_MODE, MARKDOWN_DOC_BODY_LIMIT, VALID_HACKATHON_STATUSE
 import type { ScoringCriterionPayload } from '../types';
 import { isValidHttpUrl, isValidHttpOrRootRelativeUrl, getErrorMessage, normalizeScoringCriteriaPayload, MAX_TITLE_LENGTH, MAX_TAGLINE_LENGTH, MAX_CITY_LENGTH, MAX_PRIZE_POOL_LENGTH, MAX_URL_LENGTH } from '../utils/validation';
 import { getCurrentHackathon, listHackathonsWithRelations, resolveHackathonCoverGradient } from '../utils/hackathon';
+import { cache } from '../utils/cache';
 import { readHackathonMarkdownDoc, saveHackathonMarkdownDoc, deleteHackathonMarkdownDoc } from '../utils/documents';
 
 export function registerHackathonRoutes(
@@ -148,16 +149,14 @@ export function registerHackathonRoutes(
         submissionSuccessHintImageUrl: submissionSuccessHintImageUrlValue || null,
         submissionSchema: submissionSchema || {},
         judgesPerProject: typeof judgesPerProject === 'number' && judgesPerProject > 0 ? judgesPerProject : 2,
-        scoringCriteria: hasScoringCriteriaInput ? {
-          create: scoringCriteriaInputs.map((c) => ({
-            name: c.name,
-            maxScore: c.maxScore,
-            sortOrder: c.sortOrder || 0,
-          }))
-        } : undefined,
+        scoringCriteria: scoringCriteriaInputs.length > 0 ? { create: scoringCriteriaInputs } : undefined,
       },
-      include: { scoringCriteria: true }
+      include: { scoringCriteria: true },
     });
+
+    cache.invalidate('current-hackathon');
+    // 200 (not 201) to keep the public API contract stable — frontend clients
+    // currently check the 200 status code in their fetch wrappers.
     res.json(hackathon);
   });
 
@@ -328,6 +327,8 @@ export function registerHackathonRoutes(
     });
 
     res.json(updated);
+    // Drop the cached current-hackathon so the next read sees this update.
+    cache.invalidate('current-hackathon');
   });
 
   // ===== Markdown Documents =====

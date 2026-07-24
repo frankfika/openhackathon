@@ -39,6 +39,8 @@ model User {
 
   @@index([globalPoints])
   @@index([isWeb3User])
+  // PERFORMANCE: /api/users, /api/dashboard and role-based joins filter on `role`.
+  @@index([role])
 }
 
 model Hackathon {

@@ -6,6 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="OpenHackathon - Open source hackathon management platform" />
     <meta name="application-name" content="OpenHackathon" />
+    <!-- PERFORMANCE: preconnect to Google Fonts hosts so the TLS handshake happens in
+         parallel with the first paint, instead of blocking the CSS @import in
+         src/index.css. The @import itself is still there but resolves faster. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" media="print" onload="this.media='all'" />
     <title>OpenHackathon</title>
     <script type="module">
       if (import.meta.hot?.on) {

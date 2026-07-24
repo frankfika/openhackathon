@@ -160,6 +160,10 @@ export function AIFeatures() {
   })
 
   // 轮询 batch status（任务进行中时）
+  // PERFORMANCE: cap polling at 30 minutes so a stuck task does not keep the
+  // page waking the network every 2s forever. After 30 min we stop the
+  // interval and the user can manually re-trigger.
+  const [batchPollingMountedAt] = useState(() => Date.now())
   const { data: batchStatus } = useQuery<BatchStatus | null>({
     queryKey: ['batch-status', activeTaskId],
     queryFn: async () => {
@@ -189,6 +193,10 @@ export function AIFeatures() {
       const data = query.state.data as BatchStatus | null | undefined
       // 任务已完成或失败，停止轮询
       if (data && (data.status === 'completed' || data.status === 'failed')) {
+        return false
+      }
+      // 30 min hard cap (per 2026-07-24 perf audit P1-2 / P2-4)
+      if (Date.now() - batchPollingMountedAt > 30 * 60 * 1000) {
         return false
       }
       return 2000 // 进行中每 2s 轮询

@@ -382,7 +382,10 @@ describe('API integration tests (real database)', () => {
         .get(uploadRes.body.url)
         .expect(200);
       expect(String(fileRes.headers['content-type'])).toContain('image/png');
-      expect(String(fileRes.headers['cache-control'])).toContain('immutable');
+      // SECURITY: changed from "immutable" to "must-revalidate" so admin re-uploads
+      // take effect within 1 day instead of 1 year (P1-6 hardening).
+      expect(String(fileRes.headers['cache-control'])).toContain('max-age=86400');
+      expect(String(fileRes.headers['cache-control'])).toContain('must-revalidate');
       expect(fileRes.headers['x-content-type-options']).toBe('nosniff');
     });
 

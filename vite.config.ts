@@ -49,6 +49,22 @@ export default defineConfig({
           if (id.includes('zod')) {
             return 'validation-vendor'
           }
+          // PERFORMANCE: web3 stack pulled in only by /web3 pages; split off so the
+          // default /admin / /judge entry does not pay the ~600KB RainbowKit + wagmi cost.
+          if (
+            id.includes('@rainbow-me/rainbowkit')
+            || id.includes('@solana/wallet-adapter')
+            || id.includes('@solana/web3.js')
+            || id.includes('wagmi')
+            || id.includes('viem')
+          ) {
+            return 'web3-vendor'
+          }
+          // recharts is only used by 2 chart components; isolate it from the
+          // main bundle so charts on /judging do not bloat the /admin entry.
+          if (id.includes('recharts') || id.includes('d3-')) {
+            return 'charts-vendor'
+          }
           return undefined
         },
       },

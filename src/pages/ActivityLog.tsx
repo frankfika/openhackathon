@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, memo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useActiveHackathon } from '@/lib/active-hackathon'
@@ -106,6 +106,56 @@ function formatDateTime(value: string): string {
     minute: '2-digit',
   })
 }
+
+// PERFORMANCE: row is wrapped in memo so a parent state change (e.g. filter
+// dropdown) does not re-render the 50 visible rows. Without this, every
+// filter toggle re-runs the icon lookup and date formatter for every row.
+const ActivityLogRow = memo(function ActivityLogRow({
+  log,
+}: {
+  log: ActivityLogType
+}) {
+  return (
+    <div className="flex items-start gap-3 p-3 hover:bg-muted/30">
+      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        {getEntityIcon(log.entityType)}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className={roleColors[log.actorRole] ?? ''}>
+            {log.actorRole === 'admin' && '管理员'}
+            {log.actorRole === 'judge' && '评委'}
+            {log.actorRole === 'user' && '用户'}
+            {log.actorRole === 'system' && '系统'}
+          </Badge>
+          <span className="font-medium">{log.actorName}</span>
+          <Badge
+            variant="outline"
+            className={actionColors[log.action] ?? 'bg-gray-100 text-gray-800'}
+          >
+            {log.action}
+          </Badge>
+          <span className="text-sm text-muted-foreground">
+            {log.entityType} {log.entityId ? `#${log.entityId.slice(0, 8)}` : ''}
+          </span>
+        </div>
+
+        {log.metadata && Object.keys(log.metadata).length > 0 && (
+          <div className="mt-1 text-xs text-muted-foreground">
+            {Object.entries(log.metadata)
+              .map(([k, v]) => `${k}=${String(v)}`)
+              .join(', ')}
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 text-xs tabular-nums text-muted-foreground">
+        {formatDateTime(log.createdAt)}
+      </div>
+    </div>
+  )
+})
 
 function ActivityDescription({ log }: { log: ActivityLogType }): React.ReactNode {
   const { metadata } = log
@@ -344,41 +394,7 @@ export function ActivityLogPage() {
         ) : (
           <div className="divide-y">
             {logs.map((log) => (
-              <div key={log.id} className="flex items-start gap-3 p-3 hover:bg-muted/30">
-                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                  {getEntityIcon(log.entityType)}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline" className={roleColors[log.actorRole] ?? ''}>
-                      {log.actorRole === 'admin' && '管理员'}
-                      {log.actorRole === 'judge' && '评委'}
-                      {log.actorRole === 'user' && '用户'}
-                      {log.actorRole === 'system' && '系统'}
-                    </Badge>
-                    <span className="font-medium">{log.actorName}</span>
-                    <Badge
-                      variant="outline"
-                      className={actionColors[log.action] ?? 'bg-gray-100 text-gray-800'}
-                    >
-                      {actionLabels[log.action] ?? log.action}
-                    </Badge>
-                  </div>
-
-                  <div className="mt-1 text-sm text-muted-foreground">
-                    <ActivityDescription log={log} />
-                  </div>
-
-                  {log.ipAddress && (
-                    <div className="mt-1 text-[11px] text-muted-foreground/60">IP: {log.ipAddress}</div>
-                  )}
-                </div>
-
-                <div className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {formatDateTime(log.createdAt)}
-                </div>
-              </div>
+              <ActivityLogRow key={log.id} log={log} />
             ))}
           </div>
         )}

@@ -10,6 +10,7 @@ import {
   UPLOAD_IMAGES_DIR,
   ALLOWED_UPLOAD_IMAGE_EXTENSIONS,
 } from '../config';
+import { cache } from '../utils/cache';
 import { normalizeEmail, isValidEmail, getErrorMessage, normalizeAdminBasePath, MAX_URL_LENGTH, MAX_NAME_LENGTH, MAX_TITLE_LENGTH } from '../utils/validation';
 import { encryptEmailSecret } from '../utils/crypto';
 import { resolveSubmissionEmailPort, resolveSubmissionEmailTimeout, sendSubmissionReceiptEmail } from '../utils/email';
@@ -68,16 +69,22 @@ export function registerSiteSettingsRoutes(
   { requireAdmin, defaultSiteSettings }: { requireAdmin: RequestHandler; defaultSiteSettings: Record<string, unknown> },
 ) {
   // GET /api/site-settings - public settings
+  // PERFORMANCE: cached for 60s. site-branding.tsx wraps the app and fires
+  // this query on every page load, so even a 1-row findUnique adds up.
   app.get('/api/site-settings', async (_req, res) => {
-    const settings = await prisma.siteSetting.findUnique({ where: { key: 'default' } });
-    const resolvedSettings = settings ?? buildFallbackSiteSettings(defaultSiteSettings);
+    const resolvedSettings = await cache.getOrLoad('site-settings:public', 60_000, async () => {
+      const settings = await prisma.siteSetting.findUnique({ where: { key: 'default' } });
+      return settings ?? buildFallbackSiteSettings(defaultSiteSettings);
+    });
     res.json(serializePublicSiteSettings(resolvedSettings));
   });
 
   // GET /api/site-settings/admin - admin settings
   app.get('/api/site-settings/admin', requireAdmin, async (_req, res) => {
-    const settings = await prisma.siteSetting.findUnique({ where: { key: 'default' } });
-    const resolvedSettings = settings ?? buildFallbackSiteSettings(defaultSiteSettings);
+    const resolvedSettings = await cache.getOrLoad('site-settings:admin', 30_000, async () => {
+      const settings = await prisma.siteSetting.findUnique({ where: { key: 'default' } });
+      return settings ?? buildFallbackSiteSettings(defaultSiteSettings);
+    });
     res.json(serializeSiteSettings(resolvedSettings));
   });
 
@@ -228,6 +235,10 @@ export function registerSiteSettingsRoutes(
       update: data,
       create: createData,
     });
+
+    // Invalidate the read cache so the next /api/site-settings fetch sees the
+    // fresh row instead of the 60s-stale cached value.
+    cache.invalidatePrefix('site-settings:');
 
     res.json(serializeSiteSettings(settings));
   });

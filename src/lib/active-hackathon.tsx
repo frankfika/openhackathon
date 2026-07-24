@@ -2,6 +2,7 @@ import React, { createContext, useContext, useMemo, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import { Hackathon } from './types'
+import { queryKeys } from './queryKeys'
 
 type ActiveHackathonContextType = {
   activeHackathon: Hackathon
@@ -30,7 +31,7 @@ export function ActiveHackathonProvider({ children }: { children: React.ReactNod
   const queryClient = useQueryClient()
 
   const { data: currentHackathon = null, isLoading } = useQuery({
-    queryKey: ['current-hackathon'],
+    queryKey: queryKeys.hackathons.current(),
     queryFn: api.getCurrentHackathon,
     staleTime: 30_000,
   })
@@ -49,8 +50,8 @@ export function ActiveHackathonProvider({ children }: { children: React.ReactNod
   }, [])
 
   const refreshHackathons = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['current-hackathon'] })
-    queryClient.invalidateQueries({ queryKey: ['hackathons'] })
+    queryClient.invalidateQueries({ queryKey: queryKeys.hackathons.current() })
+    queryClient.invalidateQueries({ queryKey: queryKeys.hackathons.all })
   }, [queryClient])
 
   return (

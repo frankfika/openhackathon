@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 import { defaultSiteSettings } from './site-config'
 import { SiteSettings } from './types'
+import { queryKeys } from './queryKeys'
 
 type SiteBrandingContextValue = {
   settings: SiteSettings
@@ -39,7 +40,7 @@ export function SiteBrandingProvider({ children }: { children: React.ReactNode }
   const queryClient = useQueryClient()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['site-settings'],
+    queryKey: queryKeys.siteSettings.all,
     queryFn: api.getSiteSettings,
     staleTime: 60_000,
     retry: 1,
@@ -64,7 +65,7 @@ export function SiteBrandingProvider({ children }: { children: React.ReactNode }
     settings,
     isLoading,
     refresh: () => {
-      queryClient.invalidateQueries({ queryKey: ['site-settings'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.siteSettings.all })
     },
   }), [isLoading, queryClient, settings])
 
