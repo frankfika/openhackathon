@@ -1,6 +1,7 @@
 import type { Express, RequestHandler } from 'express';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { asString, SUPPORTED_CHAINS } from '../config';
+import { logger } from '../logger';
 import { resolveUserByWallet } from '../services/identity';
 import { normalizeWalletAddress } from '../utils/siwe';
 
@@ -102,7 +103,7 @@ export function registerIdentityRoutes(
         }),
       });
     } catch (error) {
-      console.error('Identity lookup error:', error);
+      logger.error('Identity lookup error', { err: error });
       res.status(500).json({ error: 'Failed to look up identity' });
     }
   });
@@ -167,7 +168,7 @@ export function registerIdentityRoutes(
         })),
       });
     } catch (error) {
-      console.error('Global profile error:', error);
+      logger.error('Global profile error', { err: error });
       res.status(500).json({ error: 'Failed to load profile' });
     }
   });
@@ -217,7 +218,7 @@ export function registerIdentityRoutes(
 
       res.json({ leaderboard, total: leaderboard.length });
     } catch (error) {
-      console.error('Global leaderboard error:', error);
+      logger.error('Global leaderboard error', { err: error });
       res.status(500).json({ error: 'Failed to load global leaderboard' });
     }
   });

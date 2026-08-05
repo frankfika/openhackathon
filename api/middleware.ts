@@ -170,12 +170,22 @@ export const submissionRateLimiter = rateLimit({
 
 // SECURITY: AI endpoints are expensive. Limit each authenticated user to
 // AI_RATE_LIMIT_MAX calls per AI_RATE_LIMIT_WINDOW_MS (default 30/min).
+// Keys off user-id when authenticated (so NAT'd judges / IP rotations don't
+// share or evade a single bucket); falls back to IP for unauthenticated calls
+// (rare since most AI routes also require auth).
 // Skip when AUTH_DISABLED (test mode) so the suite isn't throttled.
+export function aiRateLimitKey(req: express.Request): string {
+  const userId = req.authUser?.id
+  if (userId) return `user:${userId}`
+  return `ip:${ipKeyGenerator(req.ip)}`
+}
+
 export const aiRateLimiter = rateLimit({
   windowMs: AI_RATE_LIMIT_WINDOW_MS,
   max: AI_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => AUTH_DISABLED,
+  keyGenerator: aiRateLimitKey,
   message: { error: 'Too many AI requests. Please slow down.' },
 });

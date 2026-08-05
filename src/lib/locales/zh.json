@@ -1017,5 +1017,30 @@
     "view_docs": "查看赛事详情",
     "back_admin": "返回管理后台",
     "back_judge": "返回评审工作台"
+  },
+  "ai_analysis_panel": {
+    "title": "AI 质量分析",
+    "subtitle": "基于 AI 模型的智能项目评估",
+    "updated": "AI 分析已更新",
+    "failed": "AI 分析失败，请稍后重试",
+    "unavailable": "AI 分析暂时不可用，请稍后重试",
+    "reanalyze": "重新分析",
+    "overall_score": "综合评分",
+    "dimensions": "评估维度",
+    "dim_completeness": "完整性",
+    "dim_innovation": "创新性",
+    "dim_technicalDepth": "技术深度",
+    "dim_presentation": "呈现质量",
+    "highlights": "项目亮点",
+    "concerns": "待改进",
+    "tech_tags": "技术标签",
+    "disclaimer": "💡 提示：AI 评估仅供参考，最终评分以评委打分为准",
+    "priority_high": "高优先级",
+    "priority_medium": "中优先级",
+    "priority_low": "低优先级",
+    "complexity_beginner": "入门级",
+    "complexity_intermediate": "中级",
+    "complexity_advanced": "高级",
+    "complexity_expert": "专家级"
   }
 }

@@ -1,5 +1,6 @@
 import type { Express, RequestHandler } from 'express';
 import type { PrismaClient } from '@prisma/client';
+import { logger } from '../logger';
 
 export function registerSystemResetRoutes(
   app: Express,
@@ -72,13 +73,12 @@ export function registerSystemResetRoutes(
       } catch (logError) {
         // If the audit insert fails (e.g. table was just dropped) the reset
         // still succeeded, but operators need to know audit is missing.
-        // eslint-disable-next-line no-console
-        console.error('[SECURITY] factory reset completed but audit log write failed:', logError);
+        logger.error('[SECURITY] factory reset completed but audit log write failed', { err: logError });
       }
 
       return res.json({ success: true, mode: 'factory' });
     } catch (error) {
-      console.error('System reset error:', error);
+      logger.error('System reset error', { err: error });
       res.status(500).json({ error: 'System reset failed' });
     }
   });

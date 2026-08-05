@@ -13,6 +13,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { mainnet, polygon, base, arbitrum, optimism, sepolia, baseSepolia } from 'viem/chains';
 import type { PrismaClient } from '@prisma/client';
+import { logger } from '../logger';
 import {
   ENABLE_ONCHAIN_STORAGE,
   REGISTRY_CONTRACT_ADDRESS,
@@ -134,7 +135,7 @@ export async function recordAchievementOnChain(
         });
       })
       .catch(async (error) => {
-        console.error('On-chain confirmation error:', error);
+        logger.error('On-chain confirmation error', { err: error });
         await prisma.crossHackathonActivity.updateMany({
           where: { userId, hackathonId, activityType },
           data: { onChainStatus: 'failed' },
@@ -143,7 +144,7 @@ export async function recordAchievementOnChain(
 
     return hash;
   } catch (error) {
-    console.error('Failed to record achievement on-chain:', error);
+    logger.error('Failed to record achievement on-chain', { err: error });
     return null;
   }
 }

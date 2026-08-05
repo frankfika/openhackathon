@@ -66,7 +66,7 @@ export function registerAIRoutes(
    * 分析项目质量并返回AI评估
    * Query: ?force=true 跳过缓存重新评估
    */
-  app.post('/api/ai/analyze-project/:projectId', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  app.post('/api/ai/analyze-project/:projectId', requireAuth, requireAdmin, aiRateLimiter, async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params
       const userId = req.authUser?.id || ''
@@ -138,7 +138,7 @@ export function registerAIRoutes(
    * POST /api/ai/batch-analyze
    * 批量分析项目（异步任务，可通过 taskId 查进度）
    */
-  app.post('/api/ai/batch-analyze', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  app.post('/api/ai/batch-analyze', requireAuth, requireAdmin, aiRateLimiter, async (req: Request, res: Response) => {
     try {
       const { projectIds, hackathonId } = req.body
 
@@ -270,7 +270,7 @@ export function registerAIRoutes(
    * GET /api/ai/scoring-consistency/:hackathonId
    * 分析评委评分一致性
    */
-  app.get('/api/ai/scoring-consistency/:hackathonId', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  app.get('/api/ai/scoring-consistency/:hackathonId', requireAuth, requireAdmin, aiRateLimiter, async (req: Request, res: Response) => {
     try {
       const { hackathonId } = req.params
 
@@ -402,7 +402,7 @@ export function registerAIRoutes(
    * POST /api/ai/detect-similarity
    * 检测两段文本的相似度（抄袭检测）
    */
-  app.post('/api/ai/detect-similarity', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  app.post('/api/ai/detect-similarity', requireAuth, requireAdmin, aiRateLimiter, async (req: Request, res: Response) => {
     try {
       const { text1, text2 } = req.body
 
@@ -425,7 +425,7 @@ export function registerAIRoutes(
    * 检查项目是否存在抄袭
    * 关键优化：所有 pairwise AI call 并发执行（之前串行，N 项目要 N 倍延迟）
    */
-  app.post('/api/ai/check-plagiarism/:projectId', requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  app.post('/api/ai/check-plagiarism/:projectId', requireAuth, requireAdmin, aiRateLimiter, async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params
 

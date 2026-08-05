@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { POINTS_RULES } from '../config';
+import { logger } from '../logger';
 import { logActivity } from '../utils/activity';
 import { recordAchievementOnChain, isOnChainEnabled } from './onchain';
 
@@ -169,7 +170,7 @@ export async function processLeaderboardPoints(
             points: POINTS_RULES[rankActivity],
           });
         } catch (error) {
-          console.error('On-chain attestation failed:', error);
+          logger.error('On-chain attestation failed', { err: error });
         }
       }
     }

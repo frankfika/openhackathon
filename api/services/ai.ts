@@ -12,6 +12,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { z } from 'zod'
+import { logger } from '../logger'
 
 // ==================== 常量 ====================
 
@@ -45,7 +46,7 @@ export async function withTimeout(
 
 /**
  * 错误脱敏：把任意上游错误转换为对客户端安全的简短消息。
- * 原始错误保留在 console.error 便于排查，响应里只给 category。
+ * 原始错误通过 logger.error 写到 stderr（结构化 JSON），响应里只给 category。
  */
 function safeErrorMessage(err: unknown): string {
   if (err instanceof Error) {
@@ -263,7 +264,7 @@ class AIService {
       } else {
         AIMetrics.errors[provider] += 1
       }
-      console.error('AI call failed:', error)
+      logger.error('AI call failed', { err: error, provider })
       throw new Error(safeErrorMessage(error))
     } finally {
       AIMetrics.totalDurationMs += Date.now() - start
@@ -574,7 +575,7 @@ ${project.tags ? `标签：${project.tags.join(', ')}` : ''}
       const result = await this.callAI(prompt, ProjectAssessmentSchema)
       return ProjectAssessmentSchema.parse(result)
     } catch (error: any) {
-      console.error('Project analysis failed:', error)
+      logger.error('Project analysis failed', { err: error, projectTitle: project.title })
       // 返回默认值，避免阻塞流程
       // isFallback=true 标记这是占位结果，UI 应展示警告
       return {
@@ -630,7 +631,7 @@ ${project.tags ? `标签：${project.tags.join(', ')}` : ''}
 请为该评委提供简短的评分建议（1-2句话，中文）。`
         return this.callAI(prompt).catch((err) => {
           // 单个评委失败不影响其他人，记 log 返回默认值
-          console.error(`Scoring consistency suggestion failed for judge ${judge.judgeId}:`, err)
+          logger.error('Scoring consistency suggestion failed', { err, judgeId: judge.judgeId })
           return 'AI suggestion unavailable'
         })
       }),
@@ -672,7 +673,7 @@ ${project.tags ? `标签：${project.tags.join(', ')}` : ''}
       return ModerationResultSchema.parse(result)
     } catch (err) {
       // 保守策略：AI失败时标记为需要审核
-      console.error('Moderation failed, fallback to manual review:', err)
+      logger.error('Moderation failed, fallback to manual review', { err })
       return {
         isAppropriate: false,
         flags: [{ type: 'spam', severity: 'low', description: 'AI moderation unavailable, manual review needed' }],
@@ -785,7 +786,7 @@ ${t2}
       const result = await this.callAI(prompt)
       return parseSimilarityScore(result)
     } catch (error) {
-      console.error('Similarity detection failed:', error)
+      logger.error('Similarity detection failed', { err: error })
       return 0
     }
   }
