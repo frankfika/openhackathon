@@ -718,7 +718,7 @@
       "projects": "参赛项目",
       "prizes": "奖金与奖品"
     },
-    "gitbook": {
+    "event_details": {
       "title": "赛事详情",
       "open_external": "在新标签页中打开",
       "no_docs": "暂未配置赛事详情",

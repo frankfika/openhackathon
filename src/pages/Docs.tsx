@@ -58,7 +58,7 @@ export function Docs() {
           <div className="flex items-center gap-3">
             <FileText className="h-4 w-4 text-primary" />
             <div>
-              <h1 className="text-sm font-semibold">{t('landing.gitbook.title')}</h1>
+              <h1 className="text-sm font-semibold">{t('landing.event_details.title')}</h1>
               <p className="text-xs text-muted-foreground">{h.title}</p>
             </div>
             <Badge variant="outline" className="rounded-full text-[10px] uppercase tracking-wide">
@@ -74,7 +74,7 @@ export function Docs() {
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors"
               >
-                {t('landing.gitbook.open_external')}
+                {t('landing.event_details.open_external')}
                 <ExternalLink className="h-3 w-3" />
               </a>
             ) : null}
@@ -103,17 +103,17 @@ export function Docs() {
           <FileText className="h-12 w-12 text-muted-foreground/35" />
           <div className="space-y-2">
             <p className="text-xl font-semibold text-foreground">
-              {t('landing.gitbook.no_docs_title')}
+              {t('landing.event_details.no_docs_title')}
             </p>
             <p className="mx-auto max-w-xl text-sm text-muted-foreground">
-              {t('landing.gitbook.no_docs_desc')}
+              {t('landing.event_details.no_docs_desc')}
             </p>
           </div>
 
           <div className="flex flex-wrap justify-center gap-3">
             <a href="https://www.gitbook.com" target="_blank" rel="noreferrer">
               <Button variant="outline" className="rounded-full gap-2">
-                {t('landing.gitbook.go_gitbook')}
+                {t('landing.event_details.go_gitbook')}
                 <ExternalLink className="h-4 w-4" />
               </Button>
             </a>
@@ -129,11 +129,11 @@ export function Docs() {
         <div className="surface-panel-strong mx-auto flex min-h-[60vh] max-w-3xl flex-col items-center justify-center gap-4 px-6 text-center">
           <source.icon className="h-10 w-10 text-muted-foreground/40" />
           <p className="text-muted-foreground">
-            {t('landing.gitbook.embed_blocked')}
+            {t('landing.event_details.embed_blocked')}
           </p>
           <a href={source.url} target="_blank" rel="noreferrer">
             <Button className="rounded-full gap-2 grand-cta">
-              {t('landing.gitbook.open_external')}
+              {t('landing.event_details.open_external')}
               <ExternalLink className="h-4 w-4" />
             </Button>
           </a>
@@ -148,7 +148,7 @@ export function Docs() {
         <div className="flex items-center gap-3">
           <source.icon className="h-4 w-4 text-primary" />
           <div>
-            <h1 className="text-sm font-semibold">{t('landing.gitbook.title')}</h1>
+            <h1 className="text-sm font-semibold">{t('landing.event_details.title')}</h1>
             <p className="text-xs text-muted-foreground">{h.title}</p>
           </div>
           <Badge variant="outline" className="rounded-full text-[10px] uppercase tracking-wide">
@@ -161,7 +161,7 @@ export function Docs() {
           rel="noreferrer"
           className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          {t('landing.gitbook.open_external')}
+          {t('landing.event_details.open_external')}
           <ExternalLink className="h-3 w-3" />
         </a>
       </div>
@@ -169,7 +169,7 @@ export function Docs() {
       <div className="surface-panel-strong min-h-0 flex-1 overflow-hidden">
         <iframe
           src={source.url}
-          title={t('landing.gitbook.title')}
+          title={t('landing.event_details.title')}
           className="h-full w-full border-0"
           allow="clipboard-write"
           loading="lazy"

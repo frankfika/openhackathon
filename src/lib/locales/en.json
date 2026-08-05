@@ -716,7 +716,7 @@
       "projects": "Projects",
       "prizes": "Prizes & Gifts"
     },
-    "gitbook": {
+    "event_details": {
       "title": "Event Details",
       "open_external": "Open in new tab",
       "no_docs": "No event details configured yet.",
