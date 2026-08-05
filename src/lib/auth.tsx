@@ -94,11 +94,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false)
   }, [])
 
-  // Re-check user when path changes (admin <-> judge)
+  // Re-check user when path changes (admin <-> judge).
+  // popstate covers back/forward, but in-app React Router navigation uses
+  // pushState/replaceState which do NOT fire popstate. Monkey-patch those
+  // methods to also dispatch a `locationchange` event so we re-read the
+  // matching role's user from localStorage.
   useEffect(() => {
-    const handlePopState = () => setUser(getStoredUser())
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
+    if (typeof window === 'undefined') return
+
+    const originalPushState = window.history.pushState
+    const originalReplaceState = window.history.replaceState
+    const dispatchLocationChange = () => {
+      window.dispatchEvent(new Event('locationchange'))
+    }
+    window.history.pushState = function (...args) {
+      originalPushState.apply(this, args as Parameters<typeof originalPushState>)
+      dispatchLocationChange()
+    }
+    window.history.replaceState = function (...args) {
+      originalReplaceState.apply(this, args as Parameters<typeof originalReplaceState>)
+      dispatchLocationChange()
+    }
+
+    const handleLocationChange = () => setUser(getStoredUser())
+    window.addEventListener('popstate', handleLocationChange)
+    window.addEventListener('locationchange', handleLocationChange)
+
+    return () => {
+      window.history.pushState = originalPushState
+      window.history.replaceState = originalReplaceState
+      window.removeEventListener('popstate', handleLocationChange)
+      window.removeEventListener('locationchange', handleLocationChange)
+    }
   }, [])
 
   const login = async (email: string, password: string) => {

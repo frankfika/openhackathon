@@ -41,6 +41,7 @@ const GlobalLeaderboard = lazy(() => import('./pages/GlobalLeaderboard').then((m
 const UserProfile = lazy(() => import('./pages/UserProfile').then((mod) => ({ default: mod.UserProfile })))
 const AIFeatures = lazy(() => import('./pages/AIFeatures').then((mod) => ({ default: mod.AIFeatures })))
 const Account = lazy(() => import('./pages/Account').then((mod) => ({ default: mod.Account })))
+const NotFound = lazy(() => import('./pages/NotFound').then((mod) => ({ default: mod.NotFound })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -286,7 +287,7 @@ function AppRoutes() {
             <Route path="review/:id" element={<ErrorBoundary><JudgingDetail /></ErrorBoundary>} />
           </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

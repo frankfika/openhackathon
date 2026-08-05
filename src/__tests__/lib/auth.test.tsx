@@ -129,4 +129,38 @@ describe('useAuth', () => {
     expect(localStorage.getItem('openhackathon_admin_user')).toBeNull()
     expect(localStorage.getItem('openhackathon_admin_token')).toBeNull()
   })
+
+  // Regression test for audit-launch-2026-08-06.md P0-2: the previous popstate-only
+  // listener did NOT pick up React Router's pushState navigation, so admin and
+  // judge sessions would not switch when the user moved between /admin and /judge
+  // inside the SPA. AuthProvider now monkey-patches pushState/replaceState to
+  // dispatch a `locationchange` event, and re-reads the role-matching user.
+  it('re-reads the role-matching user on in-app navigation (pushState)', async () => {
+    const adminUser = { id: '1', email: 'admin@test.com', name: 'Admin', role: 'admin' as const }
+    const judgeUser = { id: '2', email: 'judge@test.com', name: 'Judge', role: 'judge' as const }
+    localStorage.setItem('openhackathon_admin_user', JSON.stringify(adminUser))
+    localStorage.setItem('openhackathon_judge_user', JSON.stringify(judgeUser))
+
+    // jsdom starts at "/"
+    const { result } = renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => {
+      expect(result.current.user).toEqual(adminUser)
+    })
+
+    // Simulate React Router's navigate('/judge') which calls history.pushState
+    act(() => {
+      window.history.pushState({}, '', '/judge')
+    })
+    await waitFor(() => {
+      expect(result.current.user).toEqual(judgeUser)
+    })
+
+    // Back to admin area
+    act(() => {
+      window.history.pushState({}, '', '/admin')
+    })
+    await waitFor(() => {
+      expect(result.current.user).toEqual(adminUser)
+    })
+  })
 })

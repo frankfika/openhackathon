@@ -13,7 +13,11 @@ i18n
       en: { translation: en },
       zh: { translation: zh },
     },
-    fallbackLng: 'en',
+    // Fallback chain: when a key is missing in the active language, try zh first
+    // (zh is the source-of-truth for new keys — see audit-launch-2026-08-06.md P1).
+    // Then en as final fallback. If a key is missing in both, i18next renders
+    // the raw key string.
+    fallbackLng: ['zh', 'en'],
     interpolation: {
       escapeValue: false, // react already safes from xss
     },

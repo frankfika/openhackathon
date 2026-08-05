@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -13,6 +14,34 @@ interface State {
   error: Error | null
 }
 
+function ErrorBoundaryFallback({ error, onReset }: { error: Error | null; onReset: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center">
+      <div className="rounded-full bg-destructive/10 p-4 mb-4">
+        <AlertTriangle className="h-8 w-8 text-destructive" />
+      </div>
+      <h2 className="text-xl font-semibold mb-2">{t('error_boundary.title')}</h2>
+      <p className="text-muted-foreground max-w-md mb-6">
+        {t('error_boundary.description')}
+      </p>
+      {error && (
+        <pre className="text-xs text-muted-foreground bg-muted p-4 rounded-lg max-w-full overflow-auto mb-6">
+          {error.message}
+        </pre>
+      )}
+      <div className="flex gap-3">
+        <Button onClick={onReset} variant="outline">
+          {t('common.retry')}
+        </Button>
+        <Button onClick={() => window.location.href = '/'}>
+          {t('common.home')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props)
@@ -24,6 +53,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Sprint 2.3 will replace this with structured logger.
     console.error('ErrorBoundary caught an error:', error, errorInfo)
   }
 
@@ -37,31 +67,7 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) {
         return this.props.fallback
       }
-
-      return (
-        <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center">
-          <div className="rounded-full bg-destructive/10 p-4 mb-4">
-            <AlertTriangle className="h-8 w-8 text-destructive" />
-          </div>
-          <h2 className="text-xl font-semibold mb-2">出错了</h2>
-          <p className="text-muted-foreground max-w-md mb-6">
-            应用程序遇到了意外错误。请尝试刷新页面或返回首页。
-          </p>
-          {this.state.error && (
-            <pre className="text-xs text-muted-foreground bg-muted p-4 rounded-lg max-w-full overflow-auto mb-6">
-              {this.state.error.message}
-            </pre>
-          )}
-          <div className="flex gap-3">
-            <Button onClick={this.handleReset} variant="outline">
-              重试
-            </Button>
-            <Button onClick={() => window.location.href = '/'}>
-              返回首页
-            </Button>
-          </div>
-        </div>
-      )
+      return <ErrorBoundaryFallback error={this.state.error} onReset={this.handleReset} />
     }
 
     return this.props.children
