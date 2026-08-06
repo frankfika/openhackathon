@@ -13,8 +13,10 @@ import {
 import {
   getOrCreateUserFromWallet,
   linkWalletToUser,
+  unlinkWalletFromUser,
 } from '../services/identity';
 import { logActivity } from '../utils/activity';
+import { logger } from '../logger';
 
 function sanitizeUser(user: { password?: string | null }) {
   const copy = { ...user };
@@ -191,6 +193,56 @@ export function registerWeb3AuthRoutes(
     } catch (error) {
       console.error('Link wallet error:', error);
       res.status(500).json({ error: 'Failed to link wallet' });
+    }
+  });
+
+  // 4. Unlink a wallet from the currently authenticated account
+  app.delete('/api/auth/wallets', requireAuth, async (req, res) => {
+    if (!ENABLE_WEB3_LOGIN) {
+      return res.status(403).json({ error: 'Web3 login is disabled' });
+    }
+    try {
+      const userId = req.authUser!.id;
+      const address = asString(req.query?.address ?? req.body?.address);
+      const chain = asString(req.query?.chain ?? req.body?.chain)?.toLowerCase();
+
+      if (!address || !chain) {
+        return res.status(400).json({ error: 'address and chain are required' });
+      }
+      if (!SUPPORTED_CHAINS.includes(chain)) {
+        return res.status(400).json({ error: `Unsupported chain: ${chain}` });
+      }
+
+      const normalized = normalizeWalletAddress(address, chain);
+      if (!normalized) {
+        return res.status(400).json({ error: 'Invalid wallet address' });
+      }
+
+      const result = await unlinkWalletFromUser(prisma, {
+        userId,
+        address: normalized,
+        chain,
+      });
+
+      if (!result.success) {
+        return res.status(404).json({ error: 'Wallet is not linked to this account' });
+      }
+
+      await logActivity(prisma, {
+        actorId: userId,
+        actorRole: req.authUser!.role,
+        actorName: req.authUser!.name,
+        action: 'unlink_wallet',
+        entityType: 'user',
+        entityId: userId,
+        metadata: { address: normalized, chain },
+        ipAddress: req.ip,
+      });
+
+      res.json({ success: true, remainingWallets: result.remainingWallets });
+    } catch (error) {
+      logger.error('Unlink wallet error', { err: error });
+      res.status(500).json({ error: 'Failed to unlink wallet' });
     }
   });
 }

@@ -118,3 +118,50 @@ export async function linkWalletToUser(
 
   return { user };
 }
+
+/**
+ * Unlink a wallet from a user account.
+ * - Removes the wallet row owned by `userId`.
+ * - If the removed wallet was primary, promotes another wallet (or null).
+ * - If the user has no wallets left, clears `isWeb3User`.
+ */
+export async function unlinkWalletFromUser(
+  prisma: PrismaClient,
+  params: { userId: string; address: string; chain: string },
+): Promise<{ success: boolean; remainingWallets: number }> {
+  const { userId, address, chain } = params;
+
+  const wallet = await prisma.walletAddress.findUnique({
+    where: { address_chain: { address, chain } },
+  });
+
+  if (!wallet || wallet.userId !== userId) {
+    return { success: false, remainingWallets: 0 };
+  }
+
+  await prisma.walletAddress.delete({
+    where: { address_chain: { address, chain } },
+  });
+
+  const remaining = await prisma.walletAddress.count({ where: { userId } });
+
+  if (remaining === 0) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { isWeb3User: false },
+    });
+  } else if (wallet.isPrimary) {
+    const next = await prisma.walletAddress.findFirst({
+      where: { userId },
+      orderBy: { verifiedAt: 'asc' },
+    });
+    if (next) {
+      await prisma.walletAddress.update({
+        where: { address_chain: { address: next.address, chain: next.chain } },
+        data: { isPrimary: true },
+      });
+    }
+  }
+
+  return { success: true, remainingWallets: remaining };
+}
